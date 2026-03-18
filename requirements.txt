@@ -1,0 +1,26 @@
+# NextArc - 第二课堂活动监控机器人依赖
+
+# 飞书开放平台官方 SDK
+lark-oapi>=1.0.0
+
+# 异步 SQLite 操作
+aiosqlite>=0.19.0
+
+# 定时任务调度
+apscheduler>=3.10.0
+
+# YAML 配置文件解析
+pyyaml>=6.0
+
+# 配置验证与数据模型
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# 类型提示增强（Python < 3.12）
+typing-extensions>=4.5.0
+
+# 异步 HTTP 客户端（lark-oapi 依赖）
+aiohttp>=3.8.0
+
+# 日志增强
+colorlog>=6.7.0

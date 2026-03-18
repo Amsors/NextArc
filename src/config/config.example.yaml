@@ -1,0 +1,40 @@
+# NextArc 配置文件模板
+# 复制此文件并填写实际值后使用
+
+ustc:
+  # 认证模式: "file" 从本文件读取，"env" 从环境变量读取
+  auth_mode: "file"
+  
+  # auth_mode=file 时使用以下配置
+  username: "PB12345678"           # USTC学号，如 "SA22000001"
+  password: "12345678"           # 统一身份认证密码
+  
+  # auth_mode=env 时从以下环境变量名读取
+  env_username: "USTC_USERNAME"
+  env_password: "USTC_PASSWORD"
+
+filter:
+  ignore_participated_but_ended_activity: true
+
+behavior:
+  scan_on_start: false
+  update_search_result: true
+
+monitor:
+  # 定时扫描间隔（分钟），默认15分钟
+  interval_minutes: 15
+
+feishu:
+  # 飞书应用凭证（在飞书开放平台获取）
+  app_id: "cli_xxxxxxxxxxxxxxxx"             # 如 "cli_xxxxxxxxxxxxxxxx"
+  app_secret: "qwertyuiop1234567890"         # 应用密钥
+
+database:
+  # 数据库文件存储目录
+  data_dir: "./../data"
+  # 保留的历史数据库文件数量
+  max_history: 10
+
+logging:
+  # 日志级别: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
