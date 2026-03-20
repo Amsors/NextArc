@@ -23,6 +23,8 @@ behavior:
 monitor:
   # 定时扫描间隔（分钟），默认15分钟
   interval_minutes: 15
+  # 发现新活动时是否发送飞书通知
+  notify_new_activities: true
 
 feishu:
   # 飞书应用凭证（在飞书开放平台获取）

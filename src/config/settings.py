@@ -28,6 +28,7 @@ class FilterConfig(BaseModel):
 class MonitorConfig(BaseModel):
     """监控配置"""
     interval_minutes: int = Field(default=15, ge=1, le=1440)
+    notify_new_activities: bool = Field(default=True, description="发现新活动时发送飞书通知")
 
 
 class FeishuConfig(BaseModel):

@@ -77,8 +77,10 @@ class NextArcApp:
                 db_manager=self.db_manager,
                 interval_minutes=self.settings.monitor.interval_minutes,
                 notify_callback=self._on_notify,
+                notify_new_activities=self.settings.monitor.notify_new_activities,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
+            logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
             
             # 初始化消息路由器
             self.router = MessageRouter()

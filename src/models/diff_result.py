@@ -1,6 +1,7 @@
 """差异结果数据模型"""
 
-from typing import Any, Literal
+from datetime import datetime
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -56,6 +57,10 @@ class DiffResult(BaseModel):
     removed: list[ActivityChange] = []
     modified: list[ActivityChange] = []
     
+    # 两次数据采集的时间
+    old_scan_time: Optional[datetime] = None
+    new_scan_time: Optional[datetime] = None
+    
     def has_changes(self) -> bool:
         """是否有变化"""
         return bool(self.added or self.removed or self.modified)
@@ -102,3 +107,34 @@ class DiffResult(BaseModel):
             if change.activity_id in enrolled_ids:
                 changes.append(change)
         return changes
+    
+    def format_new_activities_notification(self) -> str:
+        """
+        格式化新增活动通知
+        
+        Returns:
+            格式化后的通知文本
+        """
+        if not self.added:
+            return ""
+        
+        lines = ["🆕 发现新的第二课堂活动！", ""]
+        
+        # 显示数据采集时间
+        if self.old_scan_time and self.new_scan_time:
+            lines.append(f"📊 数据对比：")
+            lines.append(f"   上次采集：{self.old_scan_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            lines.append(f"   本次采集：{self.new_scan_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            lines.append("")
+        
+        lines.append(f"📋 新增活动（共{len(self.added)}个）：")
+        lines.append("")
+        
+        for i, change in enumerate(self.added, 1):
+            lines.append(f"[{i}] {change.activity_name}")
+        
+        lines.append("")
+        lines.append("💡 使用 /check 查看详细信息")
+        lines.append("💡 使用 /search <关键词> 搜索并报名")
+        
+        return "\n".join(lines)

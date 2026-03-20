@@ -34,11 +34,13 @@ class ActivityScanner:
         db_manager: DatabaseManager,
         interval_minutes: int = 15,
         notify_callback: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None,
+        notify_new_activities: bool = True,
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
         self.interval = interval_minutes
         self.notify_callback = notify_callback
+        self.notify_new_activities = notify_new_activities
         self.scheduler = AsyncIOScheduler()
         self.diff_engine = DiffEngine()
         self._last_scan_time: Optional[datetime] = None
@@ -134,6 +136,10 @@ class ActivityScanner:
                     if not force_notify:
                         await self._send_enrolled_notifications(enrolled_changes)
                 
+                # 发送新活动通知（仅非强制模式，即定时扫描时）
+                if not force_notify and diff.added:
+                    await self._send_new_activities_notification(diff)
+                
                 # 强制模式下推送所有差异
                 if force_notify and self.notify_callback:
                     await self.notify_callback(diff.format_full())
@@ -192,6 +198,30 @@ class ActivityScanner:
                 logger.info(f"已发送通知: {change.activity_name}")
             except Exception as e:
                 logger.error(f"发送通知失败: {e}")
+    
+    async def _send_new_activities_notification(self, diff) -> None:
+        """
+        发送新活动通知
+        
+        Args:
+            diff: 差异结果，包含新增活动列表
+        """
+        if not self.notify_new_activities:
+            return
+        
+        if not self.notify_callback:
+            return
+        
+        if not diff or not diff.added:
+            return
+        
+        try:
+            message = diff.format_new_activities_notification()
+            if message:
+                await self.notify_callback(message)
+                logger.info(f"已发送新活动通知，共 {len(diff.added)} 个新活动")
+        except Exception as e:
+            logger.error(f"发送新活动通知失败: {e}")
     
     def start(self) -> None:
         """启动定时任务"""

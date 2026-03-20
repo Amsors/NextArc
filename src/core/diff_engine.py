@@ -1,7 +1,8 @@
 """数据库差异对比引擎"""
 
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import aiosqlite
 
@@ -79,7 +80,17 @@ class DiffEngine:
                 ))
                 logger.debug(f"修改活动: {new_act.name} ({aid}), 变化字段: {[fc.field_name for fc in field_changes]}")
         
-        result = DiffResult(added=added, removed=removed, modified=modified)
+        # 获取两个数据库的扫描时间
+        old_scan_time = await self._get_db_scan_time(old_db_path)
+        new_scan_time = await self._get_db_scan_time(new_db_path)
+        
+        result = DiffResult(
+            added=added,
+            removed=removed,
+            modified=modified,
+            old_scan_time=old_scan_time,
+            new_scan_time=new_scan_time,
+        )
         logger.info(f"对比完成: {result.get_summary()}")
         return result
     
@@ -172,3 +183,32 @@ class DiffEngine:
         
         logger.debug(f"已报名活动数量: {len(enrolled_ids)}")
         return enrolled_ids
+    
+    async def _get_db_scan_time(self, db_path: Path) -> Optional[datetime]:
+        """
+        获取数据库的扫描时间
+        
+        从数据库中提取 scan_timestamp 字段，取最小值（最早的扫描时间）
+        
+        Args:
+            db_path: 数据库文件路径
+            
+        Returns:
+            扫描时间，如果无法获取则返回 None
+        """
+        if not db_path or not db_path.exists():
+            return None
+        
+        try:
+            async with aiosqlite.connect(db_path) as db:
+                # 获取所有活动的 scan_timestamp，取最小值
+                async with db.execute(
+                    "SELECT MIN(scan_timestamp) as min_ts FROM all_secondclass"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if row and row["min_ts"]:
+                        return datetime.fromtimestamp(row["min_ts"])
+        except Exception as e:
+            logger.warning(f"获取数据库扫描时间失败 {db_path}: {e}")
+        
+        return None
