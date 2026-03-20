@@ -1,4 +1,5 @@
 """/search 指令处理器"""
+import traceback
 
 import aiosqlite
 from pyustc.young import SecondClass
@@ -72,6 +73,7 @@ class SearchHandler(CommandHandler):
 
         except Exception as e:
             logger.error(f"搜索活动失败: {e}")
+            traceback.print_exc()
             return f"❌ 搜索失败：{str(e)}"
 
     async def _search_activities(self, db_path, keyword: str) -> list[Activity]:

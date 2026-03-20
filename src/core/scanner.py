@@ -1,4 +1,5 @@
 """定时扫描器"""
+import asyncio
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from pyustc.young.db import SecondClassDB
 from src.models import DiffResult, Activity, secondclass_to_activity
 from src.utils.logger import get_logger
 
+from .ai_filter import AIFilter
 from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
@@ -35,12 +37,18 @@ class ActivityScanner:
         interval_minutes: int = 15,
         notify_callback: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None,
         notify_new_activities: bool = True,
+        ai_filter: Optional[AIFilter] = None,
+        use_ai_filter: bool = False,
+        ai_user_info: str = "",
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
         self.interval = interval_minutes
         self.notify_callback = notify_callback
         self.notify_new_activities = notify_new_activities
+        self.ai_filter = ai_filter
+        self.use_ai_filter = use_ai_filter
+        self.ai_user_info = ai_user_info
         self.scheduler = AsyncIOScheduler()
         self.diff_engine = DiffEngine()
         self._last_scan_time: Optional[datetime] = None
@@ -138,7 +146,8 @@ class ActivityScanner:
                 
                 # 发送新活动通知（仅非强制模式，即定时扫描时）
                 if not force_notify and diff.added:
-                    await self._send_new_activities_notification(diff)
+                    # 使用 create_task 在后台执行，避免阻塞定时扫描和 WebSocket 心跳
+                    self._create_background_task(self._send_new_activities_notification(diff))
                 
                 # 强制模式下推送所有差异
                 if force_notify and self.notify_callback:
@@ -182,6 +191,31 @@ class ActivityScanner:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
     
+    def _create_background_task(self, coro) -> None:
+        """
+        创建后台任务（带异常处理）
+        
+        用于执行可能耗时的操作（如 AI 筛选），避免阻塞主事件循环。
+        
+        Args:
+            coro: 协程对象
+        """
+        async def wrapped_coro():
+            try:
+                await coro
+            except Exception as e:
+                logger.error(f"后台任务执行失败: {e}")
+        
+        task = asyncio.create_task(wrapped_coro())
+        # 添加回调以捕获任何未处理的异常
+        def on_task_done(t):
+            try:
+                t.result()
+            except Exception as e:
+                logger.error(f"后台任务异常: {e}")
+        
+        task.add_done_callback(on_task_done)
+    
     async def _send_enrolled_notifications(self, changes: list) -> None:
         """发送已报名活动的变更通知"""
         if not self.notify_callback:
@@ -216,10 +250,46 @@ class ActivityScanner:
             return
         
         try:
-            message = diff.format_new_activities_notification()
+            # 获取新增活动的详细信息
+            from src.models.diff_result import ActivityChange
+            
+            new_activity_ids = [change.activity_id for change in diff.added]
+            activities = await self.get_activity_list_by_id(new_activity_ids)
+            
+            # 如果启用 AI 筛选，则进行筛选
+            if self.use_ai_filter and self.ai_filter and self.ai_user_info:
+                logger.info(f"使用 AI 筛选 {len(activities)} 个新活动...")
+                activities = await self.ai_filter.filter_activities(
+                    activities, 
+                    self.ai_user_info
+                )
+                
+                if not activities:
+                    logger.info("AI 筛选后无活动需要通知")
+                    return
+            
+            # 创建一个新的 DiffResult 仅包含筛选后的活动
+            filtered_changes = []
+            for activity in activities:
+                for change in diff.added:
+                    if change.activity_id == activity.id:
+                        filtered_changes.append(change)
+                        break
+            
+            # 创建新的 diff 用于格式化通知
+            from src.models import DiffResult
+            filtered_diff = DiffResult(
+                added=filtered_changes,
+                removed=diff.removed,
+                modified=diff.modified,
+                old_scan_time=diff.old_scan_time,
+                new_scan_time=diff.new_scan_time,
+            )
+            
+            message = filtered_diff.format_new_activities_notification()
             if message:
                 await self.notify_callback(message)
-                logger.info(f"已发送新活动通知，共 {len(diff.added)} 个新活动")
+                logger.info(f"已发送新活动通知，共 {len(filtered_changes)} 个新活动")
         except Exception as e:
             logger.error(f"发送新活动通知失败: {e}")
     

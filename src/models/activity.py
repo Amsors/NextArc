@@ -105,8 +105,12 @@ class Activity(BaseModel):
         """获取模块名称"""
         if not self.module:
             return "未知"
+        if self.module=="null":
+            return "未知"
         try:
             data = json.loads(self.module)
+            if not data:
+                return "未知"
             return data.get("text", "未知")
         except (json.JSONDecodeError, TypeError):
             return "解析错误"
@@ -114,6 +118,8 @@ class Activity(BaseModel):
     def get_department_name(self) -> str:
         """获取组织单位名称"""
         if not self.department:
+            return "未知"
+        if self.department=="null":
             return "未知"
         try:
             data = json.loads(self.department)
@@ -125,9 +131,13 @@ class Activity(BaseModel):
         """获取标签文本"""
         if not self.labels:
             return "无"
+        if self.labels=="null":
+            return "无"
         try:
             data = json.loads(self.labels)
-            if isinstance(data, list):
+            if not data:
+                return "无"
+            if not isinstance(data, list):
                 return ", ".join(item.get("name", "") for item in data)
             return str(data)
         except (json.JSONDecodeError, TypeError):

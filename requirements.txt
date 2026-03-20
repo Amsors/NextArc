@@ -24,3 +24,6 @@ aiohttp>=3.8.0
 
 # 日志增强
 colorlog>=6.7.0
+
+# OpenAI API 客户端（用于 AI 筛选功能）
+openai>=1.0.0

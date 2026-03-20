@@ -25,6 +25,55 @@ monitor:
   interval_minutes: 15
   # 发现新活动时是否发送飞书通知
   notify_new_activities: true
+  # 是否使用 AI 筛选新活动（需要配置 ai 部分）
+  use_ai_filter: false
+
+# AI 筛选配置（使用 OpenAI API 格式）
+# ⚠️ 重要：如果启用 AI 功能（enabled: true），以下所有带 [必填] 标记的配置项都必须填写，
+#    否则程序启动时会报错。如果不使用 AI 功能，请保持 enabled: false
+ai:
+  # 是否启用 AI 筛选
+  enabled: false
+  
+  # API 密钥 [必填]（如果 enabled: true）
+  # 例如：sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  api_key: ""
+  
+  # API 基础 URL [可选]
+  # 用于第三方兼容服务如 DeepSeek、Moonshot 等
+  # 例如：https://api.deepseek.com/v1
+  # 留空则使用 OpenAI 官方 API
+  base_url: ""
+  
+  # 模型名称 [必填]（如果 enabled: true）
+  # 例如：gpt-3.5-turbo, gpt-4, deepseek-chat
+  model: ""
+  
+  # 用户偏好描述 [必填]（如果 enabled: true）
+  # 用于指导 AI 筛选，建议详细描述你的专业、兴趣、想参加的活动类型等
+  # 这将直接影响 AI 的筛选效果
+  user_info: |
+    
+  
+  # 系统提示词文件路径 [必填]（如果 enabled: true）
+  # 相对于项目根目录或绝对路径
+  # 该文件必须存在且不能为空，否则启动时报错
+  system_prompt_file: "src/config/prompts/system_prompt.txt"
+  
+  # 用户提示词模板文件路径 [必填]（如果 enabled: true）
+  # 相对于项目根目录或绝对路径
+  # 该文件必须存在且不能为空，否则启动时报错
+  # 可用变量：{user_info}, {activity_info}
+  user_prompt_template_file: "src/config/prompts/user_prompt_template.txt"
+  
+  # 采样温度 [必填]（如果 enabled: true）
+  # 范围：0.0-2.0，越低结果越确定，越高结果越多样
+  # 建议值：0.3（较为确定）到 0.7（较为灵活）
+  temperature: 
+  
+  # 请求超时时间（秒）[可选]
+  # 默认 30 秒
+  timeout: 30
 
 feishu:
   # 飞书应用凭证（在飞书开放平台获取）

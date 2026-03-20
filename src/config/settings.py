@@ -29,6 +29,7 @@ class MonitorConfig(BaseModel):
     """监控配置"""
     interval_minutes: int = Field(default=15, ge=1, le=1440)
     notify_new_activities: bool = Field(default=True, description="发现新活动时发送飞书通知")
+    use_ai_filter: bool = Field(default=False, description="是否使用 AI 筛选新活动")
 
 
 class FeishuConfig(BaseModel):
@@ -53,6 +54,78 @@ class LogConfig(BaseModel):
     level: str = "INFO"
 
 
+class AIConfig(BaseModel):
+    """AI 筛选配置
+    
+    注意：如果启用 AI 功能（enabled: true），以下所有字段都必须显式配置，
+    否则会在启动时报错。
+    """
+    enabled: bool = Field(default=False, description="是否启用 AI 筛选")
+    # 以下字段都有默认值，但启用 AI 时会进行严格验证
+    api_key: str = Field(default="", description="API 密钥（enabled: true 时必填）")
+    base_url: str = Field(default="", description="API 基础 URL（可选，用于第三方兼容服务）")
+    model: str = Field(default="", description="模型名称（enabled: true 时必填，如：gpt-3.5-turbo）")
+    user_info: str = Field(
+        default="",
+        description="用户偏好描述（enabled: true 时必填），用于指导 AI 筛选"
+    )
+    # 提示词文件路径（相对于项目根目录或绝对路径）
+    system_prompt_file: str = Field(
+        default="src/config/prompts/system_prompt.txt",
+        description="系统提示词文件路径（enabled: true 时必填）"
+    )
+    user_prompt_template_file: str = Field(
+        default="src/config/prompts/user_prompt_template.txt",
+        description="用户提示词模板文件路径（enabled: true 时必填）"
+    )
+    temperature: Optional[float] = Field(
+        default=None,
+        description="采样温度（enabled: true 时必填，0.0-2.0，建议 0.3）"
+    )
+    timeout: int = Field(default=30, ge=5, le=300, description="请求超时时间（秒，可选）")
+    # 额外的请求体参数（用于第三方 API 的扩展功能，如 Kimi 的 thinking 控制）
+    extra_body: Optional[dict] = Field(
+        default=None,
+        description="额外的 API 请求体参数，用于第三方 API 扩展功能（如 Kimi 的 thinking 控制）"
+    )
+    
+    def validate_required_fields(self) -> None:
+        """
+        验证必填字段（当 enabled: true 时调用）
+        
+        Raises:
+            ValueError: 如果有必填字段未填写
+        """
+        if not self.enabled:
+            return
+        
+        missing_fields = []
+        
+        if not self.api_key:
+            missing_fields.append("api_key")
+        
+        if not self.model:
+            missing_fields.append("model")
+        
+        if not self.user_info:
+            missing_fields.append("user_info")
+        
+        if not self.system_prompt_file:
+            missing_fields.append("system_prompt_file")
+        
+        if not self.user_prompt_template_file:
+            missing_fields.append("user_prompt_template_file")
+        
+        if self.temperature is None:
+            missing_fields.append("temperature")
+        
+        if missing_fields:
+            raise ValueError(
+                f"AI 功能已启用 (enabled: true)，但以下配置项未填写：{', '.join(missing_fields)}\n"
+                f"请在 config.yaml 的 ai 部分填写所有必需的配置项"
+            )
+
+
 class Settings(BaseSettings):
     """全局配置"""
     ustc: USTCConfig = USTCConfig()
@@ -62,6 +135,7 @@ class Settings(BaseSettings):
     feishu: FeishuConfig = FeishuConfig()
     database: DatabaseConfig = DatabaseConfig()
     logging: LogConfig = LogConfig()
+    ai: AIConfig = AIConfig()
     
     @classmethod
     def from_yaml(cls, yaml_path: Path) -> Self:
@@ -116,3 +190,86 @@ def get_settings() -> Settings:
     if _settings is None:
         raise RuntimeError("配置尚未加载，请先调用 load_settings()")
     return _settings
+
+
+def load_prompt_file(file_path: str, default_content: str = "") -> str:
+    """
+    加载提示词文件
+    
+    支持相对路径（相对于项目根目录）和绝对路径
+    
+    Args:
+        file_path: 文件路径
+        default_content: 文件不存在时的默认内容
+        
+    Returns:
+        文件内容或默认内容
+    """
+    # 获取项目根目录
+    project_root = Path(__file__).parent.parent.parent
+    
+    # 尝试作为绝对路径或相对路径解析
+    path = Path(file_path)
+    if not path.is_absolute():
+        # 相对于项目根目录
+        path = project_root / file_path
+    
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                return content if content else default_content
+        except Exception as e:
+            print(f"警告：读取提示词文件失败 {path}: {e}")
+            return default_content
+    else:
+        print(f"提示：提示词文件不存在 {path}，使用默认内容")
+        return default_content
+
+
+def load_prompt_file_strict(file_path: str) -> str:
+    """
+    严格加载提示词文件（文件必须存在）
+    
+    支持相对路径（相对于项目根目录）和绝对路径
+    
+    Args:
+        file_path: 文件路径
+        
+    Returns:
+        文件内容
+        
+    Raises:
+        FileNotFoundError: 如果文件不存在或为空
+        ValueError: 如果文件内容为空
+    """
+    # 获取项目根目录
+    project_root = Path(__file__).parent.parent.parent
+    
+    # 尝试作为绝对路径或相对路径解析
+    path = Path(file_path)
+    if not path.is_absolute():
+        # 相对于项目根目录
+        path = project_root / file_path
+    
+    if not path.exists():
+        raise FileNotFoundError(
+            f"提示词文件不存在: {path}\n"
+            f"配置文件中的路径: {file_path}\n"
+            f"请创建该文件或修改配置文件中的路径"
+        )
+    
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if not content:
+                raise ValueError(f"提示词文件内容为空: {path}")
+            return content
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"提示词文件不存在: {path}\n"
+            f"配置文件中的路径: {file_path}\n"
+            f"请创建该文件或修改配置文件中的路径"
+        )
+    except Exception as e:
+        raise RuntimeError(f"读取提示词文件失败 {path}: {e}")

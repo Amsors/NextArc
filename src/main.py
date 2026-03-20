@@ -8,7 +8,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config import load_settings
-from src.core import AuthManager, DatabaseManager, ActivityScanner
+from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilter, AIFilterConfig
 from src.feishu_bot import FeishuBot
 from src.feishu_bot.message_router import MessageRouter
 from src.utils import setup_logging, get_logger
@@ -71,6 +71,19 @@ class NextArcApp:
                 depts = await SecondClass.get_departments()
                 logger.info(f"登录测试成功，获取到 {len(depts)} 个根部门")
             
+            # 初始化 AI 筛选器（如果启用）
+            ai_filter = None
+            if self.settings.monitor.use_ai_filter and self.settings.ai.enabled:
+                try:
+                    ai_filter = AIFilterConfig.create_from_settings(self.settings)
+                    logger.info(f"✅ AI 筛选器初始化完成，模型: {self.settings.ai.model}")
+                except (ValueError, FileNotFoundError) as e:
+                    logger.error(f"❌ AI 功能初始化失败: {e}")
+                    logger.error("请检查 config.yaml 中的 AI 配置和提示词文件")
+                    raise RuntimeError(f"AI 功能初始化失败: {e}") from e
+            else:
+                logger.info("AI 筛选: 已禁用")
+            
             # 初始化扫描器
             self.scanner = ActivityScanner(
                 auth_manager=self.auth_manager,
@@ -78,9 +91,14 @@ class NextArcApp:
                 interval_minutes=self.settings.monitor.interval_minutes,
                 notify_callback=self._on_notify,
                 notify_new_activities=self.settings.monitor.notify_new_activities,
+                ai_filter=ai_filter,
+                use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
+                ai_user_info=self.settings.ai.user_info,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
+            if self.settings.monitor.use_ai_filter and self.settings.ai.enabled and ai_filter:
+                logger.info(f"AI 筛选: 开启，模型: {self.settings.ai.model}")
             
             # 初始化消息路由器
             self.router = MessageRouter()
