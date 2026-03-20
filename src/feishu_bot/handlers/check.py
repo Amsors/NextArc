@@ -25,10 +25,15 @@ class CheckHandler(CommandHandler):
             return "服务未初始化，请稍后重试"
         
         logger.info("执行 /check 指令")
+
+        deep_update = False
+        if args:
+            if args[0] == "深度":
+                deep_update = True
         
         try:
             # 执行扫描，强制显示差异报告
-            result = await self._scanner.scan(force_notify=True)
+            result = await self._scanner.scan(force_notify=True, deep_update=deep_update)
             
             if result["success"]:
                 lines = [format_scan_result(result)]

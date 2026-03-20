@@ -1,5 +1,5 @@
 """定时扫描器"""
-
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Optional
@@ -10,7 +10,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from pyustc.young import SecondClass
 from pyustc.young.db import SecondClassDB
 
-from src.models import DiffResult
+from src.models import DiffResult, Activity, secondclass_to_activity
 from src.utils.logger import get_logger
 
 from .auth_manager import AuthManager
@@ -44,15 +44,22 @@ class ActivityScanner:
         self._last_scan_time: Optional[datetime] = None
         self._is_running = False
     
-    async def scan(self, force_notify: bool = False) -> dict[str, Any]:
+    async def scan(
+            self,
+            force_notify: bool = False,
+            deep_update: bool = False
+    ) -> dict[str, Any]:
         """
         执行一次扫描
         
         Args:
             force_notify: 是否强制发送通知（用于手动 /check 指令）
-            
+            deep_update: 是否深度更新数据库（包含已报名活动）
+
         Returns:
             扫描结果统计
+            :param force_notify:
+            :param deep_update:
         """
         logger.info("=" * 50)
         logger.info("开始扫描第二课堂活动...")
@@ -86,13 +93,15 @@ class ActivityScanner:
                 db = SecondClassDB(new_db_path)
                 await db.update_all_from_generator(
                     SecondClass.find(apply_ended=False),
-                    expand_series=False
+                    expand_series=False,
+                    deep_update=deep_update
                 )
                 
                 # 更新已报名活动表
                 try:
                     await db.update_enrolled_from_generator(
-                        SecondClass.get_participated()
+                        SecondClass.get_participated(),
+                        deep_update=deep_update
                     )
                 except Exception as e:
                     logger.warning(f"获取已报名活动失败: {e}")
@@ -140,6 +149,7 @@ class ActivityScanner:
             
         except Exception as e:
             logger.error(f"扫描失败: {e}")
+            traceback.print_exc()
             result["error"] = str(e)
             # 清理失败的数据库文件
             if new_db_path.exists():
@@ -226,3 +236,40 @@ class ActivityScanner:
         if job and job.next_run_time:
             return job.next_run_time
         return None
+    
+    async def get_activity_list_by_id(self, activity_ids: list[str]) -> list[Activity]:
+        """
+        根据活动ID列表获取活动详情
+        
+        Args:
+            activity_ids: 活动ID列表
+            
+        Returns:
+            Activity 对象列表（仅包含成功获取的活动）
+        """
+        import time
+        
+        logger.info(f"开始获取 {len(activity_ids)} 个活动的详情...")
+        
+        activities: list[Activity] = []
+        scan_timestamp = int(time.time())
+        
+        async with self.auth_manager.create_session_once() as service:
+            for activity_id in activity_ids:
+                try:
+                    # 获取活动详情，传入 service 对象
+                    sc = await SecondClass.get_secondclass_by_id(activity_id, service=service)
+                    
+                    # 将 SecondClass 转换为 Activity
+                    activity = secondclass_to_activity(sc, scan_timestamp)
+                    activities.append(activity)
+                    
+                    logger.debug(f"获取活动成功: {sc.name} ({activity_id})")
+                    
+                except Exception as e:
+                    # 获取失败（活动可能已删除），跳过
+                    logger.warning(f"获取活动 {activity_id} 失败，可能已删除: {e}")
+                    continue
+        
+        logger.info(f"成功获取 {len(activities)}/{len(activity_ids)} 个活动详情")
+        return activities

@@ -47,7 +47,7 @@ class InfoHandler(CommandHandler):
                                                              SecondClassStatus.from_code(35)])
                 hint = "仅显示发布、报名中、报名已结束的活动\n获取更多信息，请输入/info all或/info else\n"
             else:
-                if args[0] == "全部" or args[0] == "all" or args[0] == "全部活动":
+                if args[0] == "全部" or args[0] == "all" or args[0] == "全部活动" or args[0] == "所有":
                     filter = SecondClassFilter().exclude_status([SecondClassStatus.from_code(-3),
                                                                  SecondClassStatus.from_code(40)])
                     hint = "显示除了结项和异常结项的所有活动\n"

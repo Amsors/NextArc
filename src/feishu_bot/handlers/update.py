@@ -25,10 +25,15 @@ class UpdateHandler(CommandHandler):
             return "服务未初始化，请稍后重试"
         
         logger.info("执行 /update 指令")
+
+        deep_update = False
+        if args:
+            if args[0] == "深度":
+                deep_update = True
         
         try:
             # 执行扫描
-            result = await self._scanner.scan(force_notify=False)
+            result = await self._scanner.scan(force_notify=False, deep_update=deep_update)
             
             if result["success"]:
                 return format_scan_result(result)

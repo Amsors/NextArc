@@ -14,30 +14,30 @@ logger = get_logger("feishu.handler")
 
 class CommandHandler(ABC):
     """指令处理器基类"""
-    
+
     # 类级别的共享实例引用
     _scanner: "ActivityScanner" = None
     _auth_manager: "AuthManager" = None
     _db_manager: "DatabaseManager" = None
-    
+
     @classmethod
     def set_dependencies(
-        cls,
-        scanner: "ActivityScanner",
-        auth_manager: "AuthManager",
-        db_manager: "DatabaseManager",
+            cls,
+            scanner: "ActivityScanner",
+            auth_manager: "AuthManager",
+            db_manager: "DatabaseManager",
     ):
         """设置依赖的组件"""
         cls._scanner = scanner
         cls._auth_manager = auth_manager
         cls._db_manager = db_manager
-    
+
     @property
     @abstractmethod
     def command(self) -> str:
         """指令名称，如 'update' """
         pass
-    
+
     @abstractmethod
     async def handle(self, args: list[str], session: UserSession) -> str:
         """
@@ -51,11 +51,11 @@ class CommandHandler(ABC):
             回复消息文本
         """
         pass
-    
+
     def get_usage(self) -> str:
         """获取使用说明"""
         return f"/{self.command}"
-    
+
     def check_dependencies(self) -> bool:
         """检查依赖是否已设置"""
         if not self._scanner:

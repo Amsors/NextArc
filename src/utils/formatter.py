@@ -60,14 +60,15 @@ def format_enrolled_list(activities: list[Activity]) -> str:
     return lines
 
 
-def format_search_results(activities: list[Activity], keyword: str) -> str:
+def format_search_results(activities: list[Activity], keyword: str, hint: str = "") -> str:
     """
     格式化搜索结果
     
     Args:
         activities: 搜索结果列表
         keyword: 搜索关键词
-        
+        hint: 提示信息
+
     Returns:
         格式化后的文本
     """
@@ -78,7 +79,10 @@ def format_search_results(activities: list[Activity], keyword: str) -> str:
         lines += "⚠️ 搜索结果有效期5分钟\n"
     else:
         lines += "未找到匹配的活动，请尝试其他关键词\n"
-    
+
+    if hint:
+        lines += f"\n{hint}"
+
     return lines
 
 

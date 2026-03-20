@@ -1,8 +1,9 @@
 """/search 指令处理器"""
 
 import aiosqlite
+from pyustc.young import SecondClass
 
-from src.models import UserSession
+from src.models import UserSession, secondclass_to_activity
 from src.models.activity import Activity
 from src.utils.formatter import format_search_results
 from src.utils.logger import get_logger
@@ -48,20 +49,38 @@ class SearchHandler(CommandHandler):
             
             # 保存搜索上下文
             session.set_search(keyword, activities)
-            
-            return format_search_results(activities, keyword)
-            
+
+            try:
+                # 使用 YouthService 上下文获取活动详情
+                id_list = [activity.id for activity in activities if not activity.is_series]
+                new_activities = []
+                
+                async with self._auth_manager.create_session_once() as service:
+                    for single_id in id_list:
+                        sc_updated = await SecondClass.get_secondclass_by_id(single_id, service=service)
+                        try:
+                            new_activity = secondclass_to_activity(sc_updated)
+                            new_activities.append(new_activity)
+                        except Exception as e:
+                            logger.error(f"使用id {single_id} 转换SecondClass到Activity失败: {e}")
+                
+                return format_search_results(new_activities, keyword, hint="当前查询到的是最新数据")
+            except Exception as e:
+                logger.error(f"使用id更新活动失败: Error: {e}")
+                logger.error(f"使用未更新的活动数据")
+                return format_search_results(activities, keyword, hint="⚠️ 当前查询到的不是最新数据")
+
         except Exception as e:
             logger.error(f"搜索活动失败: {e}")
             return f"❌ 搜索失败：{str(e)}"
-    
+
     async def _search_activities(self, db_path, keyword: str) -> list[Activity]:
         """从数据库搜索活动"""
         activities = []
         keyword_lower = keyword.lower()
-        
+
         logger.debug(f"搜索关键词: {keyword_lower}")
-        
+
         async with aiosqlite.connect(db_path) as conn:
             conn.row_factory = aiosqlite.Row
             # 使用 LIKE 进行模糊搜索
@@ -71,21 +90,21 @@ class SearchHandler(CommandHandler):
             ) as cursor:
                 async for row in cursor:
                     activities.append(Activity.from_db_row(dict(row)))
-        
+
         logger.debug(f"搜索结果: {len(activities)} 个活动")
-        
+
         # 如果没有结果，记录一些调试信息
         if not activities:
             async with aiosqlite.connect(db_path) as conn:
                 async with conn.execute("SELECT COUNT(*) FROM all_secondclass") as cursor:
                     total = (await cursor.fetchone())[0]
                     logger.debug(f"数据库中共有 {total} 个活动")
-                
+
                 # 列出几个活动名称供参考
                 async with conn.execute(
                     "SELECT name FROM all_secondclass LIMIT 5"
                 ) as cursor:
                     sample = [row[0] for row in await cursor.fetchall()]
                     logger.debug(f"示例活动: {sample}")
-        
+
         return activities

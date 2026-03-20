@@ -1,10 +1,3 @@
-"""
-NextArc - 第二课堂活动监控机器人
-
-⚠️ 注意：本项目必须在隔离的 conda 环境中运行！
-请确保已在虚拟环境中安装 pyustc 依赖。
-"""
-
 import asyncio
 import signal
 import sys
@@ -20,6 +13,8 @@ from src.feishu_bot import FeishuBot
 from src.feishu_bot.message_router import MessageRouter
 from src.utils import setup_logging, get_logger
 from src.utils.formatter import format_scan_result
+
+from pyustc.young import SecondClass
 
 logger = get_logger("main")
 
@@ -73,9 +68,8 @@ class NextArcApp:
             # 测试登录（使用 create_session_once）
             logger.info("正在测试登录...")
             async with self.auth_manager.create_session_once() as service:
-                from pyustc.young import SecondClass
                 depts = await SecondClass.get_departments()
-                logger.info(f"✅ 登录测试成功，获取到 {len(depts)} 个根部门")
+                logger.info(f"登录测试成功，获取到 {len(depts)} 个根部门")
             
             # 初始化扫描器
             self.scanner = ActivityScanner(
@@ -91,7 +85,7 @@ class NextArcApp:
             self.router.set_dependencies(self.scanner, self.auth_manager, self.db_manager)
             logger.info("消息路由器初始化完成")
             
-            # 初始化飞书机器人（如果配置了 App ID）
+            # 初始化飞书机器人
             if self.settings.feishu.app_id and self.settings.feishu.app_secret:
                 self.bot = FeishuBot(
                     app_id=self.settings.feishu.app_id,
@@ -162,7 +156,7 @@ class NextArcApp:
             # 执行首次扫描
             if self.settings.behavior.scan_on_start:
                 logger.info("执行首次扫描...")
-                result = await self.scanner.scan()
+                result = await self.scanner.scan(deep_update=False)
                 logger.info(format_scan_result(result))
             else:
                 logger.info( "首次扫描已禁用，将在下次定时扫描时执行")
@@ -224,21 +218,7 @@ class NextArcApp:
             await self.bot.stop()
         
         logger.info("应用已关闭")
-    
-    async def manual_scan(self, force_notify: bool = False) -> dict:
-        """
-        手动执行扫描
-        
-        Args:
-            force_notify: 是否强制发送通知
-            
-        Returns:
-            扫描结果
-        """
-        if not self.scanner:
-            raise RuntimeError("扫描器未初始化")
-        
-        return await self.scanner.scan(force_notify=force_notify)
+
     
     def get_status(self) -> dict:
         """获取应用状态"""
