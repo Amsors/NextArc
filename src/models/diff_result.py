@@ -132,9 +132,8 @@ class DiffResult(BaseModel):
         
         for i, change in enumerate(self.added, 1):
             lines.append(f"[{i}] {change.activity_name}")
-        
+
         lines.append("")
-        lines.append("💡 使用 /check 查看详细信息")
-        lines.append("💡 使用 /search <关键词> 搜索并报名")
-        
+        lines.append("")
+
         return "\n".join(lines)

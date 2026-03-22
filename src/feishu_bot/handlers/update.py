@@ -33,7 +33,13 @@ class UpdateHandler(CommandHandler):
         
         try:
             # 执行扫描
-            result = await self._scanner.scan(force_notify=False, deep_update=deep_update)
+            result = await self._scanner.scan(
+                deep_update=deep_update,
+                notify_diff=False,
+                notify_enrolled_change=True,
+                notify_new_activities=True,
+                notify_new_activities_with_ai_filter=True,
+            )
             
             if result["success"]:
                 return format_scan_result(result)

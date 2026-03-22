@@ -116,6 +116,7 @@ class AIFilter:
         self,
         activities: list[Activity],
         user_info: str,
+        uninterested_activities: list[Activity] | None = None,
     ) -> list[Activity]:
         """
         批量筛选活动（并发执行，带超时控制）
@@ -126,6 +127,7 @@ class AIFilter:
         Args:
             activities: 待筛选的活动列表
             user_info: 用户信息描述
+            uninterested_activities: 返回不感兴趣的活动(可选参数)
             
         Returns:
             筛选后的活动列表（仅保留 AI 认为感兴趣的）
@@ -176,7 +178,9 @@ class AIFilter:
                 filtered_activities.append(activity)
                 logger.debug(f"活动 '{activity.name}' 通过 AI 筛选")
             else:
-                logger.debug(f"活动 '{activity.name}' 被 AI 过滤")
+                if uninterested_activities is not None:
+                    uninterested_activities.append(activity)
+                logger.debug(f"活动 '{activity.name}' AI 认为用户不感兴趣")
         
         logger.info(f"AI 筛选完成：{len(filtered_activities)}/{len(activities)} 个活动通过")
         return filtered_activities

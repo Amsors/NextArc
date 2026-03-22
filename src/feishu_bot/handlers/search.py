@@ -1,10 +1,11 @@
 """/search 指令处理器"""
 import traceback
+from unittest import skip
 
 import aiosqlite
 from pyustc.young import SecondClass
 
-from src.models import UserSession, secondclass_to_activity
+from src.models import UserSession
 from src.models.activity import Activity
 from src.utils.formatter import format_search_results
 from src.utils.logger import get_logger
@@ -58,12 +59,7 @@ class SearchHandler(CommandHandler):
                 
                 async with self._auth_manager.create_session_once() as service:
                     for single_id in id_list:
-                        sc_updated = await SecondClass.get_secondclass_by_id(single_id, service=service)
-                        try:
-                            new_activity = secondclass_to_activity(sc_updated)
-                            new_activities.append(new_activity)
-                        except Exception as e:
-                            logger.error(f"使用id {single_id} 转换SecondClass到Activity失败: {e}")
+                        pass #TODO
                 
                 return format_search_results(new_activities, keyword, hint="当前查询到的是最新数据")
             except Exception as e:

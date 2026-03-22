@@ -7,6 +7,8 @@ from typing import Any, Optional, Self, TYPE_CHECKING
 from pydantic import BaseModel
 from enum import Enum
 
+from pyustc.young import TimePeriod
+
 if TYPE_CHECKING:
     from pyustc.young.second_class import SecondClass
 
@@ -170,66 +172,3 @@ class Activity(BaseModel):
             f"    👥 报名：{self.get_apply_progress()}\n"
             f"    📌 状态：{self.get_status_text()}"
         )
-
-
-def secondclass_to_activity(sc: "SecondClass", scan_timestamp: Optional[int] = None) -> Activity:
-    """
-    将 SecondClass 对象转换为 Activity 对象
-    
-    Args:
-        sc: SecondClass 对象
-        scan_timestamp: 扫描时间戳（默认为当前时间）
-        
-    Returns:
-        Activity 对象
-    """
-    if scan_timestamp is None:
-        scan_timestamp = int(time.time())
-    
-    def timeperiod_to_json(tp):
-        if tp is None:
-            return None
-        return {"start": tp.start.strftime("%Y-%m-%d %H:%M:%S"), "end": tp.end.strftime("%Y-%m-%d %H:%M:%S")}
-    
-    def datetime_to_json(dt):
-        if dt is None:
-            return None
-        return {"datetime": dt.strftime("%Y-%m-%d %H:%M:%S")}
-    
-    def module_to_json(module):
-        if module is None:
-            return None
-        return {"value": module.value, "text": module.text}
-    
-    def department_to_json(dept):
-        if dept is None:
-            return None
-        return {"id": dept.id, "name": dept.name, "level": dept.level}
-    
-    def labels_to_json(labels):
-        if labels is None:
-            return None
-        return [{"id": label.id, "name": label.name} for label in labels]
-    
-    return Activity(
-        id=sc.id,
-        name=sc.name,
-        status=sc.status.code if sc.status else None,
-        create_time=json.dumps(datetime_to_json(sc.create_time)) if sc.create_time else None,
-        apply_time=json.dumps(timeperiod_to_json(sc.apply_time)) if sc.apply_time else None,
-        hold_time=json.dumps(timeperiod_to_json(sc.hold_time)) if sc.hold_time else None,
-        tel=sc.tel,
-        valid_hour=sc.valid_hour,
-        apply_num=sc.apply_num if sc.apply_num else None,
-        apply_limit=sc.apply_limit if sc.apply_limit else None,
-        applied=1 if sc.applied else 0,
-        need_sign_info=1 if sc.need_sign_info else 0,
-        module=json.dumps(module_to_json(sc.module)),
-        department=json.dumps(department_to_json(sc.department)),
-        labels=json.dumps(labels_to_json(sc.labels)),
-        conceive=sc.conceive,
-        is_series=1 if sc.is_series else 0,
-        children_id=None,
-        parent_id=None,
-        scan_timestamp=scan_timestamp,
-    )

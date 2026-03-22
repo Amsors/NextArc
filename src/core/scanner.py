@@ -11,7 +11,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from pyustc.young import SecondClass
 from pyustc.young.db import SecondClassDB
 
-from src.models import DiffResult, Activity, secondclass_to_activity
+from src.models import DiffResult, Activity
 from src.utils.logger import get_logger
 
 from .ai_filter import AIFilter
@@ -56,19 +56,28 @@ class ActivityScanner:
     
     async def scan(
             self,
-            force_notify: bool = False,
-            deep_update: bool = False
+            deep_update: bool,
+            notify_diff: bool,
+            notify_enrolled_change: bool,
+            notify_new_activities: bool,
+            notify_new_activities_with_ai_filter: bool
     ) -> dict[str, Any]:
         """
         执行一次扫描
         
         Args:
-            force_notify: 是否强制发送通知（用于手动 /check 指令）
+            notify_new_activities: 是否通知新活动
+            notify_new_activities_with_ai_filter: 是否使用 AI 对新活动进行筛选
+            notify_enrolled_change: 是否通知已报名的活动的更新
+            notify_diff: 是否显示数据库差异
             deep_update: 是否深度更新数据库（包含已报名活动）
 
         Returns:
             扫描结果统计
-            :param force_notify:
+            :param notify_new_activities_with_ai_filter:
+            :param notify_new_activities:
+            :param notify_enrolled_change:
+            :param notify_diff:
             :param deep_update:
         """
         logger.info("=" * 50)
@@ -140,17 +149,17 @@ class ActivityScanner:
                 if enrolled_changes:
                     logger.info(f"已报名活动有 {len(enrolled_changes)} 处变更")
                     
-                    # 推送通知（非强制模式下只推送已报名活动的变更）
-                    if not force_notify:
+                    # 推送已报名活动的变更
+                    if notify_enrolled_change:
                         await self._send_enrolled_notifications(enrolled_changes)
                 
-                # 发送新活动通知（仅非强制模式，即定时扫描时）
-                if not force_notify and diff.added:
+                # 发送新活动通知
+                if notify_new_activities and diff.added:
                     # 使用 create_task 在后台执行，避免阻塞定时扫描和 WebSocket 心跳
                     self._create_background_task(self._send_new_activities_notification(diff))
                 
-                # 强制模式下推送所有差异
-                if force_notify and self.notify_callback:
+                # 推送所有差异
+                if notify_diff and self.notify_callback:
                     await self.notify_callback(diff.format_full())
             
             # 清理旧数据库
@@ -255,13 +264,15 @@ class ActivityScanner:
             
             new_activity_ids = [change.activity_id for change in diff.added]
             activities = await self.get_activity_list_by_id(new_activity_ids)
+            uninterested = []
             
             # 如果启用 AI 筛选，则进行筛选
             if self.use_ai_filter and self.ai_filter and self.ai_user_info:
                 logger.info(f"使用 AI 筛选 {len(activities)} 个新活动...")
                 activities = await self.ai_filter.filter_activities(
                     activities, 
-                    self.ai_user_info
+                    self.ai_user_info,
+                    uninterested_activities=uninterested
                 )
                 
                 if not activities:
@@ -287,6 +298,11 @@ class ActivityScanner:
             )
             
             message = filtered_diff.format_new_activities_notification()
+
+            if self.use_ai_filter and self.ai_filter:
+                message += "启用了AI过滤"
+                message += f"AI 过滤了{len(uninterested)}个可能不感兴趣的二课活动\n"
+
             if message:
                 await self.notify_callback(message)
                 logger.info(f"已发送新活动通知，共 {len(filtered_changes)} 个新活动")
@@ -305,6 +321,13 @@ class ActivityScanner:
             id="activity_scan",
             replace_existing=True,
             max_instances=1,  # 防止任务重叠
+            kwargs={
+                "deep_update": True,
+                "notify_diff": False,
+                "notify_new_activities": True,
+                "notify_new_activities_with_ai_filter": True,
+                "notify_enrolled_change": True,
+            }
         )
         self.scheduler.start()
         self._is_running = True

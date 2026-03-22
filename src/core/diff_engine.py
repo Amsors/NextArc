@@ -1,5 +1,5 @@
 """数据库差异对比引擎"""
-
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -206,9 +206,10 @@ class DiffEngine:
                     "SELECT MIN(scan_timestamp) as min_ts FROM all_secondclass"
                 ) as cursor:
                     row = await cursor.fetchone()
-                    if row and row["min_ts"]:
-                        return datetime.fromtimestamp(row["min_ts"])
+                    if row and row[0]:
+                        return datetime.fromtimestamp(row[0])
         except Exception as e:
             logger.warning(f"获取数据库扫描时间失败 {db_path}: {e}")
+            traceback.print_exc()
         
         return None

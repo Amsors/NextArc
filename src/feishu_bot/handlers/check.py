@@ -27,13 +27,23 @@ class CheckHandler(CommandHandler):
         logger.info("执行 /check 指令")
 
         deep_update = False
+        notify = True
+
         if args:
             if args[0] == "深度":
                 deep_update = True
-        
+            elif args[0] == "筛选":
+                notify = False
+
         try:
             # 执行扫描，强制显示差异报告
-            result = await self._scanner.scan(force_notify=True, deep_update=deep_update)
+            result = await self._scanner.scan(
+                deep_update=deep_update,
+                notify_diff=False,
+                notify_enrolled_change=False,
+                notify_new_activities=False,
+                notify_new_activities_with_ai_filter=False,
+            )
             
             if result["success"]:
                 lines = [format_scan_result(result)]

@@ -176,7 +176,13 @@ class NextArcApp:
             # 执行首次扫描
             if self.settings.behavior.scan_on_start:
                 logger.info("执行首次扫描...")
-                result = await self.scanner.scan(deep_update=False)
+                result = await self.scanner.scan(
+                    deep_update=True,
+                    notify_diff=False,
+                    notify_enrolled_change=False,
+                    notify_new_activities=False,
+                    notify_new_activities_with_ai_filter=False,
+                )
                 logger.info(format_scan_result(result))
             else:
                 logger.info( "首次扫描已禁用，将在下次定时扫描时执行")
