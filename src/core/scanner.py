@@ -17,6 +17,7 @@ from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
 from .time_filter import TimeFilter
+from ..utils.formatter import format_activity_list
 
 logger = get_logger("scanner")
 
@@ -163,7 +164,7 @@ class ActivityScanner:
                 # 发送新活动通知
                 if notify_new_activities and diff.added:
                     # 使用 create_task 在后台执行，避免阻塞定时扫描和 WebSocket 心跳
-                    self._create_background_task(self._send_new_activities_notification(diff))
+                    self._create_background_task(self._send_new_activities_notification(diff, show_detail=True))
 
                 # 推送所有差异
                 if notify_diff and self.notify_callback:
@@ -251,7 +252,7 @@ class ActivityScanner:
             except Exception as e:
                 logger.error(f"发送通知失败: {e}")
 
-    async def _send_new_activities_notification(self, diff) -> None:
+    async def _send_new_activities_notification(self, diff, show_detail=False) -> None:
         """
         发送新活动通知
         
@@ -321,6 +322,9 @@ class ActivityScanner:
             main_message = filtered_diff.format_new_activities_notification()
             if main_message:
                 message_parts.append(main_message)
+
+            if show_detail:
+                message_parts.append(format_activity_list(activities))
 
             # AI 筛选信息
             if self.use_ai_filter and self.ai_filter and ai_filtered:
