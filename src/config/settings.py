@@ -74,11 +74,11 @@ class AIConfig(BaseModel):
     )
     # 提示词文件路径（相对于项目根目录或绝对路径）
     system_prompt_file: str = Field(
-        default="src/config/prompts/system_prompt.txt",
+        default="config/prompts/system_prompt.txt",
         description="系统提示词文件路径（enabled: true 时必填）"
     )
     user_prompt_template_file: str = Field(
-        default="src/config/prompts/user_prompt_template.txt",
+        default="config/prompts/user_prompt_template.txt",
         description="用户提示词模板文件路径（enabled: true 时必填）"
     )
     temperature: Optional[float] = Field(
@@ -181,8 +181,9 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     global _settings
     if _settings is None:
         if config_path is None:
-            # 默认从当前文件所在目录加载
-            config_path = Path(__file__).parent / "config.yaml"
+            # 默认从项目根目录的 config/ 目录加载
+            project_root = Path(__file__).parent.parent.parent
+            config_path = project_root / "config" / "config.yaml"
         _settings = Settings.from_yaml(config_path)
         _settings.ensure_directories()
     return _settings

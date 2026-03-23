@@ -58,13 +58,13 @@ ai:
   # 系统提示词文件路径 [必填]（如果 enabled: true）
   # 相对于项目根目录或绝对路径
   # 该文件必须存在且不能为空，否则启动时报错
-  system_prompt_file: "src/config/prompts/system_prompt.txt"
+  system_prompt_file: "config/prompts/system_prompt.txt"
   
   # 用户提示词模板文件路径 [必填]（如果 enabled: true）
   # 相对于项目根目录或绝对路径
   # 该文件必须存在且不能为空，否则启动时报错
   # 可用变量：{user_info}, {activity_info}
-  user_prompt_template_file: "src/config/prompts/user_prompt_template.txt"
+  user_prompt_template_file: "config/prompts/user_prompt_template.txt"
   
   # 采样温度 [必填]（如果 enabled: true）
   # 范围：0.0-2.0，越低结果越确定，越高结果越多样

@@ -6,6 +6,7 @@ from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
 from .filter import SecondClassFilter
 from .scanner import ActivityScanner
+from .time_filter import TimeFilter, FilteredActivity
 
 __all__ = [
     "AIFilter",
@@ -14,5 +15,7 @@ __all__ = [
     "DatabaseManager",
     "DiffEngine",
     "ActivityScanner",
-    "SecondClassFilter"
+    "SecondClassFilter",
+    "TimeFilter",
+    "FilteredActivity",
 ]

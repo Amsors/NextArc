@@ -16,6 +16,7 @@ from .ai_filter import AIFilter
 from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
+from .time_filter import TimeFilter
 
 logger = get_logger("scanner")
 
@@ -38,6 +39,8 @@ class ActivityScanner:
             ai_filter: Optional[AIFilter] = None,
             use_ai_filter: bool = False,
             ai_user_info: str = "",
+            time_filter: Optional[TimeFilter] = None,
+            use_time_filter: bool = False,
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
@@ -47,6 +50,8 @@ class ActivityScanner:
         self.ai_filter = ai_filter
         self.use_ai_filter = use_ai_filter
         self.ai_user_info = ai_user_info
+        self.time_filter = time_filter
+        self.use_time_filter = use_time_filter
         self.scheduler = AsyncIOScheduler()
         self.diff_engine = DiffEngine()
         self._last_scan_time: Optional[datetime] = None
@@ -264,7 +269,8 @@ class ActivityScanner:
 
             new_activity_ids = [change.activity_id for change in diff.added]
             activities = await self.get_activity_list_by_id(new_activity_ids)
-            uninterested = []
+            ai_filtered = []  # AI 过滤掉的活动
+            time_filtered = []  # 时间过滤掉的活动
 
             # 如果启用 AI 筛选，则进行筛选
             if self.use_ai_filter and self.ai_filter and self.ai_user_info:
@@ -272,12 +278,21 @@ class ActivityScanner:
                 activities = await self.ai_filter.filter_activities(
                     activities,
                     self.ai_user_info,
-                    uninterested_activities=uninterested
+                    uninterested_activities=ai_filtered
                 )
 
                 if not activities:
                     logger.info("AI 筛选后无活动需要通知")
                     return
+
+            # 如果启用时间筛选，则进行筛选
+            if self.use_time_filter and self.time_filter:
+                logger.info(f"使用时间筛选检查 {len(activities)} 个新活动...")
+                activities, time_filtered = self.time_filter.filter_activities(activities)
+
+                if not activities:
+                    logger.info("时间筛选后无活动需要通知")
+                    # 但仍然需要通知用户有哪些活动被过滤了
 
             # 创建一个新的 DiffResult 仅包含筛选后的活动
             filtered_changes = []
@@ -297,15 +312,33 @@ class ActivityScanner:
                 new_scan_time=diff.new_scan_time,
             )
 
-            message = filtered_diff.format_new_activities_notification()
+            message_parts = []
+            
+            # 主通知消息
+            main_message = filtered_diff.format_new_activities_notification()
+            if main_message:
+                message_parts.append(main_message)
 
-            if self.use_ai_filter and self.ai_filter:
-                message += "启用了AI过滤\n"
-                message += f"AI 过滤了{len(uninterested)}个可能不感兴趣的二课活动\n"
+            # AI 筛选信息
+            if self.use_ai_filter and self.ai_filter and ai_filtered:
+                message_parts.append("🤖 启用了 AI 过滤")
+                message_parts.append(f"AI 过滤了 {len(ai_filtered)} 个可能不感兴趣的活动")
+                message_parts.append("")
 
-            if message:
-                await self.notify_callback(message)
-                logger.info(f"已发送新活动通知，共 {len(filtered_changes)} 个新活动")
+            # 时间筛选信息
+            if self.use_time_filter and self.time_filter and time_filtered:
+                # 添加被时间过滤的活动信息
+                time_filter_summary = self.time_filter.get_filter_summary(time_filtered)
+                if time_filter_summary:
+                    message_parts.append(time_filter_summary)
+
+            # 合并所有消息
+            if message_parts:
+                final_message = "\n".join(message_parts)
+                await self.notify_callback(final_message)
+                logger.info(f"已发送新活动通知，共 {len(filtered_changes)} 个新活动"
+                           f"{'，' + str(len(ai_filtered)) + ' 个被 AI 过滤' if ai_filtered else ''}"
+                           f"{'，' + str(len(time_filtered)) + ' 个被时间过滤' if time_filtered else ''}")
         except Exception as e:
             logger.error(f"发送新活动通知失败: {e}")
 

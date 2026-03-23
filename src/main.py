@@ -8,7 +8,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config import load_settings
+from src.config.preferences import load_preferences
 from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConfig
+from src.core.time_filter import TimeFilter, create_time_filter_from_config
 from src.feishu_bot import FeishuBot
 from src.feishu_bot.message_router import MessageRouter
 from src.utils import setup_logging, get_logger
@@ -24,11 +26,13 @@ class NextArcApp:
 
     def __init__(self):
         self.settings = None
+        self.preferences = None
         self.auth_manager: AuthManager = None
         self.db_manager: DatabaseManager = None
         self.scanner: ActivityScanner = None
         self.bot: FeishuBot = None
         self.router: MessageRouter = None
+        self.time_filter: TimeFilter = None
         self._shutdown_event = asyncio.Event()
 
     async def initialize(self) -> bool:
@@ -39,9 +43,12 @@ class NextArcApp:
             是否初始化成功
         """
         try:
-            # 加载配置
-            config_path = Path(__file__).parent / "config" / "config.yaml"
-            self.settings = load_settings(config_path)
+            # 加载主配置（从项目根目录的 config/ 目录加载）
+            self.settings = load_settings()
+
+            # 加载推送偏好配置
+            preferences_path = project_root / "config" / "preferences.yaml"
+            self.preferences = load_preferences(preferences_path)
 
             # 初始化日志
             setup_logging(self.settings.logging.level)
@@ -84,6 +91,24 @@ class NextArcApp:
             else:
                 logger.info("AI 筛选: 已禁用")
 
+            # 初始化时间筛选器（如果启用）
+            self.time_filter = None
+            use_time_filter = False
+            if self.preferences and self.preferences.time_filter.enabled:
+                if self.preferences.time_filter.weekly_preferences.has_any_preference():
+                    self.time_filter = TimeFilter(self.preferences)
+                    use_time_filter = True
+                    logger.info("✅ 时间筛选器初始化完成")
+                    logger.info(f"   重叠模式: {self.preferences.time_filter.get_overlap_mode_display()}")
+                    logger.info("📅 时间筛选配置:")
+                    for line in self.preferences.time_filter.weekly_preferences.format_preferences().split("\n"):
+                        if line.strip():  # 只显示非空行
+                            logger.info(f"   {line}")
+                else:
+                    logger.warning("⚠️ 时间筛选已启用但未配置任何时间段，请在 config/preferences.yaml 中配置")
+            else:
+                logger.info("时间筛选: 已禁用")
+
             # 初始化扫描器
             self.scanner = ActivityScanner(
                 auth_manager=self.auth_manager,
@@ -94,11 +119,15 @@ class NextArcApp:
                 ai_filter=ai_filter,
                 use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
                 ai_user_info=self.settings.ai.user_info,
+                time_filter=self.time_filter,
+                use_time_filter=use_time_filter,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
             if self.settings.monitor.use_ai_filter and self.settings.ai.enabled and ai_filter:
                 logger.info(f"AI 筛选: 开启，模型: {self.settings.ai.model}")
+            if use_time_filter and self.time_filter:
+                logger.info("时间筛选: 开启")
 
             # 初始化消息路由器
             self.router = MessageRouter()
@@ -212,21 +241,45 @@ class NextArcApp:
 
     def _get_startup_message(self) -> str:
         """获取启动问候消息"""
-        return """🤖 NextArc 已启动！
-
-我是您的第二课堂活动监控助手。
-
-可用指令：
-/alive - 检查服务状态
-/update - 手动更新数据库
-/check - 更新并显示差异
-/info - 查看已报名活动
-/search <关键词> - 搜索活动
-/join <序号> - 报名活动
-/cancel <序号> - 取消报名
-
-💡 提示：搜索结果有效期5分钟，报名/取消需要二次确认。
-"""
+        lines = [
+            "🤖 NextArc 已启动！",
+            "",
+            "我是您的第二课堂活动监控助手。",
+            "",
+        ]
+        
+        # 显示当前启用的筛选功能
+        filter_details = []
+        if self.settings and self.settings.monitor.use_ai_filter and self.settings.ai.enabled:
+            filter_details.append("🤖 AI筛选")
+        if self.time_filter and self.time_filter.is_enabled():
+            overlap_mode = self.preferences.time_filter.overlap_mode
+            if overlap_mode == "partial":
+                mode_desc = "有重叠即过滤"
+            else:
+                mode_desc = "完全包含才过滤"
+            filter_details.append(f"⏰ 时间筛选({mode_desc})")
+        
+        if filter_details:
+            lines.append("已启用筛选：")
+            for detail in filter_details:
+                lines.append(f"  {detail}")
+            lines.append("")
+        
+        lines.extend([
+            "可用指令：",
+            "/alive - 检查服务状态",
+            "/update - 手动更新数据库",
+            "/check - 更新并显示差异",
+            "/info - 查看已报名活动",
+            "/search <关键词> - 搜索活动",
+            "/join <序号> - 报名活动",
+            "/cancel <序号> - 取消报名",
+            "",
+            "💡 提示：搜索结果有效期5分钟，报名/取消需要二次确认。",
+        ])
+        
+        return "\n".join(lines)
 
     def _signal_handler(self) -> None:
         """处理关闭信号"""
@@ -254,6 +307,7 @@ class NextArcApp:
             "is_logged_in": self.auth_manager.is_logged_in() if self.auth_manager else False,
             "db_count": self.db_manager.get_db_count() if self.db_manager else 0,
             "bot_connected": self.bot.is_connected() if self.bot else False,
+            "time_filter_enabled": self.time_filter.is_enabled() if self.time_filter else False,
         }
 
 

@@ -40,8 +40,8 @@ logs/
 *.db.bak
 
 # 配置文件（包含敏感信息）
-/src/config/config.yaml
-config.yaml
+/config/config.yaml
+/config/preferences.yaml
 .env
 
 # 系统文件

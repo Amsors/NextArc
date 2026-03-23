@@ -34,13 +34,22 @@ pip install -r requirements.txt
 复制配置文件模板并填写：
 
 ```bash
-cp src/config/config.example.yaml src/config/config.yaml
-# 然后，编辑 config.yaml 填写你的账号和飞书凭证
+cp config/config.example.yaml config/config.yaml
+# 然后，编辑 config/config.yaml 填写你的账号和飞书凭证
 ```
 
 ### 配置说明
 
-见 `config.yaml` 中的注释
+见 `config/config.yaml` 中的注释
+
+### 推送偏好配置（可选）
+
+如需启用时间筛选功能，复制并配置推送偏好文件：
+
+```bash
+cp config/preferences.example.yaml config/preferences.yaml
+# 编辑 config/preferences.yaml 配置您的时间偏好
+```
 
 
 
@@ -86,11 +95,17 @@ python src/main.py
 ```
 NextArc/
 ├── src/
-│   ├── config/         # 配置管理
+│   ├── config/         # 配置模块代码
 │   ├── core/           # 核心功能（扫描、对比、认证）
 │   ├── models/         # 数据模型
 │   ├── utils/          # 工具函数
 │   └── main.py         # 程序入口
+├── config/             # 配置文件目录
+│   ├── config.yaml     # 主配置文件（需从模板创建）
+│   ├── config.example.yaml  # 主配置模板
+│   ├── preferences.yaml     # 推送偏好配置（可选）
+│   ├── preferences.example.yaml  # 推送偏好模板
+│   └── prompts/        # AI 提示词文件
 ├── data/               # 数据库文件（自动创建）
 ├── dev_docs/           # 开发文档
 ├── requirements.txt    # 依赖列表
