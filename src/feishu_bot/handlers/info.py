@@ -1,13 +1,12 @@
 """/info 指令处理器"""
 
 import aiosqlite
+from pyustc.young import SecondClass, Status
 
-from src.models import UserSession
-from src.models.activity import Activity
+from src.core.filter import SecondClassFilter
+from src.models import UserSession, secondclass_from_db_row
 from src.utils.formatter import format_enrolled_list
 from src.utils.logger import get_logger
-from src.core.filter import SecondClassFilter, SecondClassStatus
-
 from .base import CommandHandler
 
 logger = get_logger("feishu.handler.info")
@@ -37,27 +36,32 @@ class InfoHandler(CommandHandler):
 
         try:
             if not args:
-                filter = SecondClassFilter().exclude_status([SecondClassStatus.from_code(-3),
-                                                             SecondClassStatus.from_code(40),
-                                                             SecondClassStatus.from_code(30),
-                                                             SecondClassStatus.from_code(31),
-                                                             SecondClassStatus.from_code(32),
-                                                             SecondClassStatus.from_code(33),
-                                                             SecondClassStatus.from_code(34),
-                                                             SecondClassStatus.from_code(35)])
+                filter = SecondClassFilter().exclude_status([
+                    Status.ABNORMAL,
+                    Status.FINISHED,
+                    Status.HOUR_PUBLIC,
+                    Status.HOUR_APPEND_PUBLIC,
+                    Status.PUBLIC_ENDED,
+                    Status.HOUR_APPLYING,
+                    Status.HOUR_APPROVED,
+                    Status.HOUR_REJECTED,
+                ])
                 hint = "仅显示发布、报名中、报名已结束的活动\n获取更多信息，请输入/info all或/info else\n"
             else:
                 if args[0] == "全部" or args[0] == "all" or args[0] == "全部活动" or args[0] == "所有":
-                    filter = SecondClassFilter().exclude_status([SecondClassStatus.from_code(-3),
-                                                                 SecondClassStatus.from_code(40)])
+                    filter = SecondClassFilter().exclude_status([
+                        Status.ABNORMAL,
+                        Status.FINISHED,
+                    ])
                     hint = "显示除了结项和异常结项的所有活动\n"
                 elif args[0] == "其余" or args[0] == "其他" or args[0] == "else":
-                    filter = SecondClassFilter().exclude_status(
-                        [SecondClassStatus.from_code(-3),
-                         SecondClassStatus.from_code(40),
-                         SecondClassStatus.from_code(10),
-                         SecondClassStatus.from_code(26),
-                         SecondClassStatus.from_code(28)])
+                    filter = SecondClassFilter().exclude_status([
+                        Status.ABNORMAL,
+                        Status.FINISHED,
+                        Status.PUBLISHED,
+                        Status.APPLYING,
+                        Status.APPLY_ENDED,
+                    ])
                     hint = "显示公示/追加公式中、公示结束、学时申请中、学时审核通过、学时驳回的活动\n"
                 else:
                     return "❌ 未知状态码，请输入 /info [all/else]"
@@ -73,7 +77,7 @@ class InfoHandler(CommandHandler):
             logger.error(f"查询已报名活动失败: {e}")
             return f"❌ 查询失败：{str(e)}"
 
-    async def _get_enrolled_activities(self, db_path, filter: SecondClassFilter | None = None) -> list[Activity]:
+    async def _get_enrolled_activities(self, db_path, filter: SecondClassFilter | None = None) -> list[SecondClass]:
         """从数据库获取已报名活动"""
         activities = []
 
@@ -83,7 +87,7 @@ class InfoHandler(CommandHandler):
                     "SELECT * FROM enrolled_secondclass ORDER BY name"
             ) as cursor:
                 async for row in cursor:
-                    activities.append(Activity.from_db_row(dict(row)))
+                    activities.append(secondclass_from_db_row(dict(row)))
 
         if filter:
             activities = filter(activities)

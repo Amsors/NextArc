@@ -1,10 +1,12 @@
-from src.models import Activity, SecondClassStatus
 from dataclasses import dataclass, field
-from typing import List, Optional, Callable, Any, Set
+from typing import List, Optional, Callable
+
+from pyustc.young import SecondClass, Status as SecondClassStatus
 
 from src.utils.logger import get_logger
 
 logger = get_logger("filter")
+
 
 @dataclass
 class SecondClassFilter:
@@ -13,7 +15,7 @@ class SecondClassFilter:
     excluded_status: Optional[list[SecondClassStatus]] = None
 
     # 高级：自定义谓词函数
-    custom_predicate: Optional[Callable[[Activity], bool]] = None
+    custom_predicate: Optional[Callable[[SecondClass], bool]] = None
 
     # 逻辑组合（用于复杂查询）
     _and_filters: List['SecondClassFilter'] = field(default_factory=list)
@@ -50,11 +52,11 @@ class SecondClassFilter:
 
     # ==================== 执行方法 ====================
 
-    def apply(self, activities: List[Activity]) -> List[Activity]:
+    def apply(self, activities: List[SecondClass]) -> List[SecondClass]:
         """执行筛选"""
         return [c for c in activities if self._matches(c)]
 
-    def _matches(self, activity: Activity) -> bool:
+    def _matches(self, activity: SecondClass) -> bool:
         """检查单个活动是否匹配"""
 
         # 检查基础条件
@@ -62,16 +64,12 @@ class SecondClassFilter:
             return False
 
         if self.excluded_status:
-            logger.debug(f"检查活动状态 {activity.status} 是否在排除列表中")
+            logger.debug(f"检查活动状态 {activity.status.code} 是否在排除列表中")
             try:
-                status_obj = SecondClassStatus.from_code(activity.status)
-                if status_obj is None:
-                    logger.warning(f"活动状态 {activity.status} 未找到对应的枚举成员")
-                    return True
-                if status_obj in self.excluded_status:
+                if activity.status in self.excluded_status:
                     return False
             except Exception as e:
-                logger.error(f"检查活动状态时出错: {e}, 状态码={activity.status}")
+                logger.error(f"检查活动状态时出错: {e}, 状态={activity.status}")
                 return True  # 出错时默认包含
 
         # 逻辑组合条件
@@ -92,6 +90,6 @@ class SecondClassFilter:
 
         return True
 
-    def __call__(self, sc: List[Activity]) -> List[Activity]:
+    def __call__(self, sc: List[SecondClass]) -> List[SecondClass]:
         """使筛选器可调用"""
         return self.apply(sc)

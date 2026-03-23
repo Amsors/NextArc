@@ -17,13 +17,16 @@ class USTCConfig(BaseModel):
     env_username: str = "USTC_USERNAME"
     env_password: str = "USTC_PASSWORD"
 
+
 class BehaviorConfig(BaseModel):
     """应用行为配置"""
     scan_on_start: bool = True
 
+
 class FilterConfig(BaseModel):
     """过滤配置"""
     ignore_participated_but_ended_activity: bool = True
+
 
 class MonitorConfig(BaseModel):
     """监控配置"""
@@ -42,7 +45,7 @@ class DatabaseConfig(BaseModel):
     """数据库配置"""
     data_dir: Path = Path("./data")
     max_history: int = Field(default=10, ge=1, le=100)
-    
+
     @field_validator("data_dir")
     @classmethod
     def ensure_path(cls, v: Path) -> Path:
@@ -88,7 +91,7 @@ class AIConfig(BaseModel):
         default=None,
         description="额外的 API 请求体参数，用于第三方 API 扩展功能（如 Kimi 的 thinking 控制）"
     )
-    
+
     def validate_required_fields(self) -> None:
         """
         验证必填字段（当 enabled: true 时调用）
@@ -98,27 +101,27 @@ class AIConfig(BaseModel):
         """
         if not self.enabled:
             return
-        
+
         missing_fields = []
-        
+
         if not self.api_key:
             missing_fields.append("api_key")
-        
+
         if not self.model:
             missing_fields.append("model")
-        
+
         if not self.user_info:
             missing_fields.append("user_info")
-        
+
         if not self.system_prompt_file:
             missing_fields.append("system_prompt_file")
-        
+
         if not self.user_prompt_template_file:
             missing_fields.append("user_prompt_template_file")
-        
+
         if self.temperature is None:
             missing_fields.append("temperature")
-        
+
         if missing_fields:
             raise ValueError(
                 f"AI 功能已启用 (enabled: true)，但以下配置项未填写：{', '.join(missing_fields)}\n"
@@ -136,18 +139,18 @@ class Settings(BaseSettings):
     database: DatabaseConfig = DatabaseConfig()
     logging: LogConfig = LogConfig()
     ai: AIConfig = AIConfig()
-    
+
     @classmethod
     def from_yaml(cls, yaml_path: Path) -> Self:
         """从 YAML 文件加载配置"""
         if not yaml_path.exists():
             raise FileNotFoundError(f"配置文件不存在: {yaml_path}")
-        
+
         with open(yaml_path, "r", encoding="utf-8") as f:
             config_dict = yaml.safe_load(f)
-        
+
         return cls(**config_dict)
-    
+
     def get_credentials(self) -> Tuple[str, str]:
         """根据 auth_mode 获取用户名密码"""
         if self.ustc.auth_mode == "env":
@@ -163,7 +166,7 @@ class Settings(BaseSettings):
             if not self.ustc.username or not self.ustc.password:
                 raise ValueError("配置文件中未设置 USTC 凭据（username 和 password）")
             return self.ustc.username, self.ustc.password
-    
+
     def ensure_directories(self) -> None:
         """确保必要的目录存在"""
         self.database.data_dir.mkdir(parents=True, exist_ok=True)
@@ -207,13 +210,13 @@ def load_prompt_file(file_path: str, default_content: str = "") -> str:
     """
     # 获取项目根目录
     project_root = Path(__file__).parent.parent.parent
-    
+
     # 尝试作为绝对路径或相对路径解析
     path = Path(file_path)
     if not path.is_absolute():
         # 相对于项目根目录
         path = project_root / file_path
-    
+
     if path.exists():
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -245,20 +248,20 @@ def load_prompt_file_strict(file_path: str) -> str:
     """
     # 获取项目根目录
     project_root = Path(__file__).parent.parent.parent
-    
+
     # 尝试作为绝对路径或相对路径解析
     path = Path(file_path)
     if not path.is_absolute():
         # 相对于项目根目录
         path = project_root / file_path
-    
+
     if not path.exists():
         raise FileNotFoundError(
             f"提示词文件不存在: {path}\n"
             f"配置文件中的路径: {file_path}\n"
             f"请创建该文件或修改配置文件中的路径"
         )
-    
+
     try:
         with open(path, "r", encoding="utf-8") as f:
             content = f.read().strip()

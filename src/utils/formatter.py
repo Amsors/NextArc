@@ -3,10 +3,13 @@
 from datetime import datetime
 from typing import Optional
 
-from src.models import Activity, DiffResult
+from pyustc.young import SecondClass
+
+from src.models import DiffResult
+from src.models.activity import format_secondclass_for_list
 
 
-def format_activity_list(activities: list[Activity], title: str = "活动列表") -> str:
+def format_activity_list(activities: list[SecondClass], title: str = "活动列表") -> str:
     """
     格式化活动列表
     
@@ -19,13 +22,13 @@ def format_activity_list(activities: list[Activity], title: str = "活动列表"
     """
     if not activities:
         return f"📋 {title}\n\n暂无活动"
-    
+
     lines = [f"📋 {title}（共{len(activities)}条）：", ""]
-    
+
     for i, act in enumerate(activities, 1):
-        lines.append(act.format_for_list(i))
+        lines.append(format_secondclass_for_list(act, i))
         lines.append("")
-    
+
     return "\n".join(lines)
 
 
@@ -42,7 +45,7 @@ def format_diff_result(diff: DiffResult) -> str:
     return diff.format_full()
 
 
-def format_enrolled_list(activities: list[Activity]) -> str:
+def format_enrolled_list(activities: list[SecondClass]) -> str:
     """
     格式化已报名活动列表
     
@@ -53,14 +56,14 @@ def format_enrolled_list(activities: list[Activity]) -> str:
         格式化后的文本
     """
     lines = format_activity_list(activities, "已报名活动")
-    
+
     if activities:
         lines += "\n💡 使用 /cancel 序号 取消报名\n"
-    
+
     return lines
 
 
-def format_search_results(activities: list[Activity], keyword: str, hint: str = "") -> str:
+def format_search_results(activities: list[SecondClass], keyword: str, hint: str = "") -> str:
     """
     格式化搜索结果
     
@@ -73,7 +76,7 @@ def format_search_results(activities: list[Activity], keyword: str, hint: str = 
         格式化后的文本
     """
     lines = format_activity_list(activities, f'搜索「{keyword}」结果')
-    
+
     if activities:
         lines += "\n💡 使用 /join 序号 报名指定活动\n"
         lines += "⚠️ 搜索结果有效期5分钟\n"
@@ -87,11 +90,11 @@ def format_search_results(activities: list[Activity], keyword: str, hint: str = 
 
 
 def format_status_message(
-    is_running: bool,
-    last_scan: Optional[datetime],
-    next_scan: Optional[datetime],
-    is_logged_in: bool,
-    db_count: int,
+        is_running: bool,
+        last_scan: Optional[datetime],
+        next_scan: Optional[datetime],
+        is_logged_in: bool,
+        db_count: int,
 ) -> str:
     """
     格式化状态消息
@@ -107,32 +110,32 @@ def format_status_message(
         格式化后的文本
     """
     lines = ["📊 服务状态", ""]
-    
+
     # 运行状态
     if is_running:
         lines.append("🟢 服务运行中")
     else:
         lines.append("🔴 服务已停止")
-    
+
     # 登录状态
     if is_logged_in:
         lines.append("✅ 已登录")
     else:
         lines.append("❌ 未登录")
-    
+
     lines.append("")
-    
+
     # 扫描信息
     if last_scan:
         lines.append(f"🕐 最后扫描：{last_scan.strftime('%Y-%m-%d %H:%M:%S')}")
     else:
         lines.append("🕐 最后扫描：无")
-    
+
     if next_scan:
         lines.append(f"⏰ 下次扫描：{next_scan.strftime('%Y-%m-%d %H:%M:%S')}")
-    
+
     lines.append(f"🗄️  数据库数量：{db_count}")
-    
+
     return "\n".join(lines)
 
 
@@ -149,18 +152,18 @@ def format_scan_result(result: dict) -> str:
     if not result.get("success"):
         error = result.get("error", "未知错误")
         return f"❌ 扫描失败：{error}"
-    
+
     lines = ["✅ 扫描完成", ""]
-    
+
     if result.get("new_db_path"):
         lines.append(f"🗄️  数据库：{result['new_db_path'].name}")
-    
+
     lines.append(f"📊 活动数量：{result.get('activity_count', 0)}")
-    
+
     if result.get("diff"):
         diff = result["diff"]
         lines.append(f"📝 差异：{diff.get_summary()}")
-    
+
     return "\n".join(lines)
 
 
@@ -176,12 +179,12 @@ def format_error_message(error: str, context: str = "") -> str:
         格式化后的文本
     """
     lines = ["❌ 操作失败"]
-    
+
     if context:
         lines.append(f"上下文：{context}")
-    
+
     lines.append(f"错误：{error}")
-    
+
     return "\n".join(lines)
 
 

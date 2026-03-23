@@ -6,11 +6,11 @@ from .alive import AliveHandler
 from .base import CommandHandler
 from .cancel import CancelHandler
 from .check import CheckHandler
+from .help import HelpHandler
 from .info import InfoHandler
 from .join import JoinHandler
 from .search import SearchHandler
 from .update import UpdateHandler
-from .help import HelpHandler
 
 
 def get_all_handlers() -> Dict[str, CommandHandler]:
@@ -28,6 +28,8 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "check",
         "差异",
         "检查差异",
+        "对比",
+        "检查"
     ]
     for instruction in check_instructions:
         ret[instruction] = CheckHandler()
