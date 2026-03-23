@@ -10,26 +10,23 @@ from .help import HelpHandler
 from .info import InfoHandler
 from .join import JoinHandler
 from .search import SearchHandler
-from .update import UpdateHandler
+from .valid import ValidHandler
 
 
 def get_all_handlers() -> Dict[str, CommandHandler]:
     """获取所有指令处理器的字典"""
     ret = {}
-    update_instructions = [
-        "update",
-        "更新数据库",
-        "更新",
-    ]
-    for instruction in update_instructions:
-        ret[instruction] = UpdateHandler()
 
     check_instructions = [
+        "update",
         "check",
+        "更新数据库",
+        "更新",
+        "检查",
         "差异",
         "检查差异",
         "对比",
-        "检查"
+        "对比差异",
     ]
     for instruction in check_instructions:
         ret[instruction] = CheckHandler()
@@ -86,18 +83,26 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
     for instruction in help_instructions:
         ret[instruction] = HelpHandler()
 
+    valid_instructions = [
+        "valid",
+        "可报名",
+        "可报名活动",
+    ]
+    for instruction in valid_instructions:
+        ret[instruction] = ValidHandler()
+
     return ret
 
 
 __all__ = [
     "CommandHandler",
     "get_all_handlers",
-    "UpdateHandler",
     "CheckHandler",
     "InfoHandler",
     "CancelHandler",
     "SearchHandler",
     "JoinHandler",
     "AliveHandler",
-    "HelpHandler"
+    "HelpHandler",
+    "ValidHandler"
 ]

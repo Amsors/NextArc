@@ -3,7 +3,7 @@
 用于管理用户的推送偏好设置，包括时间筛选、活动类型筛选等。
 """
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 from pathlib import Path
 from typing import Optional, Self
 
@@ -15,7 +15,7 @@ class TimeRange(BaseModel):
     """时间段配置"""
     start: str = Field(..., description="开始时间，格式 HH:MM")
     end: str = Field(..., description="结束时间，格式 HH:MM")
-    
+
     @field_validator("start", "end")
     @classmethod
     def validate_time_format(cls, v: str) -> str:
@@ -25,7 +25,7 @@ class TimeRange(BaseModel):
         except ValueError:
             raise ValueError(f"时间格式错误: {v}，应为 HH:MM 格式，如 14:00")
         return v
-    
+
     @model_validator(mode="after")
     def validate_time_range(self) -> Self:
         """验证开始时间早于结束时间"""
@@ -34,13 +34,13 @@ class TimeRange(BaseModel):
         if start >= end:
             raise ValueError(f"时间段无效: {self.start} - {self.end}，开始时间必须早于结束时间")
         return self
-    
+
     def to_time_objects(self) -> tuple[time, time]:
         """转换为 time 对象"""
         start = datetime.strptime(self.start, "%H:%M").time()
         end = datetime.strptime(self.end, "%H:%M").time()
         return start, end
-    
+
     def __str__(self) -> str:
         return f"{self.start}-{self.end}"
 
@@ -54,7 +54,7 @@ class WeeklyTimePreference(BaseModel):
     friday: list[TimeRange] = Field(default=[], description="周五没空的时间段")
     saturday: list[TimeRange] = Field(default=[], description="周六没空的时间段")
     sunday: list[TimeRange] = Field(default=[], description="周日没空的时间段")
-    
+
     def get_day_preference(self, weekday: int) -> list[TimeRange]:
         """
         获取指定星期几的时间偏好
@@ -65,48 +65,48 @@ class WeeklyTimePreference(BaseModel):
         Returns:
             该日期没空的时间段列表
         """
-        days = [self.monday, self.tuesday, self.wednesday, 
+        days = [self.monday, self.tuesday, self.wednesday,
                 self.thursday, self.friday, self.saturday, self.sunday]
         if 0 <= weekday <= 6:
             return days[weekday]
         return []
-    
+
     def has_any_preference(self) -> bool:
         """检查是否有任何时间偏好配置"""
         days = [self.monday, self.tuesday, self.wednesday,
                 self.thursday, self.friday, self.saturday, self.sunday]
         return any(day for day in days)
-    
+
     def format_preferences(self) -> str:
         """格式化显示所有时间偏好"""
         day_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
         days = [self.monday, self.tuesday, self.wednesday,
                 self.thursday, self.friday, self.saturday, self.sunday]
-        
+
         lines = []
         for i, (name, ranges) in enumerate(zip(day_names, days)):
             if ranges:
                 ranges_str = ", ".join(str(r) for r in ranges)
                 lines.append(f"  {name}: {ranges_str}")
-        
+
         return "\n".join(lines) if lines else "  （未配置）"
 
 
 class TimeFilterConfig(BaseModel):
     """时间筛选器配置"""
     enabled: bool = Field(default=False, description="是否启用时间筛选")
-    
+
     # 时间重叠判断模式
     overlap_mode: str = Field(
         default="partial",
         description="时间重叠判断模式: 'partial'(有重叠即过滤) 或 'full'(完全包含才过滤)"
     )
-    
+
     weekly_preferences: WeeklyTimePreference = Field(
         default_factory=WeeklyTimePreference,
         description="每周时间偏好"
     )
-    
+
     @field_validator("overlap_mode")
     @classmethod
     def validate_overlap_mode(cls, v: str) -> str:
@@ -115,11 +115,11 @@ class TimeFilterConfig(BaseModel):
         if v not in valid_modes:
             raise ValueError(f"无效的 overlap_mode: {v}，必须是 {valid_modes} 之一")
         return v
-    
+
     def is_enabled_and_configured(self) -> bool:
         """检查是否启用且有配置"""
         return self.enabled and self.weekly_preferences.has_any_preference()
-    
+
     def get_overlap_mode_display(self) -> str:
         """获取重叠模式的显示文本"""
         return {
@@ -135,19 +135,19 @@ class PushPreferences(BaseModel):
         default_factory=TimeFilterConfig,
         description="时间筛选配置"
     )
-    
+
     @classmethod
     def from_yaml(cls, yaml_path: Path) -> Self:
         """从 YAML 文件加载配置"""
         if not yaml_path.exists():
             # 返回默认配置
             return cls()
-        
+
         with open(yaml_path, "r", encoding="utf-8") as f:
             config_dict = yaml.safe_load(f) or {}
-        
+
         return cls(**config_dict)
-    
+
     def to_yaml(self, yaml_path: Path) -> None:
         """保存配置到 YAML 文件"""
         yaml_path.parent.mkdir(parents=True, exist_ok=True)

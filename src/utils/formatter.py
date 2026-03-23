@@ -200,6 +200,7 @@ def format_help_message() -> str:
 可用指令：
 /update - 手动更新数据库
 /check  - 更新并显示与上次扫描的差异
+/valid [重新扫描] [全部] - 显示可报名的活动
 /info   - 显示已报名的所有活动
 /cancel 序号 - 取消指定序号的报名
 /search 关键词 - 搜索活动
@@ -209,4 +210,5 @@ def format_help_message() -> str:
 💡 提示：
 - 搜索结果是有效期5分钟
 - 报名/取消报名需要二次确认
+- /valid 默认启用 AI/时间筛选，加「全部」参数可查看所有活动
 """

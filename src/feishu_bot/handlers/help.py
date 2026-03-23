@@ -24,8 +24,8 @@ class HelpHandler(CommandHandler):
 
         return "帮助信息\n\n" + \
             "/help 显示帮助信息\n" + \
-            "/update 更新数据库\n" + \
             "/check 更新数据库并检查差异\n" + \
+            "/valid 查看可报名活动\n" + \
             "/info 查看已报名信息\n" + \
             "/cancel 取消报名\n" + \
             "/search 搜索二课\n" + \

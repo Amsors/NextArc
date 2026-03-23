@@ -1,8 +1,8 @@
 """消息路由器"""
+import traceback
 
 from src.models import UserSession
 from src.utils.logger import get_logger
-
 from .handlers import get_all_handlers
 from .handlers.cancel import CancelHandler
 from .handlers.join import JoinHandler
@@ -79,6 +79,7 @@ class MessageRouter:
             return await handler.handle(args, session)
         except Exception as e:
             logger.error(f"处理指令 /{cmd} 失败: {e}")
+            traceback.print_exc()
             return f"❌ 处理指令失败: {str(e)}"
 
     async def _handle_confirmation(self, text: str, session: UserSession) -> str:

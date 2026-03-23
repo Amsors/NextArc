@@ -6,6 +6,7 @@
 
 import asyncio
 import json
+import traceback
 from typing import Optional
 
 from openai import AsyncOpenAI
@@ -105,11 +106,12 @@ class AIFilter:
             f"活动状态：{get_status_text(activity)}",
             f"举办时间：{get_display_time(activity, 'hold_time')}",
             f"报名时间：{get_display_time(activity, 'apply_time')}",
-            f"学时：{activity.valid_hour or '未知'}",
             f"模块：{get_module_name(activity)}",
             f"组织单位：{get_department_name(activity)}",
-            f"已报名/名额：{get_apply_progress(activity)}",
         ]
+        if not activity.is_series:
+            lines.append(f"学时：{activity.valid_hour or '未知'}")
+            lines.append(f"已报名/名额：{get_apply_progress(activity)}")
 
         # 添加活动简介（如果存在且不太长）
         if activity.conceive and len(activity.conceive) > 10:
@@ -165,6 +167,7 @@ class AIFilter:
                     return activity, True  # 超时保守处理：保留
                 except Exception as e:
                     logger.warning(f"AI 判断活动 '{activity.name}' 失败: {e}，保留该活动")
+                    traceback.print_exc()
                     return activity, True  # 失败保守处理：保留
 
         # 并发执行所有判断任务

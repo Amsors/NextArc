@@ -239,16 +239,19 @@ def format_secondclass_for_list(sc: SecondClass, index: int) -> str:
     Returns:
         格式化的文本
     """
-    return (
-        f"[{index}] {sc.name}\n"
+    ret: str = (
+        f"[{index}] {sc.name}({'系列活动' if sc.is_series else '单次活动'})\n"
         f"    📅 举办：{get_display_time(sc, 'hold_time')}\n"
         f"    📝 报名：{get_display_time(sc, 'apply_time')}\n"
-        f"    ⏱️ 学时：{sc.valid_hour or '未知'}\n"
         f"    📌 模块：{get_module_name(sc)}\n"
         f"    👥 组织单位：{get_department_name(sc)}\n"
-        f"    👥 报名：{get_apply_progress(sc)}\n"
-        f"    📌 状态：{get_status_text(sc)}"
+        f"    📌 状态：{get_status_text(sc)}\n"
     )
+    if not sc.is_series:
+        ret += f"    ⏱️ 学时：{sc.valid_hour or '未知'}\n"
+        ret += f"    👥 报名：{get_apply_progress(sc)}\n"
+
+    return ret
 
 
 def secondclass_to_display_dict(sc: SecondClass) -> dict[str, str]:

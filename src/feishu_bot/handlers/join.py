@@ -1,8 +1,9 @@
 """/join 指令处理器"""
 
+from pyustc.young import Status
+
 from src.models import UserSession
 from src.utils.logger import get_logger
-
 from .base import CommandHandler
 
 logger = get_logger("feishu.handler.join")
@@ -50,8 +51,8 @@ class JoinHandler(CommandHandler):
             return f"⚠️ 您已经报名了「{activity.name}」"
 
         # 检查是否可报名
-        if activity.status != 26:  # APPLYING = 26
-            return f"❌ 「{activity.name}」当前状态不可报名\n状态：{activity.get_status_text()}"
+        if activity.status != Status.APPLYING and activity.status != Status.PUBLISHED:
+            return f"❌ 「{activity.name}」当前状态不可报名\n状态：{activity.status()}"
 
         # 检查是否有待确认操作
         if session.confirm and not session.confirm.is_expired():

@@ -10,7 +10,7 @@ sys.path.insert(0, str(project_root))
 from src.config import load_settings
 from src.config.preferences import load_preferences
 from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConfig
-from src.core.time_filter import TimeFilter, create_time_filter_from_config
+from src.core.time_filter import TimeFilter
 from src.feishu_bot import FeishuBot
 from src.feishu_bot.message_router import MessageRouter
 from src.utils import setup_logging, get_logger
@@ -210,7 +210,7 @@ class NextArcApp:
                     notify_diff=False,
                     notify_enrolled_change=False,
                     notify_new_activities=False,
-                    notify_new_activities_with_ai_filter=False,
+                    no_filter=False,
                 )
                 logger.info(format_scan_result(result))
             else:
@@ -247,7 +247,7 @@ class NextArcApp:
             "我是您的第二课堂活动监控助手。",
             "",
         ]
-        
+
         # 显示当前启用的筛选功能
         filter_details = []
         if self.settings and self.settings.monitor.use_ai_filter and self.settings.ai.enabled:
@@ -259,13 +259,13 @@ class NextArcApp:
             else:
                 mode_desc = "完全包含才过滤"
             filter_details.append(f"⏰ 时间筛选({mode_desc})")
-        
+
         if filter_details:
             lines.append("已启用筛选：")
             for detail in filter_details:
                 lines.append(f"  {detail}")
             lines.append("")
-        
+
         lines.extend([
             "可用指令：",
             "/alive - 检查服务状态",
@@ -278,7 +278,7 @@ class NextArcApp:
             "",
             "💡 提示：搜索结果有效期5分钟，报名/取消需要二次确认。",
         ])
-        
+
         return "\n".join(lines)
 
     def _signal_handler(self) -> None:
