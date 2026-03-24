@@ -1,13 +1,16 @@
 """消息路由器"""
 import traceback
-from typing import Callable, Coroutine, Optional, Any
+from typing import TYPE_CHECKING
 
 from src.models import UserSession
+from src.notifications import Response
 from src.utils.logger import get_logger
 from .handlers import get_all_handlers, IgnoreHandler
 from .handlers.cancel import CancelHandler
 from .handlers.join import JoinHandler
-from .handlers.valid import ValidHandler
+
+if TYPE_CHECKING:
+    pass
 
 logger = get_logger("feishu.router")
 
@@ -19,7 +22,6 @@ class MessageRouter:
         self.handlers = get_all_handlers()
         self.cancel_handler = CancelHandler()
         self.join_handler = JoinHandler()
-        self._send_card_callback: Optional[Callable[[dict], Coroutine[Any, Any, None]]] = None
 
     def set_dependencies(self, scanner, auth_manager, db_manager, ignore_manager=None):
         """设置依赖的组件"""
@@ -40,36 +42,22 @@ class MessageRouter:
         if ignore_manager:
             IgnoreHandler.set_ignore_manager(ignore_manager)
 
-    def set_card_sender(self, send_card_callback: Callable[[dict], Coroutine[Any, Any, None]]) -> None:
-        """设置卡片发送回调函数"""
-        self._send_card_callback = send_card_callback
-        # 同时设置给 ValidHandler
-        ValidHandler.set_card_sender(send_card_callback)
-
-    async def handle_message(self, text: str, session: UserSession) -> str:
+    async def handle_message(self, text: str, session: UserSession) -> Response:
         """
         处理用户消息
-        
+
         Args:
             text: 用户输入的文本
             session: 用户会话
-            
+
         Returns:
-            回复消息
+            Response 响应对象
         """
         text = text.strip()
 
         # 检查是否有待确认操作
         if session.confirm and not session.confirm.is_expired():
             return await self._handle_confirmation(text, session)
-
-        # if not text.startswith("/"):
-        #     return (
-        #         "🤖 指令需以 / 开头\n\n"
-        #         "可用指令：\n"
-        #         "/update, /check, /info, /cancel, /search, /join, /alive\n\n"
-        #         "发送 /alive 查看服务状态"
-        #     )
 
         # 去掉开头的 / 并分割
         if text.startswith("/"):
@@ -78,7 +66,7 @@ class MessageRouter:
             parts = text.split()
 
         if not parts:
-            return "❌ 指令不能为空"
+            return Response.text("❌ 指令不能为空")
 
         cmd = parts[0].lower()
         args = parts[1:]
@@ -86,25 +74,25 @@ class MessageRouter:
         # 查找并执行处理器
         handler = self.handlers.get(cmd)
         if not handler:
-            return f"❌ 未知指令: /{cmd}\n\n发送 /alive 查看可用指令"
+            return Response.text(f"❌ 未知指令: /{cmd}\n\n发送 /alive 查看可用指令")
 
         try:
             return await handler.handle(args, session)
         except Exception as e:
             logger.error(f"处理指令 /{cmd} 失败: {e}")
             traceback.print_exc()
-            return f"❌ 处理指令失败: {str(e)}"
+            return Response.error(str(e), context=f"处理指令 /{cmd}")
 
-    async def _handle_confirmation(self, text: str, session: UserSession) -> str:
+    async def _handle_confirmation(self, text: str, session: UserSession) -> Response:
         """
         处理确认操作
-        
+
         Args:
             text: 用户响应（确认/取消）
             session: 用户会话
-            
+
         Returns:
-            回复消息
+            Response 响应对象
         """
         text = text.strip()
 
@@ -117,19 +105,19 @@ class MessageRouter:
                 return await self.join_handler.execute_join(session)
             else:
                 session.clear_confirm()
-                return "❌ 未知的操作类型"
+                return Response.text("❌ 未知的操作类型")
 
         elif text == "取消":
             session.clear_confirm()
-            return "✅ 已取消操作"
+            return Response.text("✅ 已取消操作")
         else:
             # 不是确认或取消，提醒用户
-            return (
+            return Response.text(
                 f"{session.confirm.get_confirm_prompt()}\n\n"
                 f"⚠️ 请回复「确认」或「取消」"
             )
 
-    def get_help_message(self) -> str:
+    def get_help_message(self) -> Response:
         """获取帮助信息"""
         lines = ["🤖 NextArc - 第二课堂活动监控机器人\n", "可用指令："]
 
@@ -141,4 +129,4 @@ class MessageRouter:
         lines.append("- 搜索结果是有效期5分钟")
         lines.append("- 报名/取消报名需要二次确认")
 
-        return "\n".join(lines)
+        return Response.text("\n".join(lines))

@@ -18,7 +18,6 @@ from src.models.activity import (
     get_apply_progress,
     get_module_name,
     get_department_name,
-    get_description_text,
 )
 from src.utils.logger import get_logger
 
@@ -108,7 +107,6 @@ class AIFilter:
             f"举办时间：{get_display_time(activity, 'hold_time')}",
             f"模块：{get_module_name(activity)}",
             f"组织单位：{get_department_name(activity)}",
-            f"活动描述：{get_description_text(activity)}"
         ]
         if not activity.is_series:
             lines.append(f"学时：{activity.valid_hour or '未知'}")
@@ -186,11 +184,11 @@ class AIFilter:
             activity, is_interested = result
             if is_interested:
                 filtered_activities.append(activity)
-                logger.debug(f"活动 '{activity.name}' 通过 AI 筛选")
+                logger.debug(f"通过AI筛选：活动 '{activity.name}'")
             else:
                 if uninterested_activities is not None:
                     uninterested_activities.append(activity)
-                logger.debug(f"活动 '{activity.name}' AI 认为用户不感兴趣")
+                logger.debug(f"没有通过AI筛选：活动 '{activity.name}'")
 
         logger.info(f"AI 筛选完成：{len(filtered_activities)}/{len(activities)} 个活动通过")
         return filtered_activities

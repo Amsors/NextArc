@@ -10,6 +10,7 @@ sys.path.insert(0, str(project_root))
 from src.config import load_settings
 from src.config.preferences import load_preferences
 from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConfig
+from src.core.events import EventBus
 from src.core.ignore_manager import IgnoreManager
 from src.core.time_filter import TimeFilter
 from src.feishu_bot import FeishuBot
@@ -17,6 +18,10 @@ from src.feishu_bot.handlers.alive import AliveHandler
 from src.feishu_bot.handlers.ignore import IgnoreHandler
 from src.feishu_bot.handlers.valid import ValidHandler
 from src.feishu_bot.message_router import MessageRouter
+from src.notifications import (
+    FeishuNotificationService,
+    NotificationListener,
+)
 from src.utils import setup_logging, get_logger
 from src.utils.formatter import format_scan_result
 
@@ -31,9 +36,12 @@ class NextArcApp:
     def __init__(self):
         self.settings = None
         self.preferences = None
+        self.event_bus: EventBus = None
         self.auth_manager: AuthManager = None
         self.db_manager: DatabaseManager = None
         self.ignore_manager: IgnoreManager = None
+        self.notification_service: FeishuNotificationService = None
+        self.notification_listener: NotificationListener = None
         self.scanner: ActivityScanner = None
         self.bot: FeishuBot = None
         self.router: MessageRouter = None
@@ -79,6 +87,10 @@ class NextArcApp:
             await self.ignore_manager.initialize()
             ignored_count = await self.ignore_manager.get_ignored_count()
             logger.info(f"✅ 忽略管理器初始化完成，已有 {ignored_count} 个被忽略的活动")
+
+            # 初始化事件总线
+            self.event_bus = EventBus()
+            logger.info("事件总线初始化完成")
 
             # 获取凭据并初始化认证管理器
             username, password = self.settings.get_credentials()
@@ -126,15 +138,14 @@ class NextArcApp:
             self.scanner = ActivityScanner(
                 auth_manager=self.auth_manager,
                 db_manager=self.db_manager,
+                event_bus=self.event_bus,
                 interval_minutes=self.settings.monitor.interval_minutes,
-                notify_callback=self._on_notify,
                 notify_new_activities=self.settings.monitor.notify_new_activities,
                 ai_filter=ai_filter,
                 use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
                 ai_user_info=self.settings.ai.user_info,
                 time_filter=self.time_filter,
                 use_time_filter=use_time_filter,
-                card_notify_callback=self._on_card_notify,
                 ignore_manager=self.ignore_manager,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
@@ -165,8 +176,16 @@ class NextArcApp:
                     message_handler=self._handle_message,
                     chat_id=chat_id,
                 )
-                # 设置卡片发送回调（用于 /valid 等指令发送折叠卡片）
-                self.router.set_card_sender(self.bot.send_card)
+
+                # 初始化通知服务
+                self.notification_service = FeishuNotificationService(self.bot)
+                logger.info("通知服务初始化完成")
+
+                # 初始化通知监听器并订阅事件
+                self.notification_listener = NotificationListener(self.notification_service)
+                self.notification_listener.subscribe(self.event_bus)
+                logger.info("通知监听器已订阅事件")
+
                 if chat_id:
                     logger.info(f"飞书机器人初始化完成（已配置 chat_id: {chat_id}）")
                 else:
@@ -195,42 +214,28 @@ class NextArcApp:
         else:
             logger.info("✅ 检测到 conda 环境")
 
-    async def _handle_message(self, text: str, session) -> str:
+    async def _handle_message(self, text: str, session) -> str | None:
         """
         处理飞书消息
-        
+
         Args:
             text: 消息文本
             session: 用户会话
-            
+
         Returns:
-            回复消息
+            如果返回字符串，则会发送该文本；如果返回 None，则表示消息已通过通知服务发送
         """
-        return await self.router.handle_message(text, session)
+        response = await self.router.handle_message(text, session)
 
-    async def _on_notify(self, message: str) -> None:
-        """
-        通知回调 - 通过飞书发送通知
-        
-        Args:
-            message: 通知消息
-        """
-        if self.bot and self.bot.is_connected():
-            await self.bot.send_text(message)
-        else:
-            logger.info(f"[通知] {message}")
+        # 通过通知服务发送响应
+        if self.notification_service:
+            await self.notification_service.send_response(response)
+            return None  # 已通过通知服务发送，不需要再返回文本
 
-    async def _on_card_notify(self, card_content: dict) -> None:
-        """
-        卡片通知回调 - 通过飞书发送卡片消息
-        
-        Args:
-            card_content: 卡片内容字典
-        """
-        if self.bot and self.bot.is_connected():
-            await self.bot.send_card(card_content)
-        else:
-            logger.info(f"[卡片通知] 无法发送卡片（bot未连接）")
+        # 如果没有通知服务，返回文本内容（后适兼）
+        if response.type.value == "text":
+            return response.content
+        return None
 
     async def run(self) -> None:
         """运行应用"""
@@ -355,7 +360,7 @@ class NextArcApp:
             "db_count": self.db_manager.get_db_count() if self.db_manager else 0,
             "bot_connected": self.bot.is_connected() if self.bot else False,
             "time_filter_enabled": self.time_filter.is_enabled() if self.time_filter else False,
-            "ignore_count": self.ignore_manager.get_ignored_count() if self.ignore_manager else 0,
+            "ignore_count": self.ignore_manager.get_ignored_count_sync() if self.ignore_manager else 0,
         }
 
 

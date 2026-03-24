@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from src.models import UserSession
+from src.notifications import Response
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -39,16 +40,16 @@ class CommandHandler(ABC):
         pass
 
     @abstractmethod
-    async def handle(self, args: list[str], session: UserSession) -> str:
+    async def handle(self, args: list[str], session: UserSession) -> Response:
         """
         处理指令
-        
+
         Args:
             args: 指令参数列表
             session: 用户会话
-            
+
         Returns:
-            回复消息文本
+            Response 响应对象
         """
         pass
 

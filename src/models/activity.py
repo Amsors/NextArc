@@ -236,16 +236,20 @@ def get_description_text(sc: SecondClass) -> str:
     return sc.conceive or "无"
 
 
-def format_secondclass_for_list(sc: SecondClass, index: int) -> str:
+def format_secondclass_for_list(sc: SecondClass, index: int, simple_format: bool = False) -> str:
     """格式化为列表显示
     
     Args:
         sc: SecondClass 对象
         index: 序号（从1开始）
-        
+        simple_format: 是否使用简单格式
+
     Returns:
         格式化的文本
     """
+    if simple_format:
+        return f"[{index}] {sc.name}({'系列活动' if sc.is_series else '单次活动'})"
+
     ret: str = (
         f"[{index}] {sc.name}({'系列活动' if sc.is_series else '单次活动'})\n"
         f"    📅 举办：{get_display_time(sc, 'hold_time')}\n"

@@ -5,6 +5,7 @@ import aiosqlite
 from pyustc.young import SecondClass
 
 from src.models import UserSession, secondclass_from_db_row
+from src.notifications import Response
 from src.utils.formatter import format_search_results
 from src.utils.logger import get_logger
 from .base import CommandHandler
@@ -22,14 +23,14 @@ class SearchHandler(CommandHandler):
     def get_usage(self) -> str:
         return "/search <关键词> - 搜索标题含关键词的活动"
 
-    async def handle(self, args: list[str], session: UserSession) -> str:
+    async def handle(self, args: list[str], session: UserSession) -> Response:
         """处理 /search 指令"""
         if not self.check_dependencies():
-            return "服务未初始化，请稍后重试"
+            return Response.text("服务未初始化，请稍后重试")
 
         # 检查参数
         if not args:
-            return f"用法：{self.get_usage()}\n\n示例：/search 讲座"
+            return Response.text(f"用法：{self.get_usage()}\n\n示例：/search 讲座")
 
         keyword = " ".join(args)
         logger.info(f"执行 /search 指令，关键词: {keyword}")
@@ -37,14 +38,14 @@ class SearchHandler(CommandHandler):
         # 获取最新数据库
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
-            return "❌ 暂无数据，请先执行 /update"
+            return Response.text("❌ 暂无数据，请先执行 /update")
 
         try:
             # 搜索活动
             activities = await self._search_activities(latest_db, keyword)
 
             if not activities:
-                return f'🔍 搜索「{keyword}」\n\n未找到匹配的活动，请尝试其他关键词'
+                return Response.text(f'🔍 搜索「{keyword}」\n\n未找到匹配的活动，请尝试其他关键词')
 
             # 使用 YouthService 上下文更新活动信息（获取最新报名人数等）
             try:
@@ -65,12 +66,12 @@ class SearchHandler(CommandHandler):
             # 保存搜索上下文
             session.set_search(keyword, activities)
 
-            return format_search_results(activities, keyword, hint=hint)
+            return Response.text(format_search_results(activities, keyword, hint=hint))
 
         except Exception as e:
             logger.error(f"搜索活动失败: {e}")
             traceback.print_exc()
-            return f"❌ 搜索失败：{str(e)}"
+            return Response.error(str(e), context="搜索活动")
 
     async def _search_activities(self, db_path, keyword: str) -> list[SecondClass]:
         """从数据库搜索活动"""

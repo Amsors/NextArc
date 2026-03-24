@@ -1,6 +1,6 @@
 """/check 指令处理器"""
 
-from src.models import UserSession
+from src.notifications import Response
 from src.utils.formatter import format_scan_result
 from src.utils.logger import get_logger
 
@@ -19,10 +19,10 @@ class CheckHandler(CommandHandler):
     def get_usage(self) -> str:
         return "/check - 更新数据库并显示差异"
 
-    async def handle(self, args: list[str], session: UserSession) -> str:
+    async def handle(self, args: list[str], session) -> Response:
         """处理 /check 指令"""
         if not self.check_dependencies():
-            return "服务未初始化，请稍后重试"
+            return Response.text("服务未初始化，请稍后重试")
 
         logger.info("执行 /check 指令")
 
@@ -61,11 +61,11 @@ class CheckHandler(CommandHandler):
                     lines.append("")
                     lines.append("✅ 与上次扫描相比无变化")
 
-                return "\n".join(lines)
+                return Response.text("\n".join(lines))
             else:
                 error = result.get("error", "未知错误")
-                return f"❌ 检查失败：{error}"
+                return Response.error(error, context="检查更新")
 
         except Exception as e:
             logger.error(f"检查失败: {e}")
-            return f"❌ 检查失败：{str(e)}"
+            return Response.error(str(e), context="检查更新")

@@ -3,7 +3,7 @@ import asyncio
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Coroutine, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,7 +18,15 @@ from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
 from .ignore_manager import IgnoreManager
 from .time_filter import TimeFilter
-from ..utils.formatter import build_activity_card
+
+if TYPE_CHECKING:
+    from src.core.events import EventBus
+
+from src.core.events.scan_events import (
+    ScanCompletedEvent,
+    EnrolledActivityChangedEvent,
+    NewActivitiesFoundEvent,
+)
 
 logger = get_logger("scanner")
 
@@ -35,28 +43,26 @@ class ActivityScanner:
             self,
             auth_manager: AuthManager,
             db_manager: DatabaseManager,
+            event_bus: Optional["EventBus"] = None,
             interval_minutes: int = 15,
-            notify_callback: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None,
             notify_new_activities: bool = True,
             ai_filter: Optional[AIFilter] = None,
             use_ai_filter: bool = False,
             ai_user_info: str = "",
             time_filter: Optional[TimeFilter] = None,
             use_time_filter: bool = False,
-            card_notify_callback: Optional[Callable[[dict], Coroutine[Any, Any, None]]] = None,
             ignore_manager: Optional[IgnoreManager] = None,
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
+        self.event_bus = event_bus
         self.interval = interval_minutes
-        self.notify_callback = notify_callback
         self.notify_new_activities = notify_new_activities
         self.ai_filter = ai_filter
         self.use_ai_filter = use_ai_filter
         self.ai_user_info = ai_user_info
         self.time_filter = time_filter
         self.use_time_filter = use_time_filter
-        self.card_notify_callback = card_notify_callback
         self.ignore_manager = ignore_manager
         self.scheduler = AsyncIOScheduler()
         self.diff_engine = DiffEngine()
@@ -162,18 +168,28 @@ class ActivityScanner:
                 if enrolled_changes:
                     logger.info(f"已报名活动有 {len(enrolled_changes)} 处变更")
 
-                    # 推送已报名活动的变更
-                    if notify_enrolled_change:
-                        await self._send_enrolled_notifications(enrolled_changes)
+                    # 发布已报名活动变更事件
+                    if notify_enrolled_change and self.event_bus:
+                        event = EnrolledActivityChangedEvent(
+                            changes=enrolled_changes,
+                        )
+                        await self.event_bus.publish(event)
 
-                # 发送新活动通知
-                if notify_new_activities and diff.added:
+                # 发布新活动事件
+                if notify_new_activities and diff.added and self.event_bus:
                     # 使用 create_task 在后台执行，避免阻塞定时扫描和 WebSocket 心跳
-                    self._create_background_task(self._send_new_activities_notification(diff))
+                    self._create_background_task(self._publish_new_activities_event(diff, not no_filter))
 
-                # 推送所有差异
-                if notify_diff and self.notify_callback:
-                    await self.notify_callback(diff.format_full())
+                # 发布扫描完成事件
+                if self.event_bus:
+                    completed_event = ScanCompletedEvent(
+                        new_db_path=new_db_path,
+                        old_db_path=old_db_path,
+                        activity_count=result["activity_count"],
+                        enrolled_count=enrolled_count,
+                        diff=diff,
+                    )
+                    await self.event_bus.publish(completed_event)
 
             # 清理旧数据库
             deleted_count = self.db_manager.cleanup_old_dbs()
@@ -240,35 +256,15 @@ class ActivityScanner:
 
         task.add_done_callback(on_task_done)
 
-    async def _send_enrolled_notifications(self, changes: list) -> None:
-        """发送已报名活动的变更通知"""
-        if not self.notify_callback:
-            return
-
-        for change in changes:
-            message = (
-                f"🔔 已报名活动有更新\n\n"
-                f"📝 {change.activity_name}\n"
-                f"{change.format(1)}"
-            )
-            try:
-                await self.notify_callback(message)
-                logger.info(f"已发送通知: {change.activity_name}")
-            except Exception as e:
-                logger.error(f"发送通知失败: {e}")
-
-    async def _send_new_activities_notification(self, diff, enable_filter: bool) -> None:
+    async def _publish_new_activities_event(self, diff, enable_filter: bool = True) -> None:
         """
-        发送新活动通知
-        
+        发布新活动发现事件
+
         Args:
             diff: 差异结果，包含新增活动列表
             enable_filter: 是否启用筛选（数据库筛选、时间筛选、AI 筛选）
         """
-        if not self.notify_new_activities:
-            return
-
-        if not self.notify_callback:
+        if not self.event_bus:
             return
 
         if not diff or not diff.added:
@@ -276,8 +272,6 @@ class ActivityScanner:
 
         try:
             # 获取新增活动的详细信息
-            from src.models.diff_result import ActivityChange
-
             new_activity_ids = [change.activity_id for change in diff.added]
             activities = await self.get_activity_list_by_id(new_activity_ids)
             ai_filtered = []  # AI 过滤掉的活动
@@ -315,49 +309,25 @@ class ActivityScanner:
                     if not activities:
                         logger.info("AI 筛选后无活动需要通知")
 
-            message_parts = []
+            # 发布新活动发现事件
+            event = NewActivitiesFoundEvent(
+                activities=activities,
+                total_found=len(new_activity_ids),
+                filters_applied={
+                    "db": db_filtered,
+                    "time": time_filtered,
+                    "ai": ai_filtered,
+                },
+            )
+            await self.event_bus.publish(event)
 
-            # 数据库筛选信息
-            if db_filtered:
-                message_parts.append(f"🗑️ 数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
-                message_parts.append("")
-
-            # AI 筛选信息
-            if self.use_ai_filter and self.ai_filter and ai_filtered:
-                message_parts.append("🤖 启用了 AI 过滤")
-                message_parts.append(f"AI 过滤了 {len(ai_filtered)} 个可能不感兴趣的活动：")
-                for i, activity in enumerate(ai_filtered, 1):
-                    message_parts.append(f"[{i}] {activity.name}")
-                message_parts.append("")
-
-            # 时间筛选信息
-            if self.use_time_filter and self.time_filter and time_filtered:
-                # 添加被时间过滤的活动信息
-                time_filter_summary = self.time_filter.get_filter_summary(time_filtered)
-                if time_filter_summary:
-                    message_parts.append(time_filter_summary)
-
-            # 合并所有消息
-            if message_parts:
-                final_message = "\n".join(message_parts)
-                await self.notify_callback(final_message)
-                logger.info(f"共 {len(activities)} 个新活动"
-                            f"筛选启用: {enable_filter}"
-                            f"{'，' + str(len(db_filtered)) + ' 个被数据库过滤' if db_filtered else ''}"
-                            f"{'，' + str(len(ai_filtered)) + ' 个被 AI 过滤' if ai_filtered else ''}"
-                            f"{'，' + str(len(time_filtered)) + ' 个被时间过滤' if time_filtered else ''}")
-
-            # 发送活动详细信息卡片
-            if activities and self.card_notify_callback:
-                try:
-                    card_content = build_activity_card(activities, f"🆕 发现 {len(activities)} 个新活动")
-                    await self.card_notify_callback(card_content)
-                    logger.info(f"已发送活动详细信息卡片")
-                except Exception as e:
-                    logger.error(f"发送活动卡片失败: {e}")
+            logger.info(f"已发布新活动事件: {len(activities)} 个新活动"
+                        f"{'，' + str(len(db_filtered)) + ' 个被数据库过滤' if db_filtered else ''}"
+                        f"{'，' + str(len(ai_filtered)) + ' 个被 AI 过滤' if ai_filtered else ''}"
+                        f"{'，' + str(len(time_filtered)) + ' 个被时间过滤' if time_filtered else ''}")
 
         except Exception as e:
-            logger.error(f"发送新活动通知失败: {e}")
+            logger.error(f"发布新活动事件失败: {e}")
 
     def start(self) -> None:
         """启动定时任务"""

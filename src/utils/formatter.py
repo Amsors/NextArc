@@ -5,6 +5,7 @@ from typing import Optional
 
 from pyustc.young import SecondClass
 
+from src.core import FilteredActivity
 from src.models import DiffResult
 from src.models.activity import (
     format_secondclass_for_list,
@@ -17,25 +18,26 @@ from src.models.activity import (
 )
 
 
-def format_activity_list(activities: list[SecondClass], title: str = "活动列表") -> str:
+def format_activity_list(activities: list[SecondClass], title: str = "活动列表", simple_format: bool = False) -> str:
     """
     格式化活动列表
     
     Args:
         activities: 活动列表
         title: 列表标题
-        
+        simple_format: 是否使用简单格式
+
     Returns:
-        格式化后的文本
-    """
+        格式化后的文本    """
     if not activities:
         return f"📋 {title}\n\n暂无活动"
 
-    lines = [f"📋 {title}（共{len(activities)}条）：", ""]
+    lines = [f"📋 {title}（共{len(activities)}条）："]
 
     for i, act in enumerate(activities, 1):
-        lines.append(format_secondclass_for_list(act, i))
-        lines.append("")
+        lines.append(format_secondclass_for_list(act, i, simple_format))
+        if not simple_format:
+            lines.append("")
 
     return "\n".join(lines)
 
@@ -94,6 +96,22 @@ def format_search_results(activities: list[SecondClass], keyword: str, hint: str
     if hint:
         lines += f"\n{hint}"
 
+    return lines
+
+
+def format_ai_filtered_result(activities: list[SecondClass]) -> str:
+    lines = format_activity_list(activities, "被AI筛选掉的活动", simple_format=True)
+    return lines
+
+
+def format_time_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    activities = [act.activity for act in activities_filtered]
+    lines = format_activity_list(activities, "因空闲时间不符被筛选掉的活动", simple_format=True)
+    return lines
+
+
+def format_db_filtered_result(activities: list[SecondClass]) -> str:
+    lines = format_activity_list(activities, "因加入不感兴趣数据库被筛选掉的活动", simple_format=True)
     return lines
 
 

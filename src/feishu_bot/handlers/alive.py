@@ -1,7 +1,7 @@
 """/alive 指令处理器"""
 
 from src.core import IgnoreManager
-from src.models import UserSession
+from src.notifications import Response
 from src.utils.formatter import format_status_message
 from src.utils.logger import get_logger
 
@@ -28,12 +28,12 @@ class AliveHandler(CommandHandler):
     def get_usage(self) -> str:
         return "/alive - 检查服务器是否正常运行"
 
-    async def handle(self, args: list[str], session: UserSession) -> str:
+    async def handle(self, args: list[str], session) -> Response:
         """处理 /alive 指令"""
         logger.info("执行 /alive 指令")
 
         if not self.check_dependencies():
-            return "⚠️ 服务未完全初始化\n\n部分功能可能不可用"
+            return Response.text("⚠️ 服务未完全初始化\n\n部分功能可能不可用")
 
         try:
             # 收集状态信息
@@ -48,7 +48,7 @@ class AliveHandler(CommandHandler):
             if self._ignore_manager:
                 ignore_count = await self._ignore_manager.get_ignored_count()
 
-            return format_status_message(
+            status_text = format_status_message(
                 is_running=is_running,
                 last_scan=last_scan,
                 next_scan=next_scan,
@@ -56,7 +56,8 @@ class AliveHandler(CommandHandler):
                 db_count=db_count,
                 ignore_count=ignore_count,
             )
+            return Response.text(status_text)
 
         except Exception as e:
             logger.error(f"获取状态失败: {e}")
-            return f"❌ 获取状态失败：{str(e)}"
+            return Response.error(str(e), context="获取状态")
