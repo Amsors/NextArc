@@ -1,5 +1,8 @@
 """消息发送器"""
 
+from pyustc.young import SecondClass
+
+from src.utils.formatter import build_activity_card
 from src.utils.logger import get_logger
 
 logger = get_logger("feishu.sender")
@@ -78,3 +81,33 @@ class MessageSender:
             是否发送成功
         """
         return await self.send(f"ℹ️ {message}")
+
+    async def send_card(self, card_content: dict) -> bool:
+        """
+        发送消息卡片
+        
+        Args:
+            card_content: 卡片内容字典
+            
+        Returns:
+            是否发送成功
+        """
+        if not self._bot:
+            logger.error("未设置机器人实例，无法发送卡片")
+            return False
+
+        return await self._bot.send_card(card_content)
+
+    async def send_activity_list_card(self, activities: list[SecondClass], title: str = "活动列表") -> bool:
+        """
+        发送活动列表卡片（带折叠面板）
+        
+        Args:
+            activities: 活动列表
+            title: 卡片标题
+            
+        Returns:
+            是否发送成功
+        """
+        card_content = build_activity_card(activities, title)
+        return await self.send_card(card_content)

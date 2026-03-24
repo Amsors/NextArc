@@ -6,7 +6,15 @@ from typing import Optional
 from pyustc.young import SecondClass
 
 from src.models import DiffResult
-from src.models.activity import format_secondclass_for_list
+from src.models.activity import (
+    format_secondclass_for_list,
+    get_display_time,
+    get_status_text,
+    get_apply_progress,
+    get_module_name,
+    get_department_name,
+    get_labels_text,
+)
 
 
 def format_activity_list(activities: list[SecondClass], title: str = "活动列表") -> str:
@@ -212,3 +220,235 @@ def format_help_message() -> str:
 - 报名/取消报名需要二次确认
 - /valid 默认启用 AI/时间筛选，加「全部」参数可查看所有活动
 """
+
+
+def build_activity_card(activities: list[SecondClass], title: str = "活动列表") -> dict:
+    """
+    构建活动列表的消息卡片（使用折叠面板）
+    
+    Args:
+        activities: 活动列表
+        title: 卡片标题
+        
+    Returns:
+        飞书消息卡片 JSON 字典
+    """
+    if not activities:
+        return {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "title": {"tag": "plain_text", "content": f"📋 {title}"},
+                "template": "blue"
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {"tag": "plain_text", "content": "暂无活动"}
+                }
+            ]
+        }
+
+    # 构建折叠面板元素列表
+    elements = []
+
+    # 添加统计信息
+    elements.append({
+        "tag": "div",
+        "text": {
+            "tag": "lark_md",
+            "content": f"共找到 **{len(activities)}** 个活动"
+        }
+    })
+
+    # 添加分隔线
+    elements.append({"tag": "hr"})
+
+    # 为每个活动创建一个折叠面板
+    for i, act in enumerate(activities, 1):
+        collapsible_panel = _build_activity_collapsible_panel(act, i)
+        elements.append(collapsible_panel)
+
+    # 添加底部提示
+    elements.append({"tag": "hr"})
+    elements.append({
+        "tag": "note",
+        "elements": [
+            {
+                "tag": "plain_text",
+                "content": "💡 点击活动名称可查看详情"
+            }
+        ]
+    })
+
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "title": {"tag": "plain_text", "content": f"📋 {title}"},
+            "template": "blue"
+        },
+        "elements": elements
+    }
+
+
+def _build_activity_collapsible_panel(act: SecondClass, index: int) -> dict:
+    """
+    为单个活动构建折叠面板
+    
+    Args:
+        act: SecondClass 活动对象
+        index: 序号（从1开始）
+        
+    Returns:
+        折叠面板 JSON 字典
+    """
+    activity_type = "系列活动" if act.is_series else "单次活动"
+
+    # 面板标题：活动名称和类型
+    header_title = f"[{index}] {act.name} ({activity_type})"
+
+    # 构建详细内容元素
+    detail_elements = [
+        {
+            "tag": "column_set",
+            "flex_mode": "none",
+            "background_style": "default",
+            "columns": [
+                {
+                    "tag": "column",
+                    "width": "weighted",
+                    "weight": 1,
+                    "vertical_align": "top",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": f"**📅 举办**\n{get_display_time(act, 'hold_time')}"
+                        }
+                    ]
+                },
+                {
+                    "tag": "column",
+                    "width": "weighted",
+                    "weight": 1,
+                    "vertical_align": "top",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": f"**📝 报名**\n{get_display_time(act, 'apply_time')}"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+
+    # 模块和组织单位
+    detail_elements.append({
+        "tag": "column_set",
+        "flex_mode": "none",
+        "background_style": "default",
+        "columns": [
+            {
+                "tag": "column",
+                "width": "weighted",
+                "weight": 1,
+                "vertical_align": "top",
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": f"**📌 模块**\n{get_module_name(act)}"
+                    }
+                ]
+            },
+            {
+                "tag": "column",
+                "width": "weighted",
+                "weight": 1,
+                "vertical_align": "top",
+                "elements": [
+                    {
+                        "tag": "markdown",
+                        "content": f"**👥 组织单位**\n{get_department_name(act)}"
+                    }
+                ]
+            }
+        ]
+    })
+
+    # 状态和学时/报名人数
+    if act.is_series:
+        # 系列活动只显示状态
+        detail_elements.append({
+            "tag": "markdown",
+            "content": f"**📌 状态：** {get_status_text(act)}"
+        })
+    else:
+        # 单次活动显示状态、学时和报名人数
+        detail_elements.append({
+            "tag": "column_set",
+            "flex_mode": "none",
+            "background_style": "default",
+            "columns": [
+                {
+                    "tag": "column",
+                    "width": "weighted",
+                    "weight": 1,
+                    "vertical_align": "top",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": f"**📌 状态**\n{get_status_text(act)}"
+                        }
+                    ]
+                },
+                {
+                    "tag": "column",
+                    "width": "weighted",
+                    "weight": 1,
+                    "vertical_align": "top",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": f"**⏱️ 学时**\n{act.valid_hour or '未知'}"
+                        }
+                    ]
+                },
+                {
+                    "tag": "column",
+                    "width": "weighted",
+                    "weight": 1,
+                    "vertical_align": "top",
+                    "elements": [
+                        {
+                            "tag": "markdown",
+                            "content": f"**👥 报名**\n{get_apply_progress(act)}"
+                        }
+                    ]
+                }
+            ]
+        })
+
+    # 标签（如果有）
+    labels = get_labels_text(act)
+    if labels and labels != "无":
+        detail_elements.append({
+            "tag": "markdown",
+            "content": f"**🏷️ 标签：** {labels}"
+        })
+
+    # 构建折叠面板
+    return {
+        "tag": "collapsible_panel",
+        "expanded": False,
+        "background_color": "grey",
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": header_title
+            },
+            "icon": {
+                "tag": "standard_icon",
+                "token": "activity-filled"
+            }
+        },
+        "elements": detail_elements
+    }

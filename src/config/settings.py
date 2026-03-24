@@ -39,6 +39,8 @@ class FeishuConfig(BaseModel):
     """飞书配置"""
     app_id: str = ""
     app_secret: str = ""
+    chat_id: str = Field(default="",
+                         description="预配置的私聊会话ID，格式如 oc_xxx。若配置，则机器人启动即可发送消息，无需等待用户先发消息")
 
 
 class DatabaseConfig(BaseModel):

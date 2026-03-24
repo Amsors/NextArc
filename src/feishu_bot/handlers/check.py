@@ -57,10 +57,7 @@ class CheckHandler(CommandHandler):
 
                 # 添加差异详情
                 diff = result.get("diff")
-                if diff and diff.has_changes():
-                    lines.append("")
-                    lines.append(diff.format_full())
-                else:
+                if not diff or not diff.has_changes():
                     lines.append("")
                     lines.append("✅ 与上次扫描相比无变化")
 

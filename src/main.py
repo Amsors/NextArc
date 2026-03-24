@@ -121,6 +121,7 @@ class NextArcApp:
                 ai_user_info=self.settings.ai.user_info,
                 time_filter=self.time_filter,
                 use_time_filter=use_time_filter,
+                card_notify_callback=self._on_card_notify,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
@@ -136,12 +137,18 @@ class NextArcApp:
 
             # 初始化飞书机器人
             if self.settings.feishu.app_id and self.settings.feishu.app_secret:
+                # 传入预配置的 chat_id（如果存在）
+                chat_id = self.settings.feishu.chat_id if self.settings.feishu.chat_id else None
                 self.bot = FeishuBot(
                     app_id=self.settings.feishu.app_id,
                     app_secret=self.settings.feishu.app_secret,
                     message_handler=self._handle_message,
+                    chat_id=chat_id,
                 )
-                logger.info("飞书机器人初始化完成")
+                if chat_id:
+                    logger.info(f"飞书机器人初始化完成（已配置 chat_id: {chat_id}）")
+                else:
+                    logger.info("飞书机器人初始化完成（未配置 chat_id，等待用户发送消息）")
             else:
                 logger.warning("⚠️ 未配置飞书 App ID 和 Secret，机器人功能不可用")
 
@@ -190,6 +197,18 @@ class NextArcApp:
             await self.bot.send_text(message)
         else:
             logger.info(f"[通知] {message}")
+
+    async def _on_card_notify(self, card_content: dict) -> None:
+        """
+        卡片通知回调 - 通过飞书发送卡片消息
+        
+        Args:
+            card_content: 卡片内容字典
+        """
+        if self.bot and self.bot.is_connected():
+            await self.bot.send_card(card_content)
+        else:
+            logger.info(f"[卡片通知] 无法发送卡片（bot未连接）")
 
     async def run(self) -> None:
         """运行应用"""

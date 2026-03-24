@@ -79,6 +79,10 @@ feishu:
   # 飞书应用凭证（在飞书开放平台获取）
   app_id: "cli_xxxxxxxxxxxxxxxx"             # 如 "cli_xxxxxxxxxxxxxxxx"
   app_secret: "qwertyuiop1234567890"         # 应用密钥
+  # 私聊会话ID（可选，格式如 oc_xxxxxxxxxxxxxxxx）
+  # 配置后机器人启动即可发送消息，无需等待用户先发消息
+  # 获取方式：首次运行时与机器人建立私聊，从日志中获取 chat_id 后填入此处
+  chat_id: ""
 
 database:
   # 数据库文件存储目录

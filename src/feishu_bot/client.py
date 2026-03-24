@@ -32,6 +32,7 @@ class FeishuBot:
             app_id: str,
             app_secret: str,
             message_handler: Optional[Callable[[str, UserSession], Coroutine]] = None,
+            chat_id: Optional[str] = None,
     ):
         self.app_id = app_id
         self.app_secret = app_secret
@@ -40,7 +41,8 @@ class FeishuBot:
         self._client: Optional[WSClient] = None
         self._thread: Optional[threading.Thread] = None
         self._connected = False
-        self._chat_id: Optional[str] = None
+        # 优先使用预配置的 chat_id，否则为 None
+        self._chat_id: Optional[str] = chat_id if chat_id else None
         self._stop_event = threading.Event()
 
         # 用于在主线程中执行异步代码
@@ -197,6 +199,57 @@ class FeishuBot:
             traceback.print_exc()
             return False
 
+    async def send_card(self, card_content: dict) -> bool:
+        """
+        发送消息卡片（支持折叠面板等交互组件）
+        
+        Args:
+            card_content: 卡片内容字典，符合飞书消息卡片 JSON 结构
+            
+        Returns:
+            是否发送成功
+        """
+        if not self._chat_id:
+            logger.error("无法发送卡片：未获取到 chat_id")
+            return False
+
+        try:
+            from lark_oapi import Client
+            from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
+
+            # 构建客户端
+            client = Client.builder() \
+                .app_id(self.app_id) \
+                .app_secret(self.app_secret) \
+                .build()
+
+            # 构建卡片消息内容
+            body = CreateMessageRequestBody.builder() \
+                .receive_id(self._chat_id) \
+                .content(json.dumps(card_content, ensure_ascii=False)) \
+                .msg_type("interactive") \
+                .build()
+
+            request = CreateMessageRequest.builder() \
+                .receive_id_type("chat_id") \
+                .request_body(body) \
+                .build()
+
+            response = client.im.v1.message.create(request)
+
+            if response.success():
+                logger.debug("卡片发送成功")
+                return True
+            else:
+                logger.error(f"卡片发送失败: {response.msg}")
+                return False
+
+        except Exception as e:
+            logger.error(f"发送卡片异常: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     async def start(self) -> None:
         """启动 WebSocket 连接（在单独线程中）"""
         logger.info("正在启动飞书机器人...")
@@ -236,7 +289,7 @@ class FeishuBot:
             logger.warning("无法发送启动问候：未获取到 chat_id，等待用户先发送消息")
             return False
 
-        logger.info("发送启动问候消息...")
+        logger.info("发送启动问候消息到已配置的 chat_id...")
         return await self.send_text(message)
 
     async def stop(self) -> None:

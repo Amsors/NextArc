@@ -17,7 +17,7 @@ from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
 from .time_filter import TimeFilter
-from ..utils.formatter import format_activity_list
+from ..utils.formatter import build_activity_card
 
 logger = get_logger("scanner")
 
@@ -42,6 +42,7 @@ class ActivityScanner:
             ai_user_info: str = "",
             time_filter: Optional[TimeFilter] = None,
             use_time_filter: bool = False,
+            card_notify_callback: Optional[Callable[[dict], Coroutine[Any, Any, None]]] = None,
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
@@ -53,6 +54,7 @@ class ActivityScanner:
         self.ai_user_info = ai_user_info
         self.time_filter = time_filter
         self.use_time_filter = use_time_filter
+        self.card_notify_callback = card_notify_callback
         self.scheduler = AsyncIOScheduler()
         self.diff_engine = DiffEngine()
         self._last_scan_time: Optional[datetime] = None
@@ -164,7 +166,7 @@ class ActivityScanner:
                 # 发送新活动通知
                 if notify_new_activities and diff.added:
                     # 使用 create_task 在后台执行，避免阻塞定时扫描和 WebSocket 心跳
-                    self._create_background_task(self._send_new_activities_notification(diff, show_detail=True))
+                    self._create_background_task(self._send_new_activities_notification(diff))
 
                 # 推送所有差异
                 if notify_diff and self.notify_callback:
@@ -252,7 +254,7 @@ class ActivityScanner:
             except Exception as e:
                 logger.error(f"发送通知失败: {e}")
 
-    async def _send_new_activities_notification(self, diff, show_detail=False) -> None:
+    async def _send_new_activities_notification(self, diff) -> None:
         """
         发送新活动通知
         
@@ -298,33 +300,7 @@ class ActivityScanner:
                 if not activities:
                     logger.info("AI 筛选后无活动需要通知")
 
-            # 创建一个新的 DiffResult 仅包含筛选后的活动
-            filtered_changes = []
-            for activity in activities:
-                for change in diff.added:
-                    if change.activity_id == activity.id:
-                        filtered_changes.append(change)
-                        break
-
-            # 创建新的 diff 用于格式化通知
-            from src.models import DiffResult
-            filtered_diff = DiffResult(
-                added=filtered_changes,
-                removed=diff.removed,
-                modified=diff.modified,
-                old_scan_time=diff.old_scan_time,
-                new_scan_time=diff.new_scan_time,
-            )
-
             message_parts = []
-
-            # 主通知消息
-            main_message = filtered_diff.format_new_activities_notification()
-            if main_message:
-                message_parts.append(main_message)
-
-            if show_detail:
-                message_parts.append(format_activity_list(activities))
 
             # AI 筛选信息
             if self.use_ai_filter and self.ai_filter and ai_filtered:
@@ -345,9 +321,19 @@ class ActivityScanner:
             if message_parts:
                 final_message = "\n".join(message_parts)
                 await self.notify_callback(final_message)
-                logger.info(f"已发送新活动通知，共 {len(filtered_changes)} 个新活动"
+                logger.info(f"共 {len(activities)} 个新活动"
                             f"{'，' + str(len(ai_filtered)) + ' 个被 AI 过滤' if ai_filtered else ''}"
                             f"{'，' + str(len(time_filtered)) + ' 个被时间过滤' if time_filtered else ''}")
+
+            # 发送活动详细信息卡片
+            if activities and self.card_notify_callback:
+                try:
+                    card_content = build_activity_card(activities, f"🆕 发现 {len(activities)} 个新活动")
+                    await self.card_notify_callback(card_content)
+                    logger.info(f"已发送活动详细信息卡片")
+                except Exception as e:
+                    logger.error(f"发送活动卡片失败: {e}")
+
         except Exception as e:
             logger.error(f"发送新活动通知失败: {e}")
 
