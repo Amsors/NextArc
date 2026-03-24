@@ -13,7 +13,7 @@ from src.models.activity import (
     get_apply_progress,
     get_module_name,
     get_department_name,
-    get_labels_text,
+    get_labels_text, get_description_text,
 )
 
 
@@ -268,17 +268,17 @@ def build_activity_card(activities: list[SecondClass], title: str = "活动列�
         collapsible_panel = _build_activity_collapsible_panel(act, i)
         elements.append(collapsible_panel)
 
-    # 添加底部提示
-    elements.append({"tag": "hr"})
-    elements.append({
-        "tag": "note",
-        "elements": [
-            {
-                "tag": "plain_text",
-                "content": "💡 点击活动名称可查看详情"
-            }
-        ]
-    })
+    # # 添加底部提示
+    # elements.append({"tag": "hr"})
+    # elements.append({
+    #     "tag": "note",
+    #     "elements": [
+    #         {
+    #             "tag": "plain_text",
+    #             "content": "💡 点击活动名称可查看详情"
+    #         }
+    #     ]
+    # })
 
     return {
         "config": {"wide_screen_mode": True},
@@ -307,72 +307,35 @@ def _build_activity_collapsible_panel(act: SecondClass, index: int) -> dict:
     header_title = f"[{index}] {act.name} ({activity_type})"
 
     # 构建详细内容元素
-    detail_elements = [
+    detail_elements = []
+    detail_elements.append(
         {
-            "tag": "column_set",
-            "flex_mode": "none",
-            "background_style": "default",
-            "columns": [
-                {
-                    "tag": "column",
-                    "width": "weighted",
-                    "weight": 1,
-                    "vertical_align": "top",
-                    "elements": [
-                        {
-                            "tag": "markdown",
-                            "content": f"**📅 举办**\n{get_display_time(act, 'hold_time')}"
-                        }
-                    ]
-                },
-                {
-                    "tag": "column",
-                    "width": "weighted",
-                    "weight": 1,
-                    "vertical_align": "top",
-                    "elements": [
-                        {
-                            "tag": "markdown",
-                            "content": f"**📝 报名**\n{get_display_time(act, 'apply_time')}"
-                        }
-                    ]
-                }
-            ]
-        }
-    ]
 
-    # 模块和组织单位
-    detail_elements.append({
-        "tag": "column_set",
-        "flex_mode": "none",
-        "background_style": "default",
-        "columns": [
+            "tag": "markdown",
+            "content": f"**📅 举办**\n{get_display_time(act, 'hold_time')}"
+        }
+    )
+    if not act.is_series:
+        detail_elements.append(
             {
-                "tag": "column",
-                "width": "weighted",
-                "weight": 1,
-                "vertical_align": "top",
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": f"**📌 模块**\n{get_module_name(act)}"
-                    }
-                ]
-            },
-            {
-                "tag": "column",
-                "width": "weighted",
-                "weight": 1,
-                "vertical_align": "top",
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": f"**👥 组织单位**\n{get_department_name(act)}"
-                    }
-                ]
+                "tag": "markdown",
+                "content": f"**📝 报名**\n{get_display_time(act, 'apply_time')}"
             }
-        ]
-    })
+        )
+    detail_elements.append(
+        {
+            "tag": "markdown",
+            "content": f"**📌 模块**: {get_module_name(act)}"
+
+        }
+    )
+    detail_elements.append(
+        {
+            "tag": "markdown",
+            "content": f"**👥 组织单位**: {get_department_name(act)}"
+
+        }
+    )
 
     # 状态和学时/报名人数
     if act.is_series:
@@ -383,49 +346,31 @@ def _build_activity_collapsible_panel(act: SecondClass, index: int) -> dict:
         })
     else:
         # 单次活动显示状态、学时和报名人数
-        detail_elements.append({
-            "tag": "column_set",
-            "flex_mode": "none",
-            "background_style": "default",
-            "columns": [
-                {
-                    "tag": "column",
-                    "width": "weighted",
-                    "weight": 1,
-                    "vertical_align": "top",
-                    "elements": [
-                        {
-                            "tag": "markdown",
-                            "content": f"**📌 状态**\n{get_status_text(act)}"
-                        }
-                    ]
-                },
-                {
-                    "tag": "column",
-                    "width": "weighted",
-                    "weight": 1,
-                    "vertical_align": "top",
-                    "elements": [
-                        {
-                            "tag": "markdown",
-                            "content": f"**⏱️ 学时**\n{act.valid_hour or '未知'}"
-                        }
-                    ]
-                },
-                {
-                    "tag": "column",
-                    "width": "weighted",
-                    "weight": 1,
-                    "vertical_align": "top",
-                    "elements": [
-                        {
-                            "tag": "markdown",
-                            "content": f"**👥 报名**\n{get_apply_progress(act)}"
-                        }
-                    ]
-                }
-            ]
-        })
+        detail_elements.append(
+            {
+                "tag": "markdown",
+                "content": f"**📌 状态**: {get_status_text(act)}"
+            }
+        )
+        detail_elements.append(
+            {
+                "tag": "markdown",
+                "content": f"**⏱️ 学时**: {act.valid_hour or '未知'}"
+            }
+        )
+        detail_elements.append(
+            {
+                "tag": "markdown",
+                "content": f"**👥 报名**: {get_apply_progress(act)}"
+            }
+        )
+
+    detail_elements.append(
+        {
+            "tag": "markdown",
+            "content": f"**👥 活动描述**\n{get_description_text(act)}"
+        }
+    )
 
     # 标签（如果有）
     labels = get_labels_text(act)

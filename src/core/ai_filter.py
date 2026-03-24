@@ -18,6 +18,7 @@ from src.models.activity import (
     get_apply_progress,
     get_module_name,
     get_department_name,
+    get_description_text,
 )
 from src.utils.logger import get_logger
 
@@ -105,9 +106,9 @@ class AIFilter:
             f"活动名称：{activity.name}",
             f"活动状态：{get_status_text(activity)}",
             f"举办时间：{get_display_time(activity, 'hold_time')}",
-            f"报名时间：{get_display_time(activity, 'apply_time')}",
             f"模块：{get_module_name(activity)}",
             f"组织单位：{get_department_name(activity)}",
+            f"活动描述：{get_description_text(activity)}"
         ]
         if not activity.is_series:
             lines.append(f"学时：{activity.valid_hour or '未知'}")
