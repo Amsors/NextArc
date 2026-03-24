@@ -103,6 +103,7 @@ def format_status_message(
         next_scan: Optional[datetime],
         is_logged_in: bool,
         db_count: int,
+        ignore_count: int = 0,
 ) -> str:
     """
     格式化状态消息
@@ -113,6 +114,7 @@ def format_status_message(
         next_scan: 下次扫描时间
         is_logged_in: 是否已登录
         db_count: 数据库数量
+        ignore_count: 被忽略的活动数量
         
     Returns:
         格式化后的文本
@@ -143,6 +145,7 @@ def format_status_message(
         lines.append(f"⏰ 下次扫描：{next_scan.strftime('%Y-%m-%d %H:%M:%S')}")
 
     lines.append(f"🗄️  数据库数量：{db_count}")
+    lines.append(f"🗑️  不感兴趣活动：{ignore_count}")
 
     return "\n".join(lines)
 

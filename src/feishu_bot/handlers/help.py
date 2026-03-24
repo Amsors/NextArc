@@ -30,4 +30,5 @@ class HelpHandler(CommandHandler):
             "/cancel 取消报名\n" + \
             "/search 搜索二课\n" + \
             "/join 报名二课\n" + \
+            "/ignore 将活动加入不感兴趣列表\n" + \
             "/alive 查看系统状态\n"

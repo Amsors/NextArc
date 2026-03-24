@@ -6,7 +6,9 @@
 import aiosqlite
 from pyustc.young import SecondClass, Status
 
+from src.core import IgnoreManager
 from src.models import UserSession, secondclass_from_db_row
+from src.utils.formatter import build_activity_card
 from src.utils.logger import get_logger
 from .base import CommandHandler
 
@@ -16,6 +18,21 @@ logger = get_logger("feishu.handler.valid")
 class ValidHandler(CommandHandler):
     """查询可报名活动指令"""
 
+    # 类级别的忽略管理器
+    _ignore_manager: IgnoreManager = None
+    # 类级别的卡片发送回调
+    _send_card_callback = None
+
+    @classmethod
+    def set_ignore_manager(cls, ignore_manager: IgnoreManager) -> None:
+        """设置忽略管理器"""
+        cls._ignore_manager = ignore_manager
+
+    @classmethod
+    def set_card_sender(cls, send_card_callback) -> None:
+        """设置卡片发送回调"""
+        cls._send_card_callback = send_card_callback
+
     @property
     def command(self) -> str:
         return "valid"
@@ -24,7 +41,7 @@ class ValidHandler(CommandHandler):
         return (
             "/valid [重新扫描] [全部] - 显示可报名的活动\n"
             "  重新扫描 - 先更新数据库再查询\n"
-            "  全部 - 显示所有活动（不启用 AI/时间筛选）\n"
+            "  全部 - 显示所有活动（不启用 AI/时间/数据库筛选）\n"
             "  深度 - 深度更新活动信息"
         )
 
@@ -94,6 +111,14 @@ class ValidHandler(CommandHandler):
             # 如果不显示全部，则应用筛选器
             if not show_all:
 
+                # 应用数据库筛选（被用户标记为不感兴趣的活动）
+                if self._ignore_manager:
+                    db_filtered = []
+                    activities, db_filtered = await self._ignore_manager.filter_activities(activities)
+                    if db_filtered:
+                        filter_info.append(f"🗑️ 数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
+                        logger.info(f"数据库筛选过滤了 {len(db_filtered)} 个活动")
+
                 # 应用时间筛选（如果启用）
                 if self._scanner.use_time_filter and self._scanner.time_filter:
                     time_filtered = []
@@ -143,16 +168,38 @@ class ValidHandler(CommandHandler):
                     lines.append("💡 发送「/valid 全部」查看所有活动（不进行筛选）")
                 return "\n".join(lines)
 
-            # 显示活动列表
+            # 保存显示的活动列表到会话（用于"不感兴趣"功能）
+            session.set_displayed_activities(activities, source="valid")
+
+            # 发送折叠卡片形式的活动列表
+            if activities and self._send_card_callback:
+                try:
+                    card_title = f"📋 可报名活动（共 {len(activities)} 个）"
+                    card_content = build_activity_card(activities, card_title)
+                    # 异步发送卡片
+                    import asyncio
+                    asyncio.create_task(self._send_card_callback(card_content))
+                    logger.info(f"已发送活动卡片: {len(activities)} 个活动")
+                except Exception as e:
+                    logger.error(f"发送活动卡片失败: {e}")
+
+            # 添加文本提示信息
             lines.append("")
-            for i, act in enumerate(activities, 1):
-                from src.models.activity import format_secondclass_for_list
-                lines.append(format_secondclass_for_list(act, i))
-                lines.append("")
+            lines.append(f"📋 已发送 {len(activities)} 个可报名活动的卡片")
+            lines.append("（使用折叠面板展示，点击活动名称查看详情）")
 
             # 提示信息
-            if not show_all and (self._scanner.use_ai_filter or self._scanner.use_time_filter):
-                lines.append("💡 发送「/valid 全部」查看所有活动（不进行筛选）")
+            if not show_all:
+                has_filter = (
+                        self._scanner.use_ai_filter or
+                        self._scanner.use_time_filter or
+                        self._ignore_manager
+                )
+                if has_filter:
+                    lines.append("💡 发送「/valid 全部」查看所有活动（不进行筛选）")
+
+            # 添加不感兴趣提示
+            lines.append("🗑️ 对活动不感兴趣？发送「不感兴趣 序号」或「不感兴趣 全部」")
 
             return "\n".join(lines)
 

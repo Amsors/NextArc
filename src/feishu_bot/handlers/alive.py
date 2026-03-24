@@ -1,5 +1,6 @@
 """/alive 指令处理器"""
 
+from src.core import IgnoreManager
 from src.models import UserSession
 from src.utils.formatter import format_status_message
 from src.utils.logger import get_logger
@@ -11,6 +12,14 @@ logger = get_logger("feishu.handler.alive")
 
 class AliveHandler(CommandHandler):
     """检查服务状态指令"""
+
+    # 类级别的忽略管理器
+    _ignore_manager: IgnoreManager = None
+
+    @classmethod
+    def set_ignore_manager(cls, ignore_manager: IgnoreManager) -> None:
+        """设置忽略管理器"""
+        cls._ignore_manager = ignore_manager
 
     @property
     def command(self) -> str:
@@ -34,12 +43,18 @@ class AliveHandler(CommandHandler):
             is_logged_in = self._auth_manager.is_logged_in()
             db_count = self._db_manager.get_db_count()
 
+            # 获取忽略数量
+            ignore_count = 0
+            if self._ignore_manager:
+                ignore_count = await self._ignore_manager.get_ignored_count()
+
             return format_status_message(
                 is_running=is_running,
                 last_scan=last_scan,
                 next_scan=next_scan,
                 is_logged_in=is_logged_in,
                 db_count=db_count,
+                ignore_count=ignore_count,
             )
 
         except Exception as e:

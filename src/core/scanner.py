@@ -16,6 +16,7 @@ from .ai_filter import AIFilter
 from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
+from .ignore_manager import IgnoreManager
 from .time_filter import TimeFilter
 from ..utils.formatter import build_activity_card
 
@@ -43,6 +44,7 @@ class ActivityScanner:
             time_filter: Optional[TimeFilter] = None,
             use_time_filter: bool = False,
             card_notify_callback: Optional[Callable[[dict], Coroutine[Any, Any, None]]] = None,
+            ignore_manager: Optional[IgnoreManager] = None,
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
@@ -55,6 +57,7 @@ class ActivityScanner:
         self.time_filter = time_filter
         self.use_time_filter = use_time_filter
         self.card_notify_callback = card_notify_callback
+        self.ignore_manager = ignore_manager
         self.scheduler = AsyncIOScheduler()
         self.diff_engine = DiffEngine()
         self._last_scan_time: Optional[datetime] = None
@@ -254,12 +257,13 @@ class ActivityScanner:
             except Exception as e:
                 logger.error(f"发送通知失败: {e}")
 
-    async def _send_new_activities_notification(self, diff) -> None:
+    async def _send_new_activities_notification(self, diff, enable_filter: bool) -> None:
         """
         发送新活动通知
         
         Args:
             diff: 差异结果，包含新增活动列表
+            enable_filter: 是否启用筛选（数据库筛选、时间筛选、AI 筛选）
         """
         if not self.notify_new_activities:
             return
@@ -278,29 +282,45 @@ class ActivityScanner:
             activities = await self.get_activity_list_by_id(new_activity_ids)
             ai_filtered = []  # AI 过滤掉的活动
             time_filtered = []  # 时间过滤掉的活动
+            db_filtered = []  # 数据库筛选过滤掉的活动（用户标记为不感兴趣）
 
-            # 如果启用时间筛选，则进行筛选
-            if self.use_time_filter and self.time_filter:
-                logger.info(f"使用时间筛选检查 {len(activities)} 个新活动...")
-                activities, time_filtered = self.time_filter.filter_activities(activities)
+            if enable_filter:
+                # 应用数据库筛选（被用户标记为不感兴趣的活动）
+                if self.ignore_manager:
+                    logger.info(f"使用数据库筛选检查 {len(activities)} 个新活动...")
+                    activities, db_filtered = await self.ignore_manager.filter_activities(activities)
 
-                if not activities:
-                    logger.info("时间筛选后无活动需要通知")
-                    return
+                    if not activities:
+                        logger.info("数据库筛选后无活动需要通知（全部被用户标记为不感兴趣）")
+                        return
 
-            # 如果启用 AI 筛选，则进行筛选
-            if self.use_ai_filter and self.ai_filter and self.ai_user_info:
-                logger.info(f"使用 AI 筛选 {len(activities)} 个新活动...")
-                activities = await self.ai_filter.filter_activities(
-                    activities,
-                    self.ai_user_info,
-                    uninterested_activities=ai_filtered
-                )
+                # 如果启用时间筛选，则进行筛选
+                if self.use_time_filter and self.time_filter:
+                    logger.info(f"使用时间筛选检查 {len(activities)} 个新活动...")
+                    activities, time_filtered = self.time_filter.filter_activities(activities)
 
-                if not activities:
-                    logger.info("AI 筛选后无活动需要通知")
+                    if not activities:
+                        logger.info("时间筛选后无活动需要通知")
+                        return
+
+                # 如果启用 AI 筛选，则进行筛选
+                if self.use_ai_filter and self.ai_filter and self.ai_user_info:
+                    logger.info(f"使用 AI 筛选 {len(activities)} 个新活动...")
+                    activities = await self.ai_filter.filter_activities(
+                        activities,
+                        self.ai_user_info,
+                        uninterested_activities=ai_filtered
+                    )
+
+                    if not activities:
+                        logger.info("AI 筛选后无活动需要通知")
 
             message_parts = []
+
+            # 数据库筛选信息
+            if db_filtered:
+                message_parts.append(f"🗑️ 数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
+                message_parts.append("")
 
             # AI 筛选信息
             if self.use_ai_filter and self.ai_filter and ai_filtered:
@@ -322,6 +342,8 @@ class ActivityScanner:
                 final_message = "\n".join(message_parts)
                 await self.notify_callback(final_message)
                 logger.info(f"共 {len(activities)} 个新活动"
+                            f"筛选启用: {enable_filter}"
+                            f"{'，' + str(len(db_filtered)) + ' 个被数据库过滤' if db_filtered else ''}"
                             f"{'，' + str(len(ai_filtered)) + ' 个被 AI 过滤' if ai_filtered else ''}"
                             f"{'，' + str(len(time_filtered)) + ' 个被时间过滤' if time_filtered else ''}")
 

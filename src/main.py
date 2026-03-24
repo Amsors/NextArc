@@ -10,8 +10,12 @@ sys.path.insert(0, str(project_root))
 from src.config import load_settings
 from src.config.preferences import load_preferences
 from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConfig
+from src.core.ignore_manager import IgnoreManager
 from src.core.time_filter import TimeFilter
 from src.feishu_bot import FeishuBot
+from src.feishu_bot.handlers.alive import AliveHandler
+from src.feishu_bot.handlers.ignore import IgnoreHandler
+from src.feishu_bot.handlers.valid import ValidHandler
 from src.feishu_bot.message_router import MessageRouter
 from src.utils import setup_logging, get_logger
 from src.utils.formatter import format_scan_result
@@ -29,6 +33,7 @@ class NextArcApp:
         self.preferences = None
         self.auth_manager: AuthManager = None
         self.db_manager: DatabaseManager = None
+        self.ignore_manager: IgnoreManager = None
         self.scanner: ActivityScanner = None
         self.bot: FeishuBot = None
         self.router: MessageRouter = None
@@ -66,6 +71,14 @@ class NextArcApp:
                 max_history=self.settings.database.max_history,
             )
             logger.info(f"数据库管理器初始化完成，数据目录: {self.settings.database.data_dir}")
+
+            # 初始化忽略管理器
+            self.ignore_manager = IgnoreManager(
+                db_path=project_root / "data" / "ignore.db"
+            )
+            await self.ignore_manager.initialize()
+            ignored_count = await self.ignore_manager.get_ignored_count()
+            logger.info(f"✅ 忽略管理器初始化完成，已有 {ignored_count} 个被忽略的活动")
 
             # 获取凭据并初始化认证管理器
             username, password = self.settings.get_credentials()
@@ -122,6 +135,7 @@ class NextArcApp:
                 time_filter=self.time_filter,
                 use_time_filter=use_time_filter,
                 card_notify_callback=self._on_card_notify,
+                ignore_manager=self.ignore_manager,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
@@ -129,11 +143,17 @@ class NextArcApp:
                 logger.info(f"AI 筛选: 开启，模型: {self.settings.ai.model}")
             if use_time_filter and self.time_filter:
                 logger.info("时间筛选: 开启")
+            logger.info("🗑️ 数据库筛选: 已启用")
 
             # 初始化消息路由器
             self.router = MessageRouter()
-            self.router.set_dependencies(self.scanner, self.auth_manager, self.db_manager)
+            self.router.set_dependencies(self.scanner, self.auth_manager, self.db_manager, self.ignore_manager)
             logger.info("消息路由器初始化完成")
+
+            # 为 ValidHandler、AliveHandler 和 IgnoreHandler 设置忽略管理器
+            ValidHandler.set_ignore_manager(self.ignore_manager)
+            AliveHandler.set_ignore_manager(self.ignore_manager)
+            IgnoreHandler.set_ignore_manager(self.ignore_manager)
 
             # 初始化飞书机器人
             if self.settings.feishu.app_id and self.settings.feishu.app_secret:
@@ -145,6 +165,8 @@ class NextArcApp:
                     message_handler=self._handle_message,
                     chat_id=chat_id,
                 )
+                # 设置卡片发送回调（用于 /valid 等指令发送折叠卡片）
+                self.router.set_card_sender(self.bot.send_card)
                 if chat_id:
                     logger.info(f"飞书机器人初始化完成（已配置 chat_id: {chat_id}）")
                 else:
@@ -278,6 +300,8 @@ class NextArcApp:
             else:
                 mode_desc = "完全包含才过滤"
             filter_details.append(f"⏰ 时间筛选({mode_desc})")
+        # 数据库筛选始终启用
+        filter_details.append("🗑️ 数据库筛选(不感兴趣)")
 
         if filter_details:
             lines.append("已启用筛选：")
@@ -294,6 +318,10 @@ class NextArcApp:
             "/search <关键词> - 搜索活动",
             "/join <序号> - 报名活动",
             "/cancel <序号> - 取消报名",
+            "",
+            "🗑️ 不感兴趣功能：",
+            "发送「不感兴趣 序号」将活动加入忽略列表",
+            "序号格式：1,2,3 或 1-5 或 全部",
             "",
             "💡 提示：搜索结果有效期5分钟，报名/取消需要二次确认。",
         ])
@@ -327,6 +355,7 @@ class NextArcApp:
             "db_count": self.db_manager.get_db_count() if self.db_manager else 0,
             "bot_connected": self.bot.is_connected() if self.bot else False,
             "time_filter_enabled": self.time_filter.is_enabled() if self.time_filter else False,
+            "ignore_count": self.ignore_manager.get_ignored_count() if self.ignore_manager else 0,
         }
 
 

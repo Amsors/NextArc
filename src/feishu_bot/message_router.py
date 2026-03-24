@@ -1,11 +1,13 @@
 """消息路由器"""
 import traceback
+from typing import Callable, Coroutine, Optional, Any
 
 from src.models import UserSession
 from src.utils.logger import get_logger
-from .handlers import get_all_handlers
+from .handlers import get_all_handlers, IgnoreHandler
 from .handlers.cancel import CancelHandler
 from .handlers.join import JoinHandler
+from .handlers.valid import ValidHandler
 
 logger = get_logger("feishu.router")
 
@@ -17,8 +19,9 @@ class MessageRouter:
         self.handlers = get_all_handlers()
         self.cancel_handler = CancelHandler()
         self.join_handler = JoinHandler()
+        self._send_card_callback: Optional[Callable[[dict], Coroutine[Any, Any, None]]] = None
 
-    def set_dependencies(self, scanner, auth_manager, db_manager):
+    def set_dependencies(self, scanner, auth_manager, db_manager, ignore_manager=None):
         """设置依赖的组件"""
         from .handlers.base import CommandHandler
 
@@ -32,6 +35,16 @@ class MessageRouter:
         self.join_handler._scanner = scanner
         self.join_handler._auth_manager = auth_manager
         self.join_handler._db_manager = db_manager
+
+        # 设置忽略处理器依赖
+        if ignore_manager:
+            IgnoreHandler.set_ignore_manager(ignore_manager)
+
+    def set_card_sender(self, send_card_callback: Callable[[dict], Coroutine[Any, Any, None]]) -> None:
+        """设置卡片发送回调函数"""
+        self._send_card_callback = send_card_callback
+        # 同时设置给 ValidHandler
+        ValidHandler.set_card_sender(send_card_callback)
 
     async def handle_message(self, text: str, session: UserSession) -> str:
         """

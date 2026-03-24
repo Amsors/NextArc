@@ -235,6 +235,7 @@ def get_description_text(sc: SecondClass) -> str:
         return sc.conceive
     return sc.conceive or "无"
 
+
 def format_secondclass_for_list(sc: SecondClass, index: int) -> str:
     """格式化为列表显示
     
