@@ -47,6 +47,7 @@ class ValidHandler(CommandHandler):
         need_rescan = "重新扫描" in args
         show_all = "全部" in args or "所有" in args
         deep_update = "深度" in args or "深度更新" in args
+        ai_filter_again = "重新筛选" in args
 
         logger.info(f"执行 /valid 指令，重新扫描={need_rescan}, 显示全部={show_all}, 深度更新={deep_update}")
 
@@ -139,6 +140,9 @@ class ValidHandler(CommandHandler):
                     activities, ai_filtered = await self._scanner.ai_filter.filter_activities(
                         activities,
                         ai_user_info,
+                        write_to_db=True,
+                        prefer_cached=not ai_filter_again,
+                        preference_manager=self._user_preference_manager,
                     )
                     ai_filtered_count = len(ai_filtered)
                     if ai_filtered_count > 0:

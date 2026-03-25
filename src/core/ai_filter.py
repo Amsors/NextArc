@@ -6,8 +6,9 @@
 
 import asyncio
 import json
+import time
 import traceback
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from openai import AsyncOpenAI, APIError, RateLimitError, APITimeoutError
 from pyustc.young import SecondClass
@@ -23,6 +24,9 @@ from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
 from src.utils.rate_limiter import RateLimiterWrapper
 from src.utils.retry import RetryConfig, with_retry
+
+if TYPE_CHECKING:
+    from src.core.user_preference_manager import UserPreferenceManager
 
 logger = get_logger("ai_filter")
 
@@ -239,13 +243,19 @@ class AIFilter:
             self,
             activities: list[SecondClass],
             user_info: str,
+            write_to_db: bool = True,
+            prefer_cached: bool = False,
+            preference_manager: Optional['UserPreferenceManager'] = None,
     ) -> tuple[list[SecondClass], list[FilteredActivity]]:
         """
-        批量筛选活动（带速率限制和重试机制）
+        批量筛选活动（带速率限制、重试机制和缓存支持）
 
         Args:
             activities: 待筛选的活动列表
             user_info: 用户信息描述
+            write_to_db: 是否将审核结果写入数据库
+            prefer_cached: 是否优先从数据库读取已有审核结果
+            preference_manager: 用户偏好数据库管理器（用于数据库操作）
 
         Returns:
             (保留的活动列表, 被过滤掉的 FilteredActivity 列表)
@@ -257,7 +267,118 @@ class AIFilter:
             logger.warning("未配置 API 密钥，跳过 AI 筛选")
             return activities, []
 
-        logger.info(f"开始 AI 筛选 {len(activities)} 个活动（带速率限制和重试）...")
+        # 如果启用缓存优先，先查询数据库
+        cached_results: dict[str, dict] = {}
+        activities_to_judge = activities
+
+        if prefer_cached and preference_manager:
+            activity_ids = [a.id for a in activities]
+            cached_results = await preference_manager.get_ai_filter_results(activity_ids)
+
+            # 分离已缓存和未缓存的活动
+            cached_ids = set(cached_results.keys())
+            activities_to_judge = [a for a in activities if a.id not in cached_ids]
+
+            logger.info(f"AI 筛选: {len(cached_results)} 个活动使用缓存，{len(activities_to_judge)} 个活动需要 API 审核")
+        else:
+            logger.info(f"开始 AI 筛选 {len(activities)} 个活动（带速率限制和重试）...")
+
+        # 对未缓存的活动进行 API 审核
+        api_results: list[tuple[SecondClass, bool, str]] = []
+        if activities_to_judge:
+            api_results = await self._judge_activities_batch(activities_to_judge, user_info)
+
+        # 合并结果（缓存 + API）
+        all_results = self._merge_results(activities, cached_results, api_results)
+
+        # 如果需要写入数据库
+        if write_to_db and preference_manager:
+            # 只保存新审核的结果（如果 prefer_cached=True）
+            # 或者保存所有结果（如果 prefer_cached=False，表示重新审核全部）
+            results_to_save: list[tuple[str, bool, str, Optional[int]]] = []
+            current_time = int(time.time())
+
+            for activity, is_interested, reason in all_results:
+                # 如果 prefer_cached=True，只保存新审核的（不在缓存中的）
+                # 如果 prefer_cached=False，保存所有（因为都是重新审核的）
+                if not prefer_cached or activity.id not in cached_results:
+                    results_to_save.append((activity.id, is_interested, reason, current_time))
+
+            if results_to_save:
+                success, failed = await preference_manager.save_ai_filter_results(results_to_save)
+                logger.debug(f"保存 AI 筛选结果到数据库: 成功 {success} 个, 失败 {failed} 个")
+
+        # 分离保留和过滤的活动
+        kept_activities: list[SecondClass] = []
+        filtered_activities: list[FilteredActivity] = []
+
+        for activity, is_interested, reason in all_results:
+            if is_interested:
+                kept_activities.append(activity)
+                logger.debug(f"通过AI筛选：活动 '{activity.name}'")
+            else:
+                filtered_activities.append(FilteredActivity(
+                    activity=activity,
+                    reason=reason or "AI认为不符合用户兴趣",
+                    filter_type="ai"
+                ))
+                logger.debug(f"没有通过AI筛选：活动 '{activity.name}'")
+
+        logger.info(f"AI 筛选完成：{len(kept_activities)}/{len(activities)} 个活动通过")
+        return kept_activities, filtered_activities
+
+    def _merge_results(
+            self,
+            activities: list[SecondClass],
+            cached_results: dict[str, dict],
+            api_results: list[tuple[SecondClass, bool, str]]
+    ) -> list[tuple[SecondClass, bool, str]]:
+        """
+        合并缓存结果和 API 审核结果
+
+        Args:
+            activities: 所有活动列表
+            cached_results: 缓存的结果 {activity_id: {...}}
+            api_results: API 审核结果 [(activity, is_interested, reason), ...]
+
+        Returns:
+            合并后的结果列表 [(activity, is_interested, reason), ...]
+        """
+        # 构建 API 结果字典
+        api_results_dict = {activity.id: (is_interested, reason) for activity, is_interested, reason in api_results}
+
+        merged: list[tuple[SecondClass, bool, str]] = []
+        for activity in activities:
+            if activity.id in cached_results:
+                # 使用缓存结果
+                cached = cached_results[activity.id]
+                merged.append((activity, cached["is_interested"], cached["reason"]))
+            elif activity.id in api_results_dict:
+                # 使用 API 结果
+                is_interested, reason = api_results_dict[activity.id]
+                merged.append((activity, is_interested, reason))
+            else:
+                # 默认保留（不应该发生）
+                logger.warning(f"活动 '{activity.name}' 没有审核结果，默认保留")
+                merged.append((activity, True, "无审核结果，默认保留"))
+
+        return merged
+
+    async def _judge_activities_batch(
+            self,
+            activities: list[SecondClass],
+            user_info: str
+    ) -> list[tuple[SecondClass, bool, str]]:
+        """
+        批量审核活动（带速率限制和重试）
+
+        Args:
+            activities: 待审核的活动列表
+            user_info: 用户信息描述
+
+        Returns:
+            [(activity, is_interested, reason), ...]
+        """
 
         async def judge_with_limit_and_retry(activity: SecondClass) -> tuple[SecondClass, bool, str]:
             """带速率限制和重试的判断任务"""
@@ -283,30 +404,16 @@ class AIFilter:
         tasks = [judge_with_limit_and_retry(activity) for activity in activities]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 收集通过筛选的活动
-        kept_activities = []
-        filtered_activities: list[FilteredActivity] = []
-
+        # 处理结果
+        processed_results: list[tuple[SecondClass, bool, str]] = []
         for result in results:
             if isinstance(result, Exception):
                 # 任务本身出错（不应该发生，但保险起见）
                 logger.error(f"AI 筛选任务异常: {result}")
                 continue
+            processed_results.append(result)
 
-            activity, is_interested, reason = result
-            if is_interested:
-                kept_activities.append(activity)
-                logger.debug(f"通过AI筛选：活动 '{activity.name}'")
-            else:
-                filtered_activities.append(FilteredActivity(
-                    activity=activity,
-                    reason=reason or "AI认为不符合用户兴趣",
-                    filter_type="ai"
-                ))
-                logger.debug(f"没有通过AI筛选：活动 '{activity.name}'")
-
-        logger.info(f"AI 筛选完成：{len(kept_activities)}/{len(activities)} 个活动通过")
-        return kept_activities, filtered_activities
+        return processed_results
 
     async def _judge_activity_with_reason(self, activity: SecondClass, user_info: str) -> tuple[bool, str]:
         """

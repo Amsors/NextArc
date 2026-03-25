@@ -9,7 +9,6 @@
 
 import asyncio
 import time
-from typing import Optional
 
 
 class TokenBucketRateLimiter:

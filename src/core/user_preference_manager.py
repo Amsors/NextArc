@@ -92,6 +92,20 @@ class UserPreferenceManager:
                 ON interested_activities(added_at)
             """)
 
+            # 创建 AI 筛选结果表
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS ai_filter_result (
+                    activity_id TEXT PRIMARY KEY,
+                    reviewed_at INTEGER NOT NULL,
+                    is_interested BOOLEAN NOT NULL,
+                    reason TEXT NOT NULL
+                )
+            """)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_ai_filter_reviewed_at 
+                ON ai_filter_result(reviewed_at)
+            """)
+
             await db.commit()
 
         self._initialized = True
@@ -731,3 +745,253 @@ class UserPreferenceManager:
             logger.info(f"从感兴趣白名单恢复了 {len(restored)} 个活动，将绕过 AI/时间筛选")
 
         return to_filter, restored
+
+    # ==================== ai_filter_result 表操作 ====================
+
+    async def get_ai_filter_result(self, activity_id: str) -> Optional[dict]:
+        """
+        获取单个活动的 AI 筛选结果
+
+        Args:
+            activity_id: 活动ID
+
+        Returns:
+            {"is_interested": bool, "reason": str, "reviewed_at": int} 或 None
+        """
+        await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.execute(
+                        "SELECT is_interested, reason, reviewed_at FROM ai_filter_result WHERE activity_id = ?",
+                        (activity_id,)
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        return {
+                            "is_interested": bool(row[0]),
+                            "reason": row[1],
+                            "reviewed_at": row[2]
+                        }
+                    return None
+        except Exception as e:
+            logger.error(f"获取 AI 筛选结果失败: {e}")
+            return None
+
+    async def get_ai_filter_results(self, activity_ids: list[str]) -> dict[str, dict]:
+        """
+        批量获取 AI 筛选结果
+
+        Args:
+            activity_ids: 活动ID列表
+
+        Returns:
+            {activity_id: {"is_interested": bool, "reason": str, "reviewed_at": int}, ...}
+        """
+        await self.initialize()
+
+        if not activity_ids:
+            return {}
+
+        try:
+            # 构建占位符
+            placeholders = ','.join('?' * len(activity_ids))
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.execute(
+                        f"SELECT activity_id, is_interested, reason, reviewed_at FROM ai_filter_result WHERE activity_id IN ({placeholders})",
+                        activity_ids
+                ) as cursor:
+                    rows = await cursor.fetchall()
+                    return {
+                        row[0]: {
+                            "is_interested": bool(row[1]),
+                            "reason": row[2],
+                            "reviewed_at": row[3]
+                        }
+                        for row in rows
+                    }
+        except Exception as e:
+            logger.error(f"批量获取 AI 筛选结果失败: {e}")
+            return {}
+
+    async def save_ai_filter_result(
+            self,
+            activity_id: str,
+            is_interested: bool,
+            reason: str,
+            reviewed_at: Optional[int] = None
+    ) -> bool:
+        """
+        保存单个 AI 筛选结果
+
+        Args:
+            activity_id: 活动ID
+            is_interested: 是否感兴趣
+            reason: 原因说明
+            reviewed_at: 审核时间戳（默认当前时间）
+
+        Returns:
+            是否保存成功
+        """
+        await self.initialize()
+
+        if reviewed_at is None:
+            reviewed_at = int(time.time())
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    """
+                    INSERT OR REPLACE INTO ai_filter_result (activity_id, reviewed_at, is_interested, reason)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (activity_id, reviewed_at, int(is_interested), reason)
+                )
+                await db.commit()
+            logger.debug(f"保存 AI 筛选结果: {activity_id}, interested={is_interested}")
+            return True
+        except Exception as e:
+            logger.error(f"保存 AI 筛选结果失败: {e}")
+            return False
+
+    async def save_ai_filter_results(
+            self,
+            results: list[tuple[str, bool, str, Optional[int]]]
+    ) -> tuple[int, int]:
+        """
+        批量保存 AI 筛选结果
+
+        Args:
+            results: 结果列表，每个元素为 (activity_id, is_interested, reason, reviewed_at)
+                    reviewed_at 为 None 时使用当前时间
+
+        Returns:
+            (成功数量, 失败数量)
+        """
+        await self.initialize()
+
+        if not results:
+            return 0, 0
+
+        success_count = 0
+        failed_count = 0
+        current_time = int(time.time())
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                for result in results:
+                    try:
+                        activity_id, is_interested, reason, reviewed_at = result
+                        if reviewed_at is None:
+                            reviewed_at = current_time
+
+                        await db.execute(
+                            """
+                            INSERT OR REPLACE INTO ai_filter_result (activity_id, reviewed_at, is_interested, reason)
+                            VALUES (?, ?, ?, ?)
+                            """,
+                            (activity_id, reviewed_at, int(is_interested), reason)
+                        )
+                        success_count += 1
+                    except Exception as e:
+                        logger.warning(f"保存活动 {result[0] if result else 'unknown'} 的 AI 筛选结果失败: {e}")
+                        failed_count += 1
+
+                await db.commit()
+
+            logger.info(f"批量保存 AI 筛选结果: 成功 {success_count} 个, 失败 {failed_count} 个")
+            return success_count, failed_count
+        except Exception as e:
+            logger.error(f"批量保存 AI 筛选结果失败: {e}")
+            return 0, len(results)
+
+    async def delete_ai_filter_result(self, activity_id: str) -> bool:
+        """
+        删除单个 AI 筛选结果
+
+        Args:
+            activity_id: 活动ID
+
+        Returns:
+            是否删除成功
+        """
+        await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "DELETE FROM ai_filter_result WHERE activity_id = ?",
+                    (activity_id,)
+                )
+                await db.commit()
+            logger.debug(f"删除 AI 筛选结果: {activity_id}")
+            return True
+        except Exception as e:
+            logger.error(f"删除 AI 筛选结果失败: {e}")
+            return False
+
+    async def get_all_ai_filter_results(self) -> dict[str, dict]:
+        """
+        获取所有 AI 筛选结果
+
+        Returns:
+            {activity_id: {"is_interested": bool, "reason": str, "reviewed_at": int}, ...}
+        """
+        await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.execute(
+                        "SELECT activity_id, is_interested, reason, reviewed_at FROM ai_filter_result"
+                ) as cursor:
+                    rows = await cursor.fetchall()
+                    return {
+                        row[0]: {
+                            "is_interested": bool(row[1]),
+                            "reason": row[2],
+                            "reviewed_at": row[3]
+                        }
+                        for row in rows
+                    }
+        except Exception as e:
+            logger.error(f"获取所有 AI 筛选结果失败: {e}")
+            return {}
+
+    async def clear_ai_filter_results(self) -> bool:
+        """
+        清空所有 AI 筛选结果
+
+        Returns:
+            是否清空成功
+        """
+        await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("DELETE FROM ai_filter_result")
+                await db.commit()
+            logger.info("已清空所有 AI 筛选结果")
+            return True
+        except Exception as e:
+            logger.error(f"清空 AI 筛选结果失败: {e}")
+            return False
+
+    async def get_ai_filter_count(self) -> int:
+        """
+        获取 AI 筛选结果数量
+
+        Returns:
+            结果数量
+        """
+        await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                async with db.execute(
+                        "SELECT COUNT(*) FROM ai_filter_result"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    return row[0] if row else 0
+        except Exception as e:
+            logger.error(f"获取 AI 筛选结果数量失败: {e}")
+            return 0

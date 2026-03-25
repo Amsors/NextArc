@@ -334,6 +334,9 @@ class ActivityScanner:
                     activities, ai_filtered_result = await self.ai_filter.filter_activities(
                         activities,
                         self.ai_user_info,
+                        write_to_db=True,
+                        prefer_cached=True,
+                        preference_manager=self.user_preference_manager,
                     )
                     ai_filtered = ai_filtered_result
 
