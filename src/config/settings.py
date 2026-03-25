@@ -94,6 +94,69 @@ class LogConfig(BaseModel):
     level: str = "INFO"
 
 
+class AIRateLimitConfig(BaseModel):
+    """AI API 速率限制配置
+    
+    用于控制 API 请求速率，防止触发限流
+    """
+    requests_per_minute: int = Field(
+        default=0,
+        ge=0,
+        description="每分钟最大请求数（0表示不限制）"
+    )
+    max_concurrency: int = Field(
+        default=3,
+        ge=1,
+        le=100,
+        description="最大并发数"
+    )
+    enable_queue: bool = Field(
+        default=True,
+        description="达到速率限制时是否排队等待"
+    )
+    queue_timeout: float = Field(
+        default=300.0,
+        ge=0,
+        description="队列最大等待时间（秒）"
+    )
+
+
+class AIRetryConfig(BaseModel):
+    """AI API 重试配置
+    
+    用于配置请求失败时的重试策略
+    """
+    max_retries: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description="最大重试次数"
+    )
+    base_delay: float = Field(
+        default=2.0,
+        ge=0,
+        description="基础重试延迟（秒）"
+    )
+    max_delay: float = Field(
+        default=60.0,
+        ge=0,
+        description="最大重试延迟（秒）"
+    )
+    backoff_factor: float = Field(
+        default=2.0,
+        ge=1.0,
+        description="退避倍数（指数退避：delay = base_delay * (backoff_factor ^ attempt)）"
+    )
+    retry_on_status: list[int] = Field(
+        default=[429, 500, 502, 503, 504],
+        description="触发重试的HTTP状态码列表"
+    )
+    retry_on_network_error: bool = Field(
+        default=True,
+        description="网络错误是否重试"
+    )
+
+
 class AIConfig(BaseModel):
     """AI 筛选配置
     
@@ -127,6 +190,16 @@ class AIConfig(BaseModel):
     extra_body: Optional[dict] = Field(
         default=None,
         description="额外的 API 请求体参数，用于第三方 API 扩展功能（如 Kimi 的 thinking 控制）"
+    )
+    # 速率限制配置（可选）
+    rate_limit: AIRateLimitConfig = Field(
+        default_factory=AIRateLimitConfig,
+        description="速率限制配置"
+    )
+    # 重试配置（可选）
+    retry: AIRetryConfig = Field(
+        default_factory=AIRetryConfig,
+        description="重试配置"
     )
 
     def validate_required_fields(self) -> None:

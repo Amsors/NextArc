@@ -1,7 +1,7 @@
-"""AI 活动筛选器
+"""AI 活动筛选器 - 增强版
 
 使用大模型 API 筛选用户感兴趣的新活动
-支持 OpenAI API 格式
+支持 OpenAI API 格式，带速率限制和重试机制
 """
 
 import asyncio
@@ -9,7 +9,7 @@ import json
 import traceback
 from typing import Optional
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIError, RateLimitError, APITimeoutError
 from pyustc.young import SecondClass
 
 from src.models.activity import (
@@ -21,15 +21,89 @@ from src.models.activity import (
 )
 from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
+from src.utils.rate_limiter import RateLimiterWrapper
+from src.utils.retry import RetryConfig, with_retry
 
 logger = get_logger("ai_filter")
 
 
+class AIRateLimiterConfig:
+    """AI API 速率限制配置包装器"""
+
+    def __init__(
+            self,
+            requests_per_minute: int = 0,
+            max_concurrency: int = 3,
+            enable_queue: bool = True,
+            queue_timeout: float = 300.0,
+    ):
+        self.requests_per_minute = requests_per_minute
+        self.max_concurrency = max_concurrency
+        self.enable_queue = enable_queue
+        self.queue_timeout = queue_timeout
+
+        # 初始化速率限制器
+        self._wrapper = RateLimiterWrapper(
+            requests_per_minute=requests_per_minute,
+            max_concurrency=max_concurrency,
+            enable_queue=enable_queue,
+            queue_timeout=queue_timeout,
+        )
+
+        if requests_per_minute > 0:
+            logger.info(f"AI API 速率限制: {requests_per_minute}请求/分钟, 最大并发: {max_concurrency}")
+        else:
+            logger.info(f"AI API 无速率限制, 最大并发: {max_concurrency}")
+
+    def acquire(self):
+        """获取执行许可的上下文管理器（返回异步上下文管理器）"""
+        return self._wrapper.acquire()
+
+
+class AIRetryConfig(RetryConfig):
+    """AI API 专用重试配置"""
+
+    def __init__(
+            self,
+            max_retries: int = 3,
+            base_delay: float = 2.0,
+            max_delay: float = 60.0,
+            backoff_factor: float = 2.0,
+            retry_on_status: Optional[list[int]] = None,
+            retry_on_network_error: bool = True,
+    ):
+        super().__init__(
+            max_retries=max_retries,
+            base_delay=base_delay,
+            max_delay=max_delay,
+            backoff_factor=backoff_factor,
+            retry_on_status=retry_on_status or [429, 500, 502, 503, 504],
+            retry_on_network_error=retry_on_network_error,
+            on_retry=self._on_retry,
+        )
+
+    def _on_retry(self, exception: Exception, attempt: int, delay: float):
+        """重试回调，记录日志"""
+        if isinstance(exception, RateLimitError):
+            logger.warning(f"AI API 触发限流(429)，第{attempt}次重试，等待{delay:.1f}秒...")
+        elif isinstance(exception, APITimeoutError):
+            logger.warning(f"AI API 超时，第{attempt}次重试，等待{delay:.1f}秒...")
+        elif isinstance(exception, APIError):
+            status = getattr(exception, 'status_code', 'unknown')
+            logger.warning(f"AI API 错误(状态码:{status})，第{attempt}次重试，等待{delay:.1f}秒...")
+        else:
+            logger.warning(f"AI API 请求失败({type(exception).__name__})，第{attempt}次重试，等待{delay:.1f}秒...")
+
+
 class AIFilter:
     """
-    AI 活动筛选器
+    AI 活动筛选器（增强版）
     
-    使用大模型 API 判断新活动是否符合用户兴趣
+    特性：
+    - 支持速率限制（每分钟请求数 + 并发数）
+    - 智能重试机制（指数退避）
+    - 429限流自动处理
+    - 可配置的容错策略
     """
 
     def __init__(
@@ -42,6 +116,18 @@ class AIFilter:
             base_url: Optional[str] = None,
             timeout: int = 30,
             extra_body: Optional[dict] = None,
+            # 速率限制参数
+            rate_limit_requests_per_minute: int = 0,
+            rate_limit_max_concurrency: int = 3,
+            rate_limit_enable_queue: bool = True,
+            rate_limit_queue_timeout: float = 300.0,
+            # 重试参数
+            retry_max_retries: int = 3,
+            retry_base_delay: float = 2.0,
+            retry_max_delay: float = 60.0,
+            retry_backoff_factor: float = 2.0,
+            retry_on_status: Optional[list[int]] = None,
+            retry_on_network_error: bool = True,
     ):
         """
         初始化 AI 筛选器
@@ -50,25 +136,35 @@ class AIFilter:
             api_key: API 密钥
             base_url: API 基础 URL（可选，用于第三方兼容服务）
             model: 模型名称
-            system_prompt: 系统提示词（可选，使用默认值）
-            user_prompt_template: 用户提示词模板（可选，使用默认值）
+            system_prompt: 系统提示词
+            user_prompt_template: 用户提示词模板
             temperature: 采样温度
             timeout: 请求超时时间（秒）
-            extra_body: 额外的请求体参数（可选，用于第三方 API 扩展功能）
+            extra_body: 额外的请求体参数
+            
+            # 速率限制参数
+            rate_limit_requests_per_minute: 每分钟最大请求数（0表示不限制）
+            rate_limit_max_concurrency: 最大并发数
+            rate_limit_enable_queue: 达到限制时是否排队等待
+            rate_limit_queue_timeout: 队列最大等待时间（秒）
+            
+            # 重试配置
+            retry_max_retries: 最大重试次数
+            retry_base_delay: 基础重试延迟（秒）
+            retry_max_delay: 最大重试延迟（秒）
+            retry_backoff_factor: 退避倍数
+            retry_on_status: 触发重试的HTTP状态码列表
+            retry_on_network_error: 网络错误是否重试
         """
         # 验证必填参数
         if not api_key:
             raise ValueError("AI 筛选器初始化失败：api_key 不能为空")
-
         if not model:
             raise ValueError("AI 筛选器初始化失败：model 不能为空")
-
         if not system_prompt:
             raise ValueError("AI 筛选器初始化失败：system_prompt 不能为空")
-
         if not user_prompt_template:
             raise ValueError("AI 筛选器初始化失败：user_prompt_template 不能为空")
-
         if temperature is None:
             raise ValueError("AI 筛选器初始化失败：temperature 不能为空")
 
@@ -81,6 +177,24 @@ class AIFilter:
         self.timeout = timeout
         self.extra_body = extra_body or {}
 
+        # 初始化速率限制器
+        self.rate_limiter = AIRateLimiterConfig(
+            requests_per_minute=rate_limit_requests_per_minute,
+            max_concurrency=rate_limit_max_concurrency,
+            enable_queue=rate_limit_enable_queue,
+            queue_timeout=rate_limit_queue_timeout,
+        )
+
+        # 初始化重试配置
+        self.retry_config = AIRetryConfig(
+            max_retries=retry_max_retries,
+            base_delay=retry_base_delay,
+            max_delay=retry_max_delay,
+            backoff_factor=retry_backoff_factor,
+            retry_on_status=retry_on_status,
+            retry_on_network_error=retry_on_network_error,
+        )
+
         # 初始化 OpenAI 客户端
         client_kwargs = {"api_key": api_key}
         if base_url:
@@ -89,6 +203,7 @@ class AIFilter:
         self.client = AsyncOpenAI(**client_kwargs)
 
         logger.info(f"AI 筛选器初始化完成，模型: {model}")
+        logger.info(f"重试配置: 最多{retry_max_retries}次，基础延迟{retry_base_delay}秒")
         if self.extra_body:
             logger.info(f"已配置额外请求参数: {self.extra_body}")
 
@@ -126,10 +241,7 @@ class AIFilter:
             user_info: str,
     ) -> tuple[list[SecondClass], list[FilteredActivity]]:
         """
-        批量筛选活动（并发执行，带超时控制）
-
-        使用 asyncio.gather 并发处理多个活动，避免顺序执行导致 WebSocket 心跳超时。
-        每个 AI 调用有独立的超时控制。
+        批量筛选活动（带速率限制和重试机制）
 
         Args:
             activities: 待筛选的活动列表
@@ -145,36 +257,36 @@ class AIFilter:
             logger.warning("未配置 API 密钥，跳过 AI 筛选")
             return activities, []
 
-        logger.info(f"开始 AI 筛选 {len(activities)} 个活动（并发执行，超时 {self.timeout} 秒）...")
+        logger.info(f"开始 AI 筛选 {len(activities)} 个活动（带速率限制和重试）...")
 
-        # 创建信号量限制并发数（避免同时发送太多请求）
-        semaphore = asyncio.Semaphore(3)
-
-        async def judge_with_semaphore(activity: SecondClass) -> tuple[SecondClass, bool, str]:
-            """带信号量和超时的判断任务"""
-            async with semaphore:
+        async def judge_with_limit_and_retry(activity: SecondClass) -> tuple[SecondClass, bool, str]:
+            """带速率限制和重试的判断任务"""
+            async with self.rate_limiter.acquire():
                 try:
-                    # 使用 wait_for 添加超时控制
-                    is_interested, reason = await asyncio.wait_for(
-                        self._judge_activity_with_reason(activity, user_info),
-                        timeout=self.timeout
+                    # 使用重试机制执行判断
+                    is_interested, reason = await with_retry(
+                        self._judge_activity_with_reason,
+                        activity,
+                        user_info,
+                        config=self.retry_config,
                     )
                     return activity, is_interested, reason
                 except asyncio.TimeoutError:
                     logger.warning(f"AI 判断活动 '{activity.name}' 超时，保留该活动")
-                    return activity, True, "AI判断超时，默认保留"  # 超时保守处理：保留
+                    return activity, True, "AI判断超时，默认保留"
                 except Exception as e:
-                    logger.warning(f"AI 判断活动 '{activity.name}' 失败: {e}，保留该活动")
+                    logger.warning(f"AI 判断活动 '{activity.name}' 最终失败: {e}，保留该活动")
                     traceback.print_exc()
-                    return activity, True, f"AI判断失败: {e}，默认保留"  # 失败保守处理：保留
+                    return activity, True, f"AI判断失败: {e}，默认保留"
 
         # 并发执行所有判断任务
-        tasks = [judge_with_semaphore(activity) for activity in activities]
+        tasks = [judge_with_limit_and_retry(activity) for activity in activities]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 收集通过筛选的活动
         kept_activities = []
         filtered_activities: list[FilteredActivity] = []
+
         for result in results:
             if isinstance(result, Exception):
                 # 任务本身出错（不应该发生，但保险起见）
@@ -198,7 +310,7 @@ class AIFilter:
 
     async def _judge_activity_with_reason(self, activity: SecondClass, user_info: str) -> tuple[bool, str]:
         """
-        判断单个活动是否符合用户兴趣，返回结果和原因
+        判断单个活动是否符合用户兴趣（内部方法，会被重试包装）
 
         Args:
             activity: SecondClass 对象
@@ -214,53 +326,34 @@ class AIFilter:
             activity_info=activity_info,
         )
 
-        try:
-            # 构建请求参数
-            request_params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "timeout": self.timeout,
-            }
+        # 构建请求参数
+        request_params = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "timeout": self.timeout,
+        }
 
-            # 添加额外的请求体参数（如 Kimi 的 thinking 控制）
-            if self.extra_body:
-                request_params["extra_body"] = self.extra_body
+        # 添加额外的请求体参数（如 Kimi 的 thinking 控制）
+        if self.extra_body:
+            request_params["extra_body"] = self.extra_body
 
-            response = await self.client.chat.completions.create(**request_params)
+        response = await self.client.chat.completions.create(**request_params)
 
-            content = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content.strip()
 
-            # 解析 JSON 响应
-            result = self._parse_response(content)
-            reason = result.get('reason', '')
+        # 解析 JSON 响应
+        result = self._parse_response(content)
+        reason = result.get('reason', '')
 
-            if result.get("interested"):
-                logger.debug(f"AI 认为 '{activity.name}' 符合用户兴趣: {reason}")
-                return True, reason
-            else:
-                logger.debug(f"AI 认为 '{activity.name}' 不符合用户兴趣: {reason}")
-                return False, reason
-
-        except Exception as e:
-            logger.error(f"AI API 调用失败: {e}")
-            raise
-
-    async def _judge_activity(self, activity: SecondClass, user_info: str) -> bool:
-        """
-        判断单个活动是否符合用户兴趣
-
-        Args:
-            activity: SecondClass 对象
-            user_info: 用户信息描述
-
-        Returns:
-            是否感兴趣
-        """
-        is_interested, _ = await self._judge_activity_with_reason(activity, user_info)
-        return is_interested
+        if result.get("interested"):
+            logger.debug(f"AI 认为 '{activity.name}' 符合用户兴趣: {reason}")
+            return True, reason
+        else:
+            logger.debug(f"AI 认为 '{activity.name}' 不符合用户兴趣: {reason}")
+            return False, reason
 
     def _parse_response(self, content: str) -> dict:
         """
@@ -314,18 +407,7 @@ class AIFilterConfig:
         """
         从配置创建 AI 筛选器实例
         
-        从配置文件中读取提示词文件路径，然后从文件加载提示词内容。
-        如果 AI 功能已启用但配置不完整或提示词文件不存在，会抛出异常。
-        
-        Args:
-            settings: 配置对象
-            
-        Returns:
-            AIFilter 实例，如果未启用则返回 None
-            
-        Raises:
-            ValueError: 如果 AI 功能已启用但配置不完整
-            FileNotFoundError: 如果提示词文件不存在
+        支持新的速率限制和重试配置
         """
         if not hasattr(settings, 'ai'):
             return None
@@ -348,6 +430,26 @@ class AIFilterConfig:
         logger.info(f"已加载系统提示词: {ai_config.system_prompt_file}")
         logger.info(f"已加载用户提示词模板: {ai_config.user_prompt_template_file}")
 
+        # 构建速率限制参数
+        rate_limit_kwargs = {}
+        if hasattr(ai_config, 'rate_limit') and ai_config.rate_limit:
+            rate_limit = ai_config.rate_limit
+            rate_limit_kwargs['rate_limit_requests_per_minute'] = getattr(rate_limit, 'requests_per_minute', 0)
+            rate_limit_kwargs['rate_limit_max_concurrency'] = getattr(rate_limit, 'max_concurrency', 3)
+            rate_limit_kwargs['rate_limit_enable_queue'] = getattr(rate_limit, 'enable_queue', True)
+            rate_limit_kwargs['rate_limit_queue_timeout'] = getattr(rate_limit, 'queue_timeout', 300.0)
+
+        # 构建重试参数
+        retry_kwargs = {}
+        if hasattr(ai_config, 'retry') and ai_config.retry:
+            retry = ai_config.retry
+            retry_kwargs['retry_max_retries'] = getattr(retry, 'max_retries', 3)
+            retry_kwargs['retry_base_delay'] = getattr(retry, 'base_delay', 2.0)
+            retry_kwargs['retry_max_delay'] = getattr(retry, 'max_delay', 60.0)
+            retry_kwargs['retry_backoff_factor'] = getattr(retry, 'backoff_factor', 2.0)
+            retry_kwargs['retry_on_status'] = getattr(retry, 'retry_on_status', [429, 500, 502, 503, 504])
+            retry_kwargs['retry_on_network_error'] = getattr(retry, 'retry_on_network_error', True)
+
         return AIFilter(
             api_key=ai_config.api_key,
             base_url=ai_config.base_url if ai_config.base_url else None,
@@ -357,4 +459,6 @@ class AIFilterConfig:
             temperature=ai_config.temperature,
             timeout=ai_config.timeout,
             extra_body=ai_config.extra_body,
+            **rate_limit_kwargs,
+            **retry_kwargs,
         )
