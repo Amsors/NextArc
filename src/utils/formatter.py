@@ -99,19 +99,24 @@ def format_search_results(activities: list[SecondClass], keyword: str, hint: str
     return lines
 
 
-def format_ai_filtered_result(activities: list[SecondClass]) -> str:
-    lines = format_activity_list(activities, "被AI筛选掉的活动", simple_format=True)
+def format_ai_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    activities = [act.activity for act in activities_filtered]
+    lines = format_activity_list(activities, "因AI筛选被筛选掉的活动", simple_format=True)
+    lines += "\n"
     return lines
 
 
 def format_time_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
     activities = [act.activity for act in activities_filtered]
     lines = format_activity_list(activities, "因空闲时间不符被筛选掉的活动", simple_format=True)
+    lines += "\n"
     return lines
 
 
-def format_db_filtered_result(activities: list[SecondClass]) -> str:
-    lines = format_activity_list(activities, "因加入不感兴趣数据库被筛选掉的活动", simple_format=True)
+def format_db_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    activities = [act.activity for act in activities_filtered]
+    lines = format_activity_list(activities, "因数据库记录不感兴趣被筛选掉的活动", simple_format=True)
+    lines += "\n"
     return lines
 
 

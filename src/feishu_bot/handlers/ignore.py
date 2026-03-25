@@ -58,7 +58,7 @@ class IgnoreHandler(CommandHandler):
             回复消息
         """
         if not self._ignore_manager:
-            return Response.text("❌ 忽略功能未初始化，请联系管理员")
+            return Response.text("❌ 忽略功能未初始化")
 
         # 检查参数
         if not args:
@@ -77,6 +77,8 @@ class IgnoreHandler(CommandHandler):
 
         # 检查是否有可操作的最近活动列表
         displayed_activities = session.get_all_displayed_activities()
+
+        # filtered_displayed_activities = session.get_filtered_activities()
 
         if not displayed_activities:
             return Response.text(

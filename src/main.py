@@ -186,6 +186,10 @@ class NextArcApp:
                 self.notification_listener.subscribe(self.event_bus)
                 logger.info("通知监听器已订阅事件")
 
+                # 设置 UserSession 引用，使定时扫描的新活动也能被 /ignore 忽略
+                self.notification_listener.set_user_session(self.bot.user_session)
+                logger.info("已设置 UserSession 引用到通知监听器")
+
                 if chat_id:
                     logger.info(f"飞书机器人初始化完成（已配置 chat_id: {chat_id}）")
                 else:

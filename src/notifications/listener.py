@@ -1,5 +1,7 @@
 """通知监听器 - 订阅事件并发送通知"""
 
+from typing import TYPE_CHECKING
+
 from src.core.events.scan_events import (
     ScanCompletedEvent,
     NewActivitiesFoundEvent,
@@ -8,8 +10,10 @@ from src.core.events.scan_events import (
 from src.utils.formatter import build_activity_card, format_db_filtered_result, \
     format_ai_filtered_result, format_time_filtered_result
 from src.utils.logger import get_logger
-
 from .service import NotificationService
+
+if TYPE_CHECKING:
+    from src.models import UserSession
 
 logger = get_logger("notifications.listener")
 
@@ -24,6 +28,20 @@ class NotificationListener:
 
     def __init__(self, notification_service: NotificationService):
         self._notification_service = notification_service
+        self._user_session: "UserSession | None" = None
+
+    def set_user_session(self, session: "UserSession") -> None:
+        """
+        设置用户会话引用（单用户场景）
+
+        设置后，发现新活动时会自动更新会话中的 displayed_activities，
+        使用户可以通过 /ignore 指令忽略这些活动。
+
+        Args:
+            session: 用户会话实例
+        """
+        self._user_session = session
+        logger.debug("已设置 UserSession 引用")
 
     async def on_scan_completed(self, event: ScanCompletedEvent) -> None:
         """
@@ -76,12 +94,24 @@ class NotificationListener:
         try:
             card_content = build_activity_card(
                 event.activities,
-                f"🆕 发现 {event.final_count} 个新活动"
+                f"🆕 有 {event.final_count} 个你可能感兴趣的活动"
             )
             await self._notification_service.send_card(card_content)
             logger.info(f"已发送新活动卡片: {event.final_count} 个活动")
         except Exception as e:
             logger.error(f"发送新活动卡片失败: {e}")
+
+        # 更新 UserSession 的 displayed_activities，使用户可以通过 /ignore 忽略这些活动
+        if self._user_session:
+            try:
+                self._user_session.set_displayed_activities(
+                    activities=event.activities,
+                    filtered_activities=event.filters_applied,
+                    source="new_activities"
+                )
+                logger.debug(f"已更新 UserSession，保存了 {len(event.activities)} 个新活动")
+            except Exception as e:
+                logger.error(f"更新 UserSession 失败: {e}")
 
     async def on_enrolled_activity_changed(self, event: EnrolledActivityChangedEvent) -> None:
         """
