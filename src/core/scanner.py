@@ -300,11 +300,11 @@ class ActivityScanner:
                 # 如果启用 AI 筛选，则进行筛选
                 if self.use_ai_filter and self.ai_filter and self.ai_user_info:
                     logger.info(f"使用 AI 筛选 {len(activities)} 个新活动...")
-                    activities = await self.ai_filter.filter_activities(
+                    activities, ai_filtered_result = await self.ai_filter.filter_activities(
                         activities,
                         self.ai_user_info,
-                        uninterested_activities=ai_filtered
                     )
+                    ai_filtered = ai_filtered_result
 
                     if not activities:
                         logger.info("AI 筛选后无活动需要通知")

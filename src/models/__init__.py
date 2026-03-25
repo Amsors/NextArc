@@ -13,6 +13,7 @@ from .activity import (
     secondclass_to_display_dict,
 )
 from .diff_result import ActivityChange, DiffResult, FieldChange
+from .filter_result import FilteredActivity, FilterResult
 from .session import ConfirmSession, SearchSession, UserSession
 
 __all__ = [
@@ -31,6 +32,9 @@ __all__ = [
     "ActivityChange",
     "DiffResult",
     "FieldChange",
+    # 筛选结果模型
+    "FilteredActivity",
+    "FilterResult",
     # 会话模型
     "ConfirmSession",
     "SearchSession",

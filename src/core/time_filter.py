@@ -10,16 +10,15 @@ from typing import Optional
 from pyustc.young import SecondClass
 
 from src.config.preferences import PushPreferences, TimeRange
+from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
 
 logger = get_logger("time_filter")
 
 
 @dataclass
-class FilteredActivity:
-    """被过滤的活动信息"""
-    activity: SecondClass
-    reason: str  # 过滤原因
+class TimeFilterDetail:
+    """时间筛选的详细信息，用于 FilteredActivity.extra_data"""
     conflicting_ranges: list[TimeRange]  # 冲突的时间段
 
 
@@ -59,7 +58,7 @@ class TimeFilter:
             activities: 待筛选的活动列表
             
         Returns:
-            (通过筛选的活动列表, 被过滤的活动列表)
+            (通过筛选的活动列表, 被过滤的 FilteredActivity 列表)
         """
         if not self.is_enabled():
             logger.debug("时间筛选未启用，返回所有活动")
@@ -71,7 +70,7 @@ class TimeFilter:
         logger.info(f"开始时间筛选，共 {len(activities)} 个活动...")
 
         passed = []
-        filtered = []
+        filtered: list[FilteredActivity] = []
 
         for activity in activities:
             conflict_result = self._check_time_conflict(activity)
@@ -168,7 +167,12 @@ class TimeFilter:
             return FilteredActivity(
                 activity=activity,
                 reason=reason,
-                conflicting_ranges=conflicting_ranges
+                filter_type="time",
+                extra_data={
+                    "conflicting_ranges": conflicting_ranges,
+                    "weekday": weekday,
+                    "day_name": day_name,
+                }
             )
 
         return None

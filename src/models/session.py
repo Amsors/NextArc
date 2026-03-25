@@ -6,6 +6,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict
 from pyustc.young import SecondClass
 
+from src.models import FilteredActivity
 from src.utils.logger import get_logger
 
 logger = get_logger("session")
@@ -45,6 +46,7 @@ class DisplayedActivitiesSession(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     activities: list[SecondClass]
+    filtered_activities: dict[str, list[FilteredActivity]] | None = None
     source: str  # 来源："valid", "new_activities", "search" 等
     created_at: datetime
 
@@ -212,18 +214,24 @@ class UserSession:
             return None
         return self.search.get_result_by_index(index)
 
-    def set_displayed_activities(self, activities: list[SecondClass], source: str = "unknown") -> None:
+    def set_displayed_activities(
+            self,
+            activities: list[SecondClass],
+            filtered_activities: dict[str, list[FilteredActivity]] | None = None,
+            source: str = "unknown") -> None:
         """
         设置最近显示的活动列表
         
         Args:
             activities: 活动列表
             source: 来源标识（如 "valid", "new_activities" 等）
+            filtered_activities: 过滤后的活动列表（可选）
         """
         self.displayed_activities = DisplayedActivitiesSession(
             activities=activities,
             source=source,
-            created_at=datetime.now()
+            created_at=datetime.now(),
+            filtered_activities=filtered_activities
         )
         logger.debug(f"保存显示的活动列表: {len(activities)} 个，来源: {source}")
 
@@ -255,6 +263,17 @@ class UserSession:
         if not self.displayed_activities:
             return []
         return self.displayed_activities.get_all_activities()
+
+    def get_filtered_activities(self) -> Optional[dict[str, list[FilteredActivity]]]:
+        """
+        获取所有过滤后的活动（带过期检查）
+
+        Returns:
+            过滤后的活动字典，键为筛选类型（如 "ai", "db", "time"），值为活动列表
+        """
+        if not self.displayed_activities.filtered_activities:
+            return None
+        return self.displayed_activities.filtered_activities
 
     def parse_displayed_indices(self, indices_str: str) -> tuple[list[int], list[str]]:
         """

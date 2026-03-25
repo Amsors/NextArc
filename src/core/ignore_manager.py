@@ -9,6 +9,7 @@ from typing import Optional
 
 import aiosqlite
 
+from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
 
 logger = get_logger("ignore_manager")
@@ -259,7 +260,7 @@ class IgnoreManager:
             logger.error(f"获取忽略活动数量失败: {e}")
             return 0
 
-    async def filter_activities(self, activities: list) -> tuple[list, list]:
+    async def filter_activities(self, activities: list) -> tuple[list, list[FilteredActivity]]:
         """
         过滤掉被忽略的活动
         
@@ -267,7 +268,7 @@ class IgnoreManager:
             activities: 活动对象列表（需要有 id 属性）
             
         Returns:
-            (保留的活动列表, 被过滤掉的活动列表)
+            (保留的活动列表, 被过滤掉的 FilteredActivity 列表)
         """
         if not activities:
             return [], []
@@ -275,7 +276,7 @@ class IgnoreManager:
         ignored_ids = await self.get_all_ignored_ids()
 
         kept = []
-        filtered = []
+        filtered: list[FilteredActivity] = []
 
         for activity in activities:
             # 支持 SecondClass 对象或任何有 id 属性的对象
@@ -286,7 +287,11 @@ class IgnoreManager:
                     activity_id = activity.get('id')
 
             if activity_id and activity_id in ignored_ids:
-                filtered.append(activity)
+                filtered.append(FilteredActivity(
+                    activity=activity,
+                    reason="用户已标记为不感兴趣",
+                    filter_type="ignore"
+                ))
             else:
                 kept.append(activity)
 
@@ -295,7 +300,7 @@ class IgnoreManager:
 
         return kept, filtered
 
-    def filter_activities_sync(self, activities: list, ignored_ids: set[str]) -> tuple[list, list]:
+    def filter_activities_sync(self, activities: list, ignored_ids: set[str]) -> tuple[list, list[FilteredActivity]]:
         """
         同步方式过滤掉被忽略的活动（用于已知 ignored_ids 的场景）
         
@@ -304,13 +309,13 @@ class IgnoreManager:
             ignored_ids: 被忽略的活动ID集合
             
         Returns:
-            (保留的活动列表, 被过滤掉的活动列表)
+            (保留的活动列表, 被过滤掉的 FilteredActivity 列表)
         """
         if not activities or not ignored_ids:
             return activities, []
 
         kept = []
-        filtered = []
+        filtered: list[FilteredActivity] = []
 
         for activity in activities:
             activity_id = getattr(activity, 'id', None)
@@ -318,7 +323,11 @@ class IgnoreManager:
                 activity_id = activity.get('id')
 
             if activity_id and activity_id in ignored_ids:
-                filtered.append(activity)
+                filtered.append(FilteredActivity(
+                    activity=activity,
+                    reason="用户已标记为不感兴趣",
+                    filter_type="ignore"
+                ))
             else:
                 kept.append(activity)
 

@@ -19,6 +19,7 @@ from src.models.activity import (
     get_module_name,
     get_department_name,
 )
+from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
 
 logger = get_logger("ai_filter")
@@ -123,86 +124,88 @@ class AIFilter:
             self,
             activities: list[SecondClass],
             user_info: str,
-            uninterested_activities: list[SecondClass] | None = None,
-    ) -> list[SecondClass]:
+    ) -> tuple[list[SecondClass], list[FilteredActivity]]:
         """
         批量筛选活动（并发执行，带超时控制）
-        
+
         使用 asyncio.gather 并发处理多个活动，避免顺序执行导致 WebSocket 心跳超时。
         每个 AI 调用有独立的超时控制。
-        
+
         Args:
             activities: 待筛选的活动列表
             user_info: 用户信息描述
-            uninterested_activities: 返回不感兴趣的活动(可选参数)
-            
+
         Returns:
-            筛选后的活动列表（仅保留 AI 认为感兴趣的）
+            (保留的活动列表, 被过滤掉的 FilteredActivity 列表)
         """
         if not activities:
-            return []
+            return [], []
 
         if not self.api_key:
             logger.warning("未配置 API 密钥，跳过 AI 筛选")
-            return activities
+            return activities, []
 
         logger.info(f"开始 AI 筛选 {len(activities)} 个活动（并发执行，超时 {self.timeout} 秒）...")
 
         # 创建信号量限制并发数（避免同时发送太多请求）
         semaphore = asyncio.Semaphore(3)
 
-        async def judge_with_semaphore(activity: SecondClass) -> tuple[SecondClass, bool]:
+        async def judge_with_semaphore(activity: SecondClass) -> tuple[SecondClass, bool, str]:
             """带信号量和超时的判断任务"""
             async with semaphore:
                 try:
                     # 使用 wait_for 添加超时控制
-                    is_interested = await asyncio.wait_for(
-                        self._judge_activity(activity, user_info),
+                    is_interested, reason = await asyncio.wait_for(
+                        self._judge_activity_with_reason(activity, user_info),
                         timeout=self.timeout
                     )
-                    return activity, is_interested
+                    return activity, is_interested, reason
                 except asyncio.TimeoutError:
                     logger.warning(f"AI 判断活动 '{activity.name}' 超时，保留该活动")
-                    return activity, True  # 超时保守处理：保留
+                    return activity, True, "AI判断超时，默认保留"  # 超时保守处理：保留
                 except Exception as e:
                     logger.warning(f"AI 判断活动 '{activity.name}' 失败: {e}，保留该活动")
                     traceback.print_exc()
-                    return activity, True  # 失败保守处理：保留
+                    return activity, True, f"AI判断失败: {e}，默认保留"  # 失败保守处理：保留
 
         # 并发执行所有判断任务
         tasks = [judge_with_semaphore(activity) for activity in activities]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 收集通过筛选的活动
-        filtered_activities = []
+        kept_activities = []
+        filtered_activities: list[FilteredActivity] = []
         for result in results:
             if isinstance(result, Exception):
                 # 任务本身出错（不应该发生，但保险起见）
                 logger.error(f"AI 筛选任务异常: {result}")
                 continue
 
-            activity, is_interested = result
+            activity, is_interested, reason = result
             if is_interested:
-                filtered_activities.append(activity)
+                kept_activities.append(activity)
                 logger.debug(f"通过AI筛选：活动 '{activity.name}'")
             else:
-                if uninterested_activities is not None:
-                    uninterested_activities.append(activity)
+                filtered_activities.append(FilteredActivity(
+                    activity=activity,
+                    reason=reason or "AI认为不符合用户兴趣",
+                    filter_type="ai"
+                ))
                 logger.debug(f"没有通过AI筛选：活动 '{activity.name}'")
 
-        logger.info(f"AI 筛选完成：{len(filtered_activities)}/{len(activities)} 个活动通过")
-        return filtered_activities
+        logger.info(f"AI 筛选完成：{len(kept_activities)}/{len(activities)} 个活动通过")
+        return kept_activities, filtered_activities
 
-    async def _judge_activity(self, activity: SecondClass, user_info: str) -> bool:
+    async def _judge_activity_with_reason(self, activity: SecondClass, user_info: str) -> tuple[bool, str]:
         """
-        判断单个活动是否符合用户兴趣
-        
+        判断单个活动是否符合用户兴趣，返回结果和原因
+
         Args:
             activity: SecondClass 对象
             user_info: 用户信息描述
-            
+
         Returns:
-            是否感兴趣
+            (是否感兴趣, 原因说明)
         """
         activity_info = self._format_activity_info(activity)
 
@@ -232,17 +235,32 @@ class AIFilter:
 
             # 解析 JSON 响应
             result = self._parse_response(content)
+            reason = result.get('reason', '')
 
             if result.get("interested"):
-                logger.debug(f"AI 认为 '{activity.name}' 符合用户兴趣: {result.get('reason', '')}")
-                return True
+                logger.debug(f"AI 认为 '{activity.name}' 符合用户兴趣: {reason}")
+                return True, reason
             else:
-                logger.debug(f"AI 认为 '{activity.name}' 不符合用户兴趣: {result.get('reason', '')}")
-                return False
+                logger.debug(f"AI 认为 '{activity.name}' 不符合用户兴趣: {reason}")
+                return False, reason
 
         except Exception as e:
             logger.error(f"AI API 调用失败: {e}")
             raise
+
+    async def _judge_activity(self, activity: SecondClass, user_info: str) -> bool:
+        """
+        判断单个活动是否符合用户兴趣
+
+        Args:
+            activity: SecondClass 对象
+            user_info: 用户信息描述
+
+        Returns:
+            是否感兴趣
+        """
+        is_interested, _ = await self._judge_activity_with_reason(activity, user_info)
+        return is_interested
 
     def _parse_response(self, content: str) -> dict:
         """

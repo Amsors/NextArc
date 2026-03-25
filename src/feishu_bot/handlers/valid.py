@@ -103,12 +103,14 @@ class ValidHandler(CommandHandler):
             # 保存原始数量用于后续显示
             original_count = len(activities)
             filter_info = []
+            db_filtered = []
+            time_filtered = []
+            ai_filtered = []
 
             # 如果不显示全部，则应用筛选器
             if not show_all:
                 # 应用数据库筛选（被用户标记为不感兴趣的活动）
                 if self._ignore_manager:
-                    db_filtered = []
                     activities, db_filtered = await self._ignore_manager.filter_activities(activities)
                     if db_filtered:
                         filter_info.append(f"🗑️ 数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
@@ -116,28 +118,37 @@ class ValidHandler(CommandHandler):
 
                 # 应用时间筛选（如果启用）
                 if self._scanner.use_time_filter and self._scanner.time_filter:
-                    time_filtered = []
-                    activities, filtered_result = self._scanner.time_filter.filter_activities(activities)
-                    if filtered_result:
-                        filter_info.append(f"⏰ 时间筛选已过滤 {len(filtered_result)} 个活动")
-                        logger.info(f"时间筛选过滤了 {len(filtered_result)} 个活动")
+                    activities, time_filtered = self._scanner.time_filter.filter_activities(activities)
+                    if time_filtered:
+                        filter_info.append(f"⏰ 时间筛选已过滤 {len(time_filtered)} 个活动")
+                        logger.info(f"时间筛选过滤了 {len(time_filtered)} 个活动")
 
                 # 应用 AI 筛选（如果启用）
                 if self._scanner.use_ai_filter and self._scanner.ai_filter:
                     ai_user_info = self._scanner.ai_user_info
-                    ai_filtered = []
-                    activities = await self._scanner.ai_filter.filter_activities(
+                    activities, ai_filtered = await self._scanner.ai_filter.filter_activities(
                         activities,
                         ai_user_info,
-                        uninterested_activities=ai_filtered
                     )
                     ai_filtered_count = len(ai_filtered)
                     if ai_filtered_count > 0:
                         filter_info.append(f"🤖 AI 筛选已过滤 {ai_filtered_count} 个活动")
                         logger.info(f"AI 筛选过滤了 {ai_filtered_count} 个活动")
 
+            filter_result = dict()
+            if ai_filtered:
+                filter_result["ai"] = ai_filtered
+            if db_filtered:
+                filter_result["db"] = db_filtered
+            if time_filtered:
+                filter_result["time"] = time_filtered
+
             # 保存显示的活动列表到会话（用于"不感兴趣"功能）
-            session.set_displayed_activities(activities, source="valid")
+            session.set_displayed_activities(
+                activities=activities,
+                source="valid",
+                filtered_activities=filter_result
+            )
 
             # 如果没有通过筛选的活动
             if not activities:
