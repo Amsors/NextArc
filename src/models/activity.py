@@ -168,23 +168,57 @@ def get_display_time(sc: SecondClass, field: str) -> str:
     Returns:
         格式化后的时间字符串
     """
+    day_of_week_chinese = {
+        0: "周一",
+        1: "周二",
+        2: "周三",
+        3: "周四",
+        4: "周五",
+        5: "周六",
+        6: "周日",
+    }
+
     if field == "create_time":
         ct = sc.create_time
         if ct is None:
-            return "没有从二课平台获取到数据！"
-        return ct.strftime("%m-%d(%a) %H:%M")
+            return "没有获取到数据！"
+        return f"{ct.day}({day_of_week_chinese.get(ct.weekday(), '未知')}) {ct.strftime('%H:%M')}"
 
     elif field == "apply_time":
         at = sc.apply_time
         if at is None:
-            return "没有从二课平台获取到数据！"
-        return f"{at.start.strftime('%m-%d(%a) %H:%M')} ~ {at.end.strftime('%m-%d(%a) %H:%M')}"
+            return "没有获取到数据！"
+        if at.start.day == at.end.day:
+            return (f"{at.start.strftime('%m-%d')}"
+                    f" ({day_of_week_chinese.get(at.start.weekday(), '未知')}) "
+                    f" {at.start.strftime('%H:%M')}"
+                    f" ~ {at.end.strftime('%H:%M')}"
+                    )
+        return (f"{at.start.strftime('%m-%d')}"
+                f" ({day_of_week_chinese.get(at.start.weekday(), '未知')}) "
+                f"{at.start.strftime('%H:%M')} ~ "
+                f"{at.end.strftime('%m-%d')} "
+                f" ({day_of_week_chinese.get(at.end.weekday(), '未知')}) "
+                f"{at.end.strftime('%H:%M')}"
+                )
 
     elif field == "hold_time":
         ht = sc.hold_time
         if ht is None:
-            return "没有从二课平台获取到数据！"
-        return f"{ht.start.strftime('%m-%d(%a) %H:%M')} ~ {ht.end.strftime('%m-%d(%a) %H:%M')}"
+            return "没有获取到数据！"
+        if ht.start.day == ht.end.day:
+            return (f"{ht.start.strftime('%m-%d')}"
+                    f" ({day_of_week_chinese.get(ht.start.weekday(), '未知')}) "
+                    f" {ht.start.strftime('%H:%M')}"
+                    f" ~ {ht.end.strftime('%H:%M')}"
+                    )
+        return (f"{ht.start.strftime('%m-%d')}"
+                f" ({day_of_week_chinese.get(ht.start.weekday(), '未知')}) "
+                f"{ht.start.strftime('%H:%M')} ~ "
+                f"{ht.end.strftime('%m-%d')}"
+                f" ({day_of_week_chinese.get(ht.end.weekday(), '未知')}) "
+                f"{ht.end.strftime('%H:%M')}"
+                )
 
     return "出现错误！"
 

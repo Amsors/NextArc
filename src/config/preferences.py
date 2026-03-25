@@ -99,7 +99,13 @@ class TimeFilterConfig(BaseModel):
     # 时间重叠判断模式
     overlap_mode: str = Field(
         default="partial",
-        description="时间重叠判断模式: 'partial'(有重叠即过滤) 或 'full'(完全包含才过滤)"
+        description="时间重叠判断模式: 'partial'(有重叠即过滤)、'full'(完全包含才过滤) 或 'threshold'(按比例阈值过滤)"
+    )
+
+    # 重叠比例阈值（仅当 overlap_mode 为 "threshold" 时使用）
+    overlap_threshold: float = Field(
+        default=0.5,
+        description="重叠比例阈值，当 overlap_mode='threshold' 时使用，范围 0.0~1.0，表示冲突时间占活动总时长的比例"
     )
 
     weekly_preferences: WeeklyTimePreference = Field(
@@ -111,9 +117,17 @@ class TimeFilterConfig(BaseModel):
     @classmethod
     def validate_overlap_mode(cls, v: str) -> str:
         """验证重叠模式"""
-        valid_modes = ["partial", "full"]
+        valid_modes = ["partial", "full", "threshold"]
         if v not in valid_modes:
             raise ValueError(f"无效的 overlap_mode: {v}，必须是 {valid_modes} 之一")
+        return v
+
+    @field_validator("overlap_threshold")
+    @classmethod
+    def validate_overlap_threshold(cls, v: float) -> float:
+        """验证重叠比例阈值"""
+        if not 0.0 <= v <= 1.0:
+            raise ValueError(f"overlap_threshold 必须在 0.0~1.0 之间，当前值: {v}")
         return v
 
     def is_enabled_and_configured(self) -> bool:
@@ -124,7 +138,8 @@ class TimeFilterConfig(BaseModel):
         """获取重叠模式的显示文本"""
         return {
             "partial": "有重叠即过滤",
-            "full": "完全包含才过滤"
+            "full": "完全包含才过滤",
+            "threshold": f"比例阈值过滤(阈值={self.overlap_threshold})"
         }.get(self.overlap_mode, "未知")
 
 

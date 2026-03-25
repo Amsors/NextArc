@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Optional
 
 from pyustc.young import SecondClass
@@ -90,6 +90,7 @@ class TimeFilter:
         根据配置的 overlap_mode 判断冲突方式：
         - partial: 有重叠即过滤（活动与没时间段有任何交集）
         - full: 完全包含才过滤（活动时间必须完全被没时间段包含）
+        - threshold: 按比例阈值过滤（冲突时间占活动总时长的比例 >= 阈值才过滤）
         
         Args:
             activity: 活动对象
@@ -147,6 +148,12 @@ class TimeFilter:
                 if busy_start <= act_start_time and act_end_time <= busy_end:
                     conflicting_ranges.append(busy_range)
 
+            elif overlap_mode == "threshold":
+                # 模式3: 按比例阈值过滤
+                # 检查是否有重叠，记录所有冲突的时间段
+                if act_start_time < busy_end and act_end_time > busy_start:
+                    conflicting_ranges.append(busy_range)
+
         if conflicting_ranges:
             day_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
             day_name = day_names[weekday]
@@ -157,25 +164,101 @@ class TimeFilter:
             # 根据模式显示不同的过滤原因
             if overlap_mode == "partial":
                 overlap_desc = "时间冲突"
-            else:
+            elif overlap_mode == "full":
                 overlap_desc = "时间完全被占用"
+            else:  # threshold
+                # 计算重叠比例
+                overlap_ratio = self._calculate_overlap_ratio(
+                    act_start_time, act_end_time, conflicting_ranges
+                )
+                threshold = self.time_config.overlap_threshold
+
+                # 如果重叠比例小于阈值，不过滤
+                if overlap_ratio < threshold:
+                    logger.debug(
+                        f"活动 '{activity.name}' 重叠比例 {overlap_ratio:.2%} < 阈值 {threshold:.2%}，保留"
+                    )
+                    return None
+
+                overlap_desc = f"时间冲突比例 {overlap_ratio:.1%} >= 阈值 {threshold:.1%}"
 
             reason = f"与{day_name}的{overlap_desc} ({ranges_str})"
 
             logger.debug(f"活动 '{activity.name}' {reason}")
 
+            extra_data = {
+                "conflicting_ranges": conflicting_ranges,
+                "weekday": weekday,
+                "day_name": day_name,
+            }
+
+            # threshold 模式下添加重叠比例信息
+            if overlap_mode == "threshold":
+                extra_data["overlap_ratio"] = overlap_ratio
+                extra_data["overlap_threshold"] = self.time_config.overlap_threshold
+
             return FilteredActivity(
                 activity=activity,
                 reason=reason,
                 filter_type="time",
-                extra_data={
-                    "conflicting_ranges": conflicting_ranges,
-                    "weekday": weekday,
-                    "day_name": day_name,
-                }
+                extra_data=extra_data
             )
 
         return None
+
+    def _calculate_overlap_ratio(
+            self,
+            act_start: time,
+            act_end: time,
+            busy_ranges: list[TimeRange]
+    ) -> float:
+        """
+        计算活动时间与忙碌时间段的重叠比例
+        
+        Args:
+            act_start: 活动开始时间
+            act_end: 活动结束时间
+            busy_ranges: 冲突的忙碌时间段列表
+            
+        Returns:
+            重叠比例 (0.0 ~ 1.0)，表示冲突时间占活动总时长的比例
+        """
+        # 计算活动总时长（分钟）
+        today = datetime.today()
+        act_start_dt = datetime.combine(today, act_start)
+        act_end_dt = datetime.combine(today, act_end)
+
+        # 处理跨天情况（虽然实际情况中活动时间通常不会跨天）
+        if act_end_dt < act_start_dt:
+            act_end_dt += timedelta(days=1)
+
+        activity_duration = (act_end_dt - act_start_dt).total_seconds() / 60
+
+        # 活动时长为0，避免除零错误
+        if activity_duration <= 0:
+            return 0.0
+
+        # 计算总冲突时长（分钟）
+        total_conflict_minutes = 0.0
+
+        for busy_range in busy_ranges:
+            busy_start, busy_end = busy_range.to_time_objects()
+            busy_start_dt = datetime.combine(today, busy_start)
+            busy_end_dt = datetime.combine(today, busy_end)
+
+            # 计算当前忙碌时间段与活动的重叠部分
+            overlap_start = max(act_start_dt, busy_start_dt)
+            overlap_end = min(act_end_dt, busy_end_dt)
+
+            if overlap_end > overlap_start:
+                overlap_minutes = (overlap_end - overlap_start).total_seconds() / 60
+                total_conflict_minutes += overlap_minutes
+
+        # 计算重叠比例
+        overlap_ratio = total_conflict_minutes / activity_duration
+
+        # 确保比例不超过1.0（虽然理论上不应该超过，但以防万一）
+        return min(overlap_ratio, 1.0)
 
     def get_filter_summary(self, filtered: list[FilteredActivity]) -> str:
         """
