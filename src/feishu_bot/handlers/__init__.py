@@ -29,6 +29,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "检查差异",
         "对比",
         "对比差异",
+        "扫描"
     ]
     for instruction in check_instructions:
         ret[instruction] = CheckHandler()
