@@ -26,9 +26,10 @@ class NotificationListener:
     实现通知逻辑与业务逻辑的解耦。
     """
 
-    def __init__(self, notification_service: NotificationService):
+    def __init__(self, notification_service: NotificationService, user_preference_manager=None):
         self._notification_service = notification_service
         self._user_session: "UserSession | None" = None
+        self._user_preference_manager = user_preference_manager
 
     def set_user_session(self, session: "UserSession") -> None:
         """
@@ -93,9 +94,18 @@ class NotificationListener:
 
         # 发送活动卡片
         try:
+            # 获取当前已忽略的活动ID集合
+            ignored_ids = set()
+            if self._user_preference_manager:
+                try:
+                    ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
+                except Exception as e:
+                    logger.warning(f"获取忽略列表失败: {e}")
+
             card_content = build_activity_card(
                 event.activities,
-                f"🆕 有 {event.final_count} 个你可能感兴趣的活动"
+                f"🆕 有 {event.final_count} 个你可能感兴趣的活动",
+                ignored_ids=ignored_ids
             )
             await self._notification_service.send_card(card_content)
             logger.info(f"已发送新活动卡片: {event.final_count} 个活动")

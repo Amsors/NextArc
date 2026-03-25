@@ -13,7 +13,7 @@ from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConf
 from src.core.events import EventBus
 from src.core.time_filter import TimeFilter
 from src.core.user_preference_manager import UserPreferenceManager
-from src.feishu_bot import FeishuBot
+from src.feishu_bot import FeishuBot, CardActionHandler
 from src.feishu_bot.handlers.alive import AliveHandler
 from src.feishu_bot.handlers.ignore import IgnoreHandler
 from src.feishu_bot.handlers.valid import ValidHandler
@@ -46,6 +46,7 @@ class NextArcApp:
         self.bot: FeishuBot = None
         self.router: MessageRouter = None
         self.time_filter: TimeFilter = None
+        self.card_handler: CardActionHandler = None
         self._shutdown_event = asyncio.Event()
 
     async def initialize(self) -> bool:
@@ -172,6 +173,15 @@ class NextArcApp:
             IgnoreHandler.set_ignore_manager(self.user_preference_manager)
             InterestedHandler.set_user_preference_manager(self.user_preference_manager)
 
+            # 初始化卡片交互处理器
+            self.card_handler = CardActionHandler()
+            self.card_handler.set_dependencies(
+                user_preference_manager=self.user_preference_manager,
+                auth_manager=self.auth_manager,
+                bot=None  # 暂时为None，等bot创建后再设置
+            )
+            logger.info("卡片交互处理器初始化完成")
+
             # 初始化飞书机器人
             if self.settings.feishu.app_id and self.settings.feishu.app_secret:
                 # 传入预配置的 chat_id（如果存在）
@@ -181,6 +191,14 @@ class NextArcApp:
                     app_secret=self.settings.feishu.app_secret,
                     message_handler=self._handle_message,
                     chat_id=chat_id,
+                    card_handler=self.card_handler,
+                )
+
+                # 更新 card_handler 中的 bot 引用
+                self.card_handler.set_dependencies(
+                    user_preference_manager=self.user_preference_manager,
+                    auth_manager=self.auth_manager,
+                    bot=self.bot
                 )
 
                 # 初始化通知服务
@@ -188,7 +206,10 @@ class NextArcApp:
                 logger.info("通知服务初始化完成")
 
                 # 初始化通知监听器并订阅事件
-                self.notification_listener = NotificationListener(self.notification_service)
+                self.notification_listener = NotificationListener(
+                    self.notification_service,
+                    user_preference_manager=self.user_preference_manager
+                )
                 self.notification_listener.subscribe(self.event_bus)
                 logger.info("通知监听器已订阅事件")
 

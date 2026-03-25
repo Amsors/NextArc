@@ -257,17 +257,25 @@ def format_help_message() -> str:
 """
 
 
-def build_activity_card(activities: list[SecondClass], title: str = "活动列表") -> dict:
+def build_activity_card(
+        activities: list[SecondClass],
+        title: str = "活动列表",
+        ignored_ids: set[str] | None = None
+) -> dict:
     """
     构建活动列表的消息卡片（使用折叠面板）
-    
+
     Args:
         activities: 活动列表
         title: 卡片标题
-        
+        ignored_ids: 已被忽略的活动ID集合，用于显示正确的按钮状态
+
     Returns:
         飞书消息卡片 JSON 字典
     """
+    if ignored_ids is None:
+        ignored_ids = set()
+
     if not activities:
         return {
             "config": {"wide_screen_mode": True},
@@ -300,20 +308,9 @@ def build_activity_card(activities: list[SecondClass], title: str = "活动列�
 
     # 为每个活动创建一个折叠面板
     for i, act in enumerate(activities, 1):
-        collapsible_panel = _build_activity_collapsible_panel(act, i)
+        is_ignored = act.id in ignored_ids
+        collapsible_panel = _build_activity_collapsible_panel(act, i, is_ignored)
         elements.append(collapsible_panel)
-
-    # # 添加底部提示
-    # elements.append({"tag": "hr"})
-    # elements.append({
-    #     "tag": "note",
-    #     "elements": [
-    #         {
-    #             "tag": "plain_text",
-    #             "content": "💡 点击活动名称可查看详情"
-    #         }
-    #     ]
-    # })
 
     return {
         "config": {"wide_screen_mode": True},
@@ -325,14 +322,19 @@ def build_activity_card(activities: list[SecondClass], title: str = "活动列�
     }
 
 
-def _build_activity_collapsible_panel(act: SecondClass, index: int) -> dict:
+def _build_activity_collapsible_panel(
+        act: SecondClass,
+        index: int,
+        is_ignored: bool = False
+) -> dict:
     """
     为单个活动构建折叠面板
-    
+
     Args:
         act: SecondClass 活动对象
         index: 序号（从1开始）
-        
+        is_ignored: 是否已被忽略（用于显示正确的按钮状态）
+
     Returns:
         折叠面板 JSON 字典
     """
@@ -345,7 +347,6 @@ def _build_activity_collapsible_panel(act: SecondClass, index: int) -> dict:
     detail_elements = []
     detail_elements.append(
         {
-
             "tag": "markdown",
             "content": f"**📅 举办**\n{get_display_time(act, 'hold_time')}"
         }
@@ -361,14 +362,12 @@ def _build_activity_collapsible_panel(act: SecondClass, index: int) -> dict:
         {
             "tag": "markdown",
             "content": f"**📌 模块**: {get_module_name(act)}"
-
         }
     )
     detail_elements.append(
         {
             "tag": "markdown",
             "content": f"**👥 组织单位**: {get_department_name(act)}"
-
         }
     )
 
@@ -403,7 +402,7 @@ def _build_activity_collapsible_panel(act: SecondClass, index: int) -> dict:
     detail_elements.append(
         {
             "tag": "markdown",
-            "content": f"**👥 活动描述**\n{get_description_text(act)}"
+            "content": f"**📝 活动描述**\n{get_description_text(act)}"
         }
     )
 
@@ -414,6 +413,57 @@ def _build_activity_collapsible_panel(act: SecondClass, index: int) -> dict:
             "tag": "markdown",
             "content": f"**🏷️ 标签：** {labels}"
         })
+
+    # 添加分隔线
+    detail_elements.append({"tag": "hr"})
+
+    # 构建按钮
+    # 不感兴趣按钮：根据状态显示不同文本和样式
+    ignore_button_text = "✓ 已忽略" if is_ignored else "🗑️ 不感兴趣"
+    ignore_button_type = "default" if is_ignored else "danger"
+
+    # 报名按钮：系列活动不支持直接报名
+    if act.is_series:
+        # 系列活动只有"不感兴趣"按钮
+        button_elements = [{
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": ignore_button_text},
+            "type": ignore_button_type,
+            "value": {
+                "action": "toggle_ignore",
+                "activity_id": act.id,
+                "activity_name": act.name
+            }
+        }]
+    else:
+        # 单次活动有"不感兴趣"和"去报名"两个按钮
+        button_elements = [
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": ignore_button_text},
+                "type": ignore_button_type,
+                "value": {
+                    "action": "toggle_ignore",
+                    "activity_id": act.id,
+                    "activity_name": act.name
+                }
+            },
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "✅ 去报名"},
+                "type": "primary",
+                "value": {
+                    "action": "join",
+                    "activity_id": act.id,
+                    "activity_name": act.name
+                }
+            }
+        ]
+
+    detail_elements.append({
+        "tag": "action",
+        "actions": button_elements
+    })
 
     # 构建折叠面板
     return {

@@ -324,6 +324,42 @@ class UserPreferenceManager:
             logger.error(f"从忽略列表移除活动失败: {e}")
             return False
 
+    async def toggle_ignored_activity(self, activity_id: str) -> tuple[bool, bool]:
+        """
+        切换活动的不感兴趣状态
+
+        Args:
+            activity_id: 活动ID
+
+        Returns:
+            (操作是否成功, 当前是否被忽略)
+            - 如果操作成功，返回 (True, 当前状态)
+            - 如果操作失败，返回 (False, 原状态)
+        """
+        await self.initialize()
+
+        try:
+            # 检查当前状态
+            is_currently_ignored = await self.is_ignored(activity_id)
+
+            if is_currently_ignored:
+                # 当前已忽略，移除
+                success = await self.remove_ignored_activity(activity_id)
+                return success, False
+            else:
+                # 当前未忽略，添加
+                success = await self.add_ignored_activity(activity_id)
+                return success, True
+
+        except Exception as e:
+            logger.error(f"切换活动不感兴趣状态失败: {e}")
+            # 操作失败，返回原状态
+            try:
+                original_state = await self.is_ignored(activity_id)
+                return False, original_state
+            except:
+                return False, False
+
     async def get_ignored_count(self) -> int:
         """
         获取被忽略的活动数量（异步版本）

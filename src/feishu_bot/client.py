@@ -4,18 +4,22 @@ import asyncio
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Coroutine, Optional
+from typing import TYPE_CHECKING, Callable, Coroutine, Optional
 
 from lark_oapi.api.im.v1 import (
     P2ImChatAccessEventBotP2pChatEnteredV1,
     P2ImMessageMessageReadV1,
     P2ImMessageReceiveV1,
 )
+from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTrigger
 from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
 from lark_oapi.ws import Client as WSClient
 
 from src.models import UserSession
 from src.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from .card_handler import CardActionHandler
 
 logger = get_logger("feishu")
 
@@ -33,10 +37,12 @@ class FeishuBot:
             app_secret: str,
             message_handler: Optional[Callable[[str, UserSession], Coroutine]] = None,
             chat_id: Optional[str] = None,
+            card_handler: Optional["CardActionHandler"] = None,
     ):
         self.app_id = app_id
         self.app_secret = app_secret
         self.message_handler = message_handler
+        self.card_handler = card_handler
         self.user_session = UserSession()
         self._client: Optional[WSClient] = None
         self._thread: Optional[threading.Thread] = None
@@ -70,12 +76,92 @@ class FeishuBot:
             self._on_message_read
         )
 
+        # 注册卡片交互事件处理器
+        builder.register_p2_card_action_trigger(self._on_card_action_trigger)
+
         return builder.build()
 
     def _on_message_read(self, event: P2ImMessageMessageReadV1) -> None:
         """处理用户已读消息事件"""
         # 静默处理，不需要回复
         logger.debug(f"用户已读消息")
+
+    def _on_card_action_trigger(self, event: P2CardActionTrigger) -> dict:
+        """
+        处理卡片交互事件（同步回调，在 WebSocket 线程中执行）
+
+        Args:
+            event: 卡片交互事件
+
+        Returns:
+            响应数据字典
+        """
+        logger.info("=" * 50)
+        logger.info("【卡片回调】收到卡片交互事件")
+
+        try:
+            logger.info(f"【卡片回调】card_handler 是否存在: {self.card_handler is not None}")
+            logger.info(f"【卡片回调】_main_loop 是否存在: {self._main_loop is not None}")
+
+            if not self.card_handler:
+                logger.error("【卡片回调】卡片处理器未设置")
+                return {"toast": {"type": "error", "content": "服务未就绪"}}
+
+            if not event.event:
+                logger.error("【卡片回调】事件数据为空")
+                return {"toast": {"type": "error", "content": "无效的事件数据"}}
+
+            # 获取消息ID（用于更新卡片）
+            open_message_id = ""
+            if event.event.context:
+                open_message_id = event.event.context.open_message_id or ""
+                logger.info(f"【卡片回调】消息ID: {open_message_id}")
+
+            # 获取操作数据
+            action = event.event.action
+            if not action or not action.value:
+                logger.error("【卡片回调】操作数据为空")
+                return {"toast": {"type": "error", "content": "无效的操作数据"}}
+
+            action_value = action.value
+            logger.info(f"【卡片回调】操作数据: {action_value}")
+
+            # 在主事件循环中异步处理
+            import asyncio
+            if self._main_loop:
+                logger.info("【卡片回调】正在调度异步处理...")
+                # 如果主循环已设置，使用它来调度异步任务
+                future = asyncio.run_coroutine_threadsafe(
+                    self._async_handle_card_action(action_value, open_message_id),
+                    self._main_loop
+                )
+                # 等待结果（带超时）
+                try:
+                    result = future.result(timeout=2.0)  # 减少超时时间，确保3秒内返回
+                    logger.info(f"【卡片回调】处理完成，返回结果: {result}")
+                    return result
+                except Exception as e:
+                    logger.error(f"【卡片回调】处理超时或失败: {e}")
+                    return {"toast": {"type": "info", "content": "处理中，请稍后..."}}
+            else:
+                logger.error("【卡片回调】主事件循环未设置")
+                return {"toast": {"type": "error", "content": "服务未就绪"}}
+
+        except Exception as e:
+            logger.error(f"【卡片回调】处理卡片交互事件异常: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"toast": {"type": "error", "content": "处理失败"}}
+
+    async def _async_handle_card_action(self, action_value: dict, open_message_id: str) -> dict:
+        """在主事件循环中异步处理卡片交互"""
+        try:
+            if self.card_handler:
+                return await self.card_handler.handle(action_value, open_message_id)
+            return {"toast": {"type": "error", "content": "服务未就绪"}}
+        except Exception as e:
+            logger.error(f"异步处理卡片交互失败: {e}")
+            return {"toast": {"type": "error", "content": f"处理失败: {str(e)[:50]}"}}
 
     def _on_bot_p2p_chat_entered(self, event: P2ImChatAccessEventBotP2pChatEnteredV1) -> None:
         """处理用户进入私聊事件"""
