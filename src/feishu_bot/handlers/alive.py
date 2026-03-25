@@ -1,11 +1,12 @@
 """/alive 指令处理器"""
 
-from src.core import IgnoreManager
+from src.core import UserPreferenceManager
 from src.notifications import Response
 from src.utils.formatter import format_status_message
 from src.utils.logger import get_logger
 
 from .base import CommandHandler
+from ...core.ignore_manager import IgnoreManager
 
 logger = get_logger("feishu.handler.alive")
 
@@ -14,7 +15,7 @@ class AliveHandler(CommandHandler):
     """检查服务状态指令"""
 
     # 类级别的忽略管理器
-    _ignore_manager: IgnoreManager = None
+    _ignore_manager: UserPreferenceManager = None
 
     @classmethod
     def set_ignore_manager(cls, ignore_manager: IgnoreManager) -> None:
@@ -43,10 +44,12 @@ class AliveHandler(CommandHandler):
             is_logged_in = self._auth_manager.is_logged_in()
             db_count = self._db_manager.get_db_count()
 
-            # 获取忽略数量
+            # 获取忽略数量和感兴趣数量
             ignore_count = 0
+            interested_count = 0
             if self._ignore_manager:
                 ignore_count = await self._ignore_manager.get_ignored_count()
+                interested_count = await self._ignore_manager.get_interested_count()
 
             status_text = format_status_message(
                 is_running=is_running,
@@ -55,6 +58,7 @@ class AliveHandler(CommandHandler):
                 is_logged_in=is_logged_in,
                 db_count=db_count,
                 ignore_count=ignore_count,
+                interested_count=interested_count,
             )
             return Response.text(status_text)
 

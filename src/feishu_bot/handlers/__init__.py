@@ -9,6 +9,7 @@ from .check import CheckHandler
 from .help import HelpHandler
 from .ignore import IgnoreHandler
 from .info import InfoHandler
+from .interested import InterestedHandler
 from .join import JoinHandler
 from .search import SearchHandler
 from .valid import ValidHandler
@@ -101,6 +102,14 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
     for instruction in ignore_instructions:
         ret[instruction] = IgnoreHandler()
 
+    # 注册感兴趣指令（支持 /interested 和 感兴趣）
+    interested_instructions = [
+        "interested",
+        "感兴趣",
+    ]
+    for instruction in interested_instructions:
+        ret[instruction] = InterestedHandler()
+
     return ret
 
 
@@ -116,4 +125,5 @@ __all__ = [
     "HelpHandler",
     "ValidHandler",
     "IgnoreHandler",
+    "InterestedHandler",
 ]

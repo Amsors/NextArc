@@ -3,7 +3,7 @@
 处理用户发送的"不感兴趣"指令，将活动加入忽略数据库
 """
 
-from src.core import IgnoreManager
+from src.core import UserPreferenceManager
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -29,10 +29,10 @@ class IgnoreHandler(CommandHandler):
     """
 
     # 类级别的共享实例
-    _ignore_manager: IgnoreManager = None
+    _ignore_manager: UserPreferenceManager = None
 
     @classmethod
-    def set_ignore_manager(cls, ignore_manager: IgnoreManager) -> None:
+    def set_ignore_manager(cls, ignore_manager: UserPreferenceManager) -> None:
         """设置忽略管理器"""
         cls._ignore_manager = ignore_manager
 
@@ -115,7 +115,7 @@ class IgnoreHandler(CommandHandler):
             return Response.text("❌ 无法获取活动信息，请重试")
 
         # 添加到忽略数据库
-        success_count, failed_count = await self._ignore_manager.add_activities(activity_ids)
+        success_count, failed_count = await self._ignore_manager.add_ignored_activities(activity_ids)
 
         if success_count == 0:
             return Response.text("❌ 添加失败，请稍后重试")
@@ -130,11 +130,6 @@ class IgnoreHandler(CommandHandler):
 
         if len(activity_names) > 10:
             lines.append(f"  ... 还有 {len(activity_names) - 10} 个")
-
-        lines.append("")
-        lines.append("💡 提示：")
-        lines.append("• 这些活动将不再出现在 /valid 和通知中")
-        lines.append("• 发送「/valid 全部」可查看所有活动（包含已忽略的）")
 
         if failed_count > 0:
             lines.append(f"\n⚠️ {failed_count} 个活动添加失败")

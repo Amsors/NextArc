@@ -43,15 +43,50 @@ class FeishuConfig(BaseModel):
                          description="预配置的私聊会话ID，格式如 oc_xxx。若配置，则机器人启动即可发送消息，无需等待用户先发消息")
 
 
+def get_project_root() -> Path:
+    """获取项目根目录"""
+    return Path(__file__).parent.parent.parent
+
+
 class DatabaseConfig(BaseModel):
-    """数据库配置"""
+    """数据库配置
+    
+    注意：所有路径都相对于项目根目录解析。
+    例如 "./data" 会被解析为 "{项目根目录}/data"
+    """
     data_dir: Path = Path("./data")
     max_history: int = Field(default=10, ge=1, le=100)
+    # 用户偏好数据库路径（可选，默认为 data_dir/user_preference.db）
+    preference_db_path: Optional[Path] = Field(
+        default=None,
+        description="用户偏好数据库文件路径，默认使用 data_dir/user_preference.db"
+    )
 
     @field_validator("data_dir")
     @classmethod
-    def ensure_path(cls, v: Path) -> Path:
-        return Path(v)
+    def resolve_data_dir(cls, v: Path) -> Path:
+        """将相对路径转换为相对于项目根目录的绝对路径"""
+        path = Path(v)
+        if not path.is_absolute():
+            path = get_project_root() / path
+        return path.resolve()
+
+    @field_validator("preference_db_path")
+    @classmethod
+    def resolve_preference_db_path(cls, v: Optional[Path]) -> Optional[Path]:
+        """将相对路径转换为相对于项目根目录的绝对路径"""
+        if v is None:
+            return None
+        path = Path(v)
+        if not path.is_absolute():
+            path = get_project_root() / path
+        return path.resolve()
+
+    def get_preference_db_path(self) -> Path:
+        """获取用户偏好数据库的完整路径"""
+        if self.preference_db_path is not None:
+            return self.preference_db_path
+        return self.data_dir / "user_preference.db"
 
 
 class LogConfig(BaseModel):

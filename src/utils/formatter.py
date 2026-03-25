@@ -127,6 +127,7 @@ def format_status_message(
         is_logged_in: bool,
         db_count: int,
         ignore_count: int = 0,
+        interested_count: int = 0,
 ) -> str:
     """
     格式化状态消息
@@ -169,6 +170,7 @@ def format_status_message(
 
     lines.append(f"🗄️  数据库数量：{db_count}")
     lines.append(f"🗑️  不感兴趣活动：{ignore_count}")
+    lines.append(f"⭐ 感兴趣活动：{interested_count}")
 
     return "\n".join(lines)
 

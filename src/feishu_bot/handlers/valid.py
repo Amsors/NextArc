@@ -6,11 +6,11 @@
 import aiosqlite
 from pyustc.young import SecondClass, Status
 
-from src.core import IgnoreManager
 from src.models import UserSession, secondclass_from_db_row
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
+from ...core.ignore_manager import IgnoreManager
 
 logger = get_logger("feishu.handler.valid")
 

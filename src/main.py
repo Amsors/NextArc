@@ -11,8 +11,8 @@ from src.config import load_settings
 from src.config.preferences import load_preferences
 from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConfig
 from src.core.events import EventBus
-from src.core.ignore_manager import IgnoreManager
 from src.core.time_filter import TimeFilter
+from src.core.user_preference_manager import UserPreferenceManager
 from src.feishu_bot import FeishuBot
 from src.feishu_bot.handlers.alive import AliveHandler
 from src.feishu_bot.handlers.ignore import IgnoreHandler
@@ -39,7 +39,7 @@ class NextArcApp:
         self.event_bus: EventBus = None
         self.auth_manager: AuthManager = None
         self.db_manager: DatabaseManager = None
-        self.ignore_manager: IgnoreManager = None
+        self.user_preference_manager: UserPreferenceManager = None
         self.notification_service: FeishuNotificationService = None
         self.notification_listener: NotificationListener = None
         self.scanner: ActivityScanner = None
@@ -80,13 +80,17 @@ class NextArcApp:
             )
             logger.info(f"数据库管理器初始化完成，数据目录: {self.settings.database.data_dir}")
 
-            # 初始化忽略管理器
-            self.ignore_manager = IgnoreManager(
-                db_path=project_root / "data" / "ignore.db"
+            # 初始化用户偏好管理器
+            preference_db_path = self.settings.database.get_preference_db_path()
+            self.user_preference_manager = UserPreferenceManager(
+                db_path=preference_db_path
             )
-            await self.ignore_manager.initialize()
-            ignored_count = await self.ignore_manager.get_ignored_count()
-            logger.info(f"✅ 忽略管理器初始化完成，已有 {ignored_count} 个被忽略的活动")
+            await self.user_preference_manager.initialize()
+            ignored_count = await self.user_preference_manager.get_ignored_count()
+            interested_count = await self.user_preference_manager.get_interested_count()
+            logger.info(f"✅ 用户偏好管理器初始化完成")
+            logger.info(f"   不感兴趣活动: {ignored_count} 个")
+            logger.info(f"   感兴趣活动: {interested_count} 个")
 
             # 初始化事件总线
             self.event_bus = EventBus()
@@ -146,7 +150,7 @@ class NextArcApp:
                 ai_user_info=self.settings.ai.user_info,
                 time_filter=self.time_filter,
                 use_time_filter=use_time_filter,
-                ignore_manager=self.ignore_manager,
+                user_preference_manager=self.user_preference_manager,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
@@ -158,13 +162,15 @@ class NextArcApp:
 
             # 初始化消息路由器
             self.router = MessageRouter()
-            self.router.set_dependencies(self.scanner, self.auth_manager, self.db_manager, self.ignore_manager)
+            self.router.set_dependencies(self.scanner, self.auth_manager, self.db_manager, self.user_preference_manager)
             logger.info("消息路由器初始化完成")
 
-            # 为 ValidHandler、AliveHandler 和 IgnoreHandler 设置忽略管理器
-            ValidHandler.set_ignore_manager(self.ignore_manager)
-            AliveHandler.set_ignore_manager(self.ignore_manager)
-            IgnoreHandler.set_ignore_manager(self.ignore_manager)
+            # 为 ValidHandler、AliveHandler、IgnoreHandler 和 InterestedHandler 设置偏好管理器
+            from src.feishu_bot.handlers.interested import InterestedHandler
+            ValidHandler.set_ignore_manager(self.user_preference_manager)
+            AliveHandler.set_ignore_manager(self.user_preference_manager)
+            IgnoreHandler.set_ignore_manager(self.user_preference_manager)
+            InterestedHandler.set_user_preference_manager(self.user_preference_manager)
 
             # 初始化飞书机器人
             if self.settings.feishu.app_id and self.settings.feishu.app_secret:
@@ -332,6 +338,11 @@ class NextArcApp:
             "发送「不感兴趣 序号」将活动加入忽略列表",
             "序号格式：1,2,3 或 1-5 或 全部",
             "",
+            "⭐ 感兴趣功能：",
+            "发送「感兴趣 <类型> 序号」将筛选掉的活动标记为感兴趣",
+            "类型：ai (AI筛选), time (时间筛选), db/ignore (数据库筛选)",
+            "这些活动将绕过所有筛选，在后续扫描中推荐给您",
+            "",
             "💡 提示：搜索结果有效期5分钟，报名/取消需要二次确认。",
         ])
 
@@ -364,7 +375,8 @@ class NextArcApp:
             "db_count": self.db_manager.get_db_count() if self.db_manager else 0,
             "bot_connected": self.bot.is_connected() if self.bot else False,
             "time_filter_enabled": self.time_filter.is_enabled() if self.time_filter else False,
-            "ignore_count": self.ignore_manager.get_ignored_count_sync() if self.ignore_manager else 0,
+            "ignore_count": self.user_preference_manager.get_ignored_count_sync() if self.user_preference_manager else 0,
+            "interested_count": self.user_preference_manager.get_interested_count_sync() if self.user_preference_manager else 0,
         }
 
 

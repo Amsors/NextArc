@@ -275,6 +275,43 @@ class UserSession:
             return None
         return self.displayed_activities.filtered_activities
 
+    def get_filtered_activities_by_type(self, filter_type: str) -> list[FilteredActivity]:
+        """
+        获取特定类型的被筛选活动（带过期检查）
+
+        Args:
+            filter_type: 筛选器类型（"ai", "db", "ignore", "time"）
+
+        Returns:
+            该类型的被筛选活动列表，如果过期或无数据则返回空列表
+        """
+        if not self.displayed_activities:
+            return []
+
+        if self.displayed_activities.is_expired():
+            return []
+
+        filtered = self.displayed_activities.filtered_activities
+        if not filtered:
+            return []
+
+        # 支持多种类型别名映射
+        type_mapping = {
+            "ai": ["ai"],
+            "db": ["db", "ignore"],
+            "ignore": ["db", "ignore"],
+            "time": ["time"],
+        }
+
+        valid_types = type_mapping.get(filter_type.lower(), [filter_type.lower()])
+
+        result = []
+        for ft, activities in filtered.items():
+            if ft in valid_types:
+                result.extend(activities)
+
+        return result
+
     def parse_displayed_indices(self, indices_str: str) -> tuple[list[int], list[str]]:
         """
         解析显示活动的序号字符串

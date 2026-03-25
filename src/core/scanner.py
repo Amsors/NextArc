@@ -16,8 +16,8 @@ from .ai_filter import AIFilter
 from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
-from .ignore_manager import IgnoreManager
 from .time_filter import TimeFilter
+from .user_preference_manager import UserPreferenceManager
 
 if TYPE_CHECKING:
     from src.core.events import EventBus
@@ -51,7 +51,7 @@ class ActivityScanner:
             ai_user_info: str = "",
             time_filter: Optional[TimeFilter] = None,
             use_time_filter: bool = False,
-            ignore_manager: Optional[IgnoreManager] = None,
+            user_preference_manager: Optional[UserPreferenceManager] = None,
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
@@ -63,7 +63,7 @@ class ActivityScanner:
         self.ai_user_info = ai_user_info
         self.time_filter = time_filter
         self.use_time_filter = use_time_filter
-        self.ignore_manager = ignore_manager
+        self.user_preference_manager = user_preference_manager
         self.scheduler = AsyncIOScheduler()
         self.diff_engine = DiffEngine()
         self._last_scan_time: Optional[datetime] = None
@@ -279,12 +279,21 @@ class ActivityScanner:
             db_filtered = []  # 数据库筛选过滤掉的活动（用户标记为不感兴趣）
 
             if enable_filter:
-                # 应用数据库筛选（被用户标记为不感兴趣的活动）
-                if self.ignore_manager:
-                    logger.info(f"使用数据库筛选检查 {len(activities)} 个新活动...")
-                    activities, db_filtered = await self.ignore_manager.filter_activities(activities)
+                # 第0步: 从感兴趣白名单中恢复活动（绕过所有筛选）
+                restored_activities = []
+                if self.user_preference_manager:
+                    activities, restored_activities = await self.user_preference_manager.restore_interested_activities(
+                        activities)
+                    if restored_activities:
+                        logger.info(f"从感兴趣白名单恢复了 {len(restored_activities)} 个活动")
 
-                    if not activities:
+                # 第1步: 应用数据库筛选（被用户标记为不感兴趣的活动）
+                db_filtered = []
+                if self.user_preference_manager:
+                    logger.info(f"使用数据库筛选检查 {len(activities)} 个新活动...")
+                    activities, db_filtered = await self.user_preference_manager.filter_activities(activities)
+
+                    if not activities and not restored_activities:
                         logger.info("数据库筛选后无活动需要通知（全部被用户标记为不感兴趣）")
                         return
 
@@ -306,8 +315,14 @@ class ActivityScanner:
                     )
                     ai_filtered = ai_filtered_result
 
-                    if not activities:
+                    if not activities and not restored_activities:
                         logger.info("AI 筛选后无活动需要通知")
+
+            # 将恢复的活动加回到最终列表（它们绕过所有筛选）
+            if restored_activities:
+                activities = restored_activities + activities
+                logger.info(
+                    f"最终活动列表包含 {len(restored_activities)} 个白名单活动和 {len(activities) - len(restored_activities)} 个通过筛选的活动")
 
             # 发布新活动发现事件
             event = NewActivitiesFoundEvent(
