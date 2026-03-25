@@ -6,11 +6,11 @@
 import aiosqlite
 from pyustc.young import SecondClass, Status
 
+from src.core import EnrolledFilter, UserPreferenceManager
 from src.models import UserSession, secondclass_from_db_row
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
-from ...core.ignore_manager import IgnoreManager
 
 logger = get_logger("feishu.handler.valid")
 
@@ -18,13 +18,13 @@ logger = get_logger("feishu.handler.valid")
 class ValidHandler(CommandHandler):
     """查询可报名活动指令"""
 
-    # 类级别的忽略管理器（仍需要，因为是业务依赖而非通知依赖）
-    _ignore_manager: IgnoreManager = None
+    # 类级别的用户偏好管理器
+    _user_preference_manager: UserPreferenceManager = None
 
     @classmethod
-    def set_ignore_manager(cls, ignore_manager: IgnoreManager) -> None:
-        """设置忽略管理器"""
-        cls._ignore_manager = ignore_manager
+    def set_ignore_manager(cls, user_preference_manager: UserPreferenceManager) -> None:
+        """设置用户偏好管理器"""
+        cls._user_preference_manager = user_preference_manager
 
     @property
     def command(self) -> str:
@@ -106,12 +106,22 @@ class ValidHandler(CommandHandler):
             db_filtered = []
             time_filtered = []
             ai_filtered = []
+            enrolled_filtered = []
 
             # 如果不显示全部，则应用筛选器
             if not show_all:
+                # 获取已报名活动ID列表并应用已报名筛选
+                enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(latest_db)
+                if enrolled_ids:
+                    enrolled_filter = EnrolledFilter(enrolled_ids)
+                    activities, enrolled_filtered = enrolled_filter.filter_activities(activities)
+                    if enrolled_filtered:
+                        filter_info.append(f"✅ 已报名筛选已过滤 {len(enrolled_filtered)} 个活动")
+                        logger.info(f"已报名筛选过滤了 {len(enrolled_filtered)} 个活动")
+
                 # 应用数据库筛选（被用户标记为不感兴趣的活动）
-                if self._ignore_manager:
-                    activities, db_filtered = await self._ignore_manager.filter_activities(activities)
+                if self._user_preference_manager:
+                    activities, db_filtered = await self._user_preference_manager.filter_activities(activities)
                     if db_filtered:
                         filter_info.append(f"🗑️ 数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
                         logger.info(f"数据库筛选过滤了 {len(db_filtered)} 个活动")
@@ -142,6 +152,8 @@ class ValidHandler(CommandHandler):
                 filter_result["db"] = db_filtered
             if time_filtered:
                 filter_result["time"] = time_filtered
+            if enrolled_filtered:
+                filter_result["enrolled"] = enrolled_filtered
 
             # 保存显示的活动列表到会话（用于"不感兴趣"功能）
             session.set_displayed_activities(
@@ -192,7 +204,8 @@ class ValidHandler(CommandHandler):
                 has_filter = (
                         self._scanner.use_ai_filter or
                         self._scanner.use_time_filter or
-                        self._ignore_manager
+                        self._user_preference_manager or
+                        True  # 已报名筛选始终启用
                 )
                 if has_filter:
                     lines.append("💡 发送「/valid 全部」查看所有活动（不进行筛选）")

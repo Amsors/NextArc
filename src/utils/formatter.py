@@ -120,6 +120,13 @@ def format_db_filtered_result(activities_filtered: list[FilteredActivity]) -> st
     return lines
 
 
+def format_enrolled_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    activities = [act.activity for act in activities_filtered]
+    lines = format_activity_list(activities, "因已报名被筛选掉的活动", simple_format=True)
+    lines += "\n"
+    return lines
+
+
 def format_status_message(
         is_running: bool,
         last_scan: Optional[datetime],

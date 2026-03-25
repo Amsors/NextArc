@@ -8,7 +8,7 @@ from src.core.events.scan_events import (
     EnrolledActivityChangedEvent,
 )
 from src.utils.formatter import build_activity_card, format_db_filtered_result, \
-    format_ai_filtered_result, format_time_filtered_result
+    format_ai_filtered_result, format_time_filtered_result, format_enrolled_filtered_result
 from src.utils.logger import get_logger
 from .service import NotificationService
 
@@ -70,19 +70,20 @@ class NotificationListener:
         # 构建筛选信息消息
         message_parts = []
 
+        # 已报名筛选信息
+        if event.enrolled_filtered_count > 0:
+            message_parts.append(format_enrolled_filtered_result(event.filters_applied.get("enrolled", [])))
+
         # 数据库筛选信息
         if event.db_filtered_count > 0:
-            # message_parts.append(f"🗑️ 数据库筛选已过滤 {event.db_filtered_count} 个不感兴趣的活动\n")
             message_parts.append(format_db_filtered_result(event.filters_applied.get("db", [])))
 
         # AI 筛选信息
         if event.ai_filtered_count > 0:
-            # message_parts.append(f"🤖 AI 过滤了 {event.ai_filtered_count} 个可能不感兴趣的活动\n")
             message_parts.append(format_ai_filtered_result(event.filters_applied.get("ai", [])))
 
         # 时间筛选信息
         if event.time_filtered_count > 0:
-            # message_parts.append(f"⏰ 时间筛选过滤了 {event.time_filtered_count} 个活动\n")
             message_parts.append(format_time_filtered_result(event.filters_applied.get("time", [])))
 
         # 发送筛选信息

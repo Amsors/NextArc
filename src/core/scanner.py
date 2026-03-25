@@ -16,6 +16,7 @@ from .ai_filter import AIFilter
 from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
+from .enrolled_filter import EnrolledFilter
 from .time_filter import TimeFilter
 from .user_preference_manager import UserPreferenceManager
 
@@ -177,8 +178,10 @@ class ActivityScanner:
 
                 # 发布新活动事件
                 if notify_new_activities and diff.added and self.event_bus:
+                    # 获取已报名活动ID列表，传递给 _publish_new_activities_event
+                    enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(new_db_path)
                     # 使用 create_task 在后台执行，避免阻塞定时扫描和 WebSocket 心跳
-                    self._create_background_task(self._publish_new_activities_event(diff, not no_filter))
+                    self._create_background_task(self._publish_new_activities_event(diff, not no_filter, enrolled_ids))
 
                 # 发布扫描完成事件
                 if self.event_bus:
@@ -256,13 +259,15 @@ class ActivityScanner:
 
         task.add_done_callback(on_task_done)
 
-    async def _publish_new_activities_event(self, diff, enable_filter: bool = True) -> None:
+    async def _publish_new_activities_event(self, diff, enable_filter: bool = True,
+                                            enrolled_ids: set[str] = None) -> None:
         """
         发布新活动发现事件
 
         Args:
             diff: 差异结果，包含新增活动列表
             enable_filter: 是否启用筛选（数据库筛选、时间筛选、AI 筛选）
+            enrolled_ids: 已报名活动ID集合
         """
         if not self.event_bus:
             return
@@ -277,6 +282,11 @@ class ActivityScanner:
             ai_filtered = []  # AI 过滤掉的活动
             time_filtered = []  # 时间过滤掉的活动
             db_filtered = []  # 数据库筛选过滤掉的活动（用户标记为不感兴趣）
+            enrolled_filtered = []  # 已报名筛选过滤掉的活动
+
+            # 创建已报名筛选器
+            enrolled_ids = enrolled_ids or set()
+            enrolled_filter = EnrolledFilter(enrolled_ids)
 
             if enable_filter:
                 # 第0步: 从感兴趣白名单中恢复活动（绕过所有筛选）
@@ -286,6 +296,18 @@ class ActivityScanner:
                         activities)
                     if restored_activities:
                         logger.info(f"从感兴趣白名单恢复了 {len(restored_activities)} 个活动")
+
+                # 第0.5步: 应用已报名筛选（先筛选掉已报名的活动）
+                if enrolled_ids:
+                    logger.info(f"使用已报名筛选检查 {len(activities)} 个新活动...")
+                    activities, enrolled_filtered = enrolled_filter.filter_activities(activities)
+
+                    if enrolled_filtered:
+                        logger.info(f"已报名筛选过滤了 {len(enrolled_filtered)} 个活动")
+
+                    if not activities and not restored_activities:
+                        logger.info("已报名筛选后无活动需要通知（全部已报名）")
+                        return
 
                 # 第1步: 应用数据库筛选（被用户标记为不感兴趣的活动）
                 db_filtered = []
@@ -324,6 +346,8 @@ class ActivityScanner:
                 logger.info(
                     f"最终活动列表包含 {len(restored_activities)} 个白名单活动和 {len(activities) - len(restored_activities)} 个通过筛选的活动")
 
+            # 注意：已报名的白名单活动不会被恢复，因为已报名意味着用户不需要再报名
+
             # 发布新活动发现事件
             event = NewActivitiesFoundEvent(
                 activities=activities,
@@ -332,11 +356,13 @@ class ActivityScanner:
                     "db": db_filtered,
                     "time": time_filtered,
                     "ai": ai_filtered,
+                    "enrolled": enrolled_filtered,
                 },
             )
             await self.event_bus.publish(event)
 
             logger.info(f"已发布新活动事件: {len(activities)} 个新活动"
+                        f"{'，' + str(len(enrolled_filtered)) + ' 个已报名被过滤' if enrolled_filtered else ''}"
                         f"{'，' + str(len(db_filtered)) + ' 个被数据库过滤' if db_filtered else ''}"
                         f"{'，' + str(len(ai_filtered)) + ' 个被 AI 过滤' if ai_filtered else ''}"
                         f"{'，' + str(len(time_filtered)) + ' 个被时间过滤' if time_filtered else ''}")

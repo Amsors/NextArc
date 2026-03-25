@@ -52,6 +52,11 @@ class NewActivitiesFoundEvent:
         return len(self.filters_applied.get("ai", []))
 
     @property
+    def enrolled_filtered_count(self) -> int:
+        """已报名筛选过滤的数量"""
+        return len(self.filters_applied.get("enrolled", []))
+
+    @property
     def final_count(self) -> int:
         """最终剩余活动数量"""
         return len(self.activities)
