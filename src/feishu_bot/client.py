@@ -49,6 +49,8 @@ class FeishuBot:
         self._connected = False
         # 优先使用预配置的 chat_id，否则为 None
         self._chat_id: Optional[str] = chat_id if chat_id else None
+        # 记录配置文件中是否预配置了 chat_id
+        self._chat_id_configured: bool = bool(chat_id)
         self._stop_event = threading.Event()
 
         # 用于在主线程中执行异步代码
@@ -170,8 +172,14 @@ class FeishuBot:
 
             # 保存 chat_id
             if event.event and event.event.chat_id:
-                self._chat_id = event.event.chat_id
-                logger.info(f"记录 chat_id: {self._chat_id}")
+                chat_id = event.event.chat_id
+                self._chat_id = chat_id
+
+                # 如果配置文件中没有预配置 chat_id，输出 INFO 日志方便用户获取
+                if not self._chat_id_configured:
+                    logger.info(f"用户进入私聊，当前 chat_id: {chat_id} （可配置到 config.yaml 的 feishu.chat_id 中）")
+                else:
+                    logger.info(f"记录 chat_id: {chat_id}")
 
         except Exception as e:
             logger.error(f"处理进入私聊事件失败: {e}")
@@ -181,7 +189,12 @@ class FeishuBot:
         try:
             # 保存 chat_id
             if event.event and event.event.message:
-                self._chat_id = event.event.message.chat_id
+                chat_id = event.event.message.chat_id
+                self._chat_id = chat_id
+
+                # 如果配置文件中没有预配置 chat_id，输出 INFO 日志方便用户获取
+                if not self._chat_id_configured:
+                    logger.info(f"收到消息，当前 chat_id: {chat_id} （可配置到 config.yaml 的 feishu.chat_id 中）")
 
                 # 只在主循环设置后才尝试回调
                 if self._main_loop and self.message_handler:
