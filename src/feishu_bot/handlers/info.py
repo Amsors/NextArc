@@ -39,29 +39,47 @@ class InfoHandler(CommandHandler):
             if not args:
                 filter = SecondClassFilter().exclude_status([
                     Status.ABNORMAL,
-                    Status.FINISHED,
+                    # Status.PUBLISHED,
+                    # Status.APPLYING,
+                    # Status.APPLY_ENDED,
                     Status.HOUR_PUBLIC,
                     Status.HOUR_APPEND_PUBLIC,
                     Status.PUBLIC_ENDED,
                     Status.HOUR_APPLYING,
                     Status.HOUR_APPROVED,
                     Status.HOUR_REJECTED,
+                    Status.FINISHED,
                 ])
                 hint = "仅显示发布、报名中、报名已结束的活动\n获取更多信息，请输入/info all或/info else\n"
             else:
                 if args[0] == "全部" or args[0] == "all" or args[0] == "全部活动" or args[0] == "所有":
                     filter = SecondClassFilter().exclude_status([
-                        Status.ABNORMAL,
-                        Status.FINISHED,
+                        # Status.ABNORMAL,
+                        Status.PUBLISHED,
+                        Status.APPLYING,
+                        Status.APPLY_ENDED,
+                        Status.HOUR_PUBLIC,
+                        Status.HOUR_APPEND_PUBLIC,
+                        Status.PUBLIC_ENDED,
+                        Status.HOUR_APPLYING,
+                        Status.HOUR_APPROVED,
+                        Status.HOUR_REJECTED,
+                        # Status.FINISHED,
                     ])
                     hint = "显示除了结项和异常结项的所有活动\n"
                 elif args[0] == "其余" or args[0] == "其他" or args[0] == "else":
                     filter = SecondClassFilter().exclude_status([
                         Status.ABNORMAL,
-                        Status.FINISHED,
                         Status.PUBLISHED,
                         Status.APPLYING,
                         Status.APPLY_ENDED,
+                        # Status.HOUR_PUBLIC,
+                        # Status.HOUR_APPEND_PUBLIC,
+                        # Status.PUBLIC_ENDED,
+                        # Status.HOUR_APPLYING,
+                        # Status.HOUR_APPROVED,
+                        # Status.HOUR_REJECTED,
+                        Status.FINISHED,
                     ])
                     hint = "显示公示/追加公式中、公示结束、学时申请中、学时审核通过、学时驳回的活动\n"
                 else:

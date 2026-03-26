@@ -1,10 +1,12 @@
 """/cancel 指令处理器"""
 
+from pyustc.young import Status
+
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
-
 from .base import CommandHandler
+from ...core import SecondClassFilter
 
 logger = get_logger("feishu.handler.cancel")
 
@@ -46,7 +48,21 @@ class CancelHandler(CommandHandler):
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
 
-        enrolled = await info_handler._get_enrolled_activities(latest_db)
+        filter = SecondClassFilter().exclude_status([
+            Status.ABNORMAL,
+            # Status.PUBLISHED,
+            # Status.APPLYING,
+            # Status.APPLY_ENDED,
+            Status.HOUR_PUBLIC,
+            Status.HOUR_APPEND_PUBLIC,
+            Status.PUBLIC_ENDED,
+            Status.HOUR_APPLYING,
+            Status.HOUR_APPROVED,
+            Status.HOUR_REJECTED,
+            Status.FINISHED,
+        ])
+
+        enrolled = await info_handler._get_enrolled_activities(latest_db, filter=filter)
 
         if not enrolled:
             return Response.text("您目前没有报名任何活动")
@@ -98,7 +114,7 @@ class CancelHandler(CommandHandler):
             # 成功后不立即扫描，让用户手动 /update
             logger.info(f"取消报名成功: {activity_name}")
             return Response.text(
-                f"已成功取消报名「{activity_name}」\n\n"
+                f"已成功取消报名「{activity_name}」\n"
             )
 
         except Exception as e:
