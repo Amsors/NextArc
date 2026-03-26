@@ -20,7 +20,7 @@ class USTCConfig(BaseModel):
 
 class BehaviorConfig(BaseModel):
     """应用行为配置"""
-    scan_on_start: bool = True
+    scan_on_start: bool = False
 
 
 class FilterConfig(BaseModel):
@@ -129,7 +129,7 @@ class AIRetryConfig(BaseModel):
     max_retries: int = Field(
         default=3,
         ge=0,
-        le=10,
+        le=20,
         description="最大重试次数"
     )
     base_delay: float = Field(

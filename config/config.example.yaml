@@ -2,7 +2,7 @@
 # 复制此文件并填写实际值后使用
 
 ustc:
-  # 认证模式: "file" 从本文件读取，"env" 从环境变量读取
+  # 认证模式: "file" 从本文件读取，"env" 从环境变量读取，默认从file读取
   auth_mode: "file"
   
   # auth_mode=file 时使用以下配置
@@ -14,25 +14,26 @@ ustc:
   env_password: "USTC_PASSWORD"
 
 filter:
+  # 是否在显示自己已经报名的活动列表时，忽略已报名但活动已结束的活动，默认开启
   ignore_participated_but_ended_activity: true
 
 behavior:
+  # 是否在程序启动时扫描所有活动，不建议开启，默认关闭
   scan_on_start: false
-  update_search_result: true
 
 monitor:
   # 定时扫描间隔（分钟），默认15分钟
   interval_minutes: 15
-  # 发现新活动时是否发送飞书通知
+  # 发现新活动时是否发送飞书通知，默认开启
   notify_new_activities: true
-  # 是否使用 AI 筛选新活动（需要配置 ai 部分）
+  # 是否使用 AI 筛选新活动（需要配置 ai 部分），默认关闭
   use_ai_filter: false
 
 # AI 筛选配置（使用 OpenAI API 格式）
 # 重要：如果启用 AI 功能（enabled: true），以下所有带 [必填] 标记的配置项都必须填写，
 # 否则程序启动时会报错。如果不使用 AI 功能，请保持 enabled: false
 ai:
-  # 是否启用 AI 筛选
+  # 是否启用 AI 筛选，默认关闭
   enabled: false
   
   # API 密钥 [必填]（如果 enabled: true）
@@ -46,7 +47,8 @@ ai:
   base_url: ""
   
   # 模型名称 [必填]（如果 enabled: true）
-  # 例如：gpt-3.5-turbo, gpt-4, deepseek-chat
+  # 例如：gpt-3.5-turbo, gpt-4, deepseek-v3
+  # 必须与你的API提供方提供的模型名称一致
   model: ""
   
   # 用户偏好描述 [必填]（如果 enabled: true）
@@ -54,13 +56,13 @@ ai:
   # 这将直接影响 AI 的筛选效果
   user_info: |
   
-  
-  # 系统提示词文件路径 [必填]（如果 enabled: true）
+
+  # 系统提示词文件路径 [必填]（如果 enabled: true），默认情况下已经配置好，无需人为创建或修改
   # 相对于项目根目录或绝对路径
   # 该文件必须存在且不能为空，否则启动时报错
   system_prompt_file: "config/prompts/system_prompt.txt"
   
-  # 用户提示词模板文件路径 [必填]（如果 enabled: true）
+  # 用户提示词模板文件路径 [必填]（如果 enabled: true），默认情况下已经配置好，无需人为创建或修改
   # 相对于项目根目录或绝对路径
   # 该文件必须存在且不能为空，否则启动时报错
   # 可用变量：{user_info}, {activity_info}
@@ -72,25 +74,23 @@ ai:
   temperature:
   
   # 请求超时时间（秒）[可选]
-  # 默认 30 秒
+  # 默认 30 秒，范围：5-300
   timeout: 30
   
   # 速率限制配置 [可选]
   # 用于控制 API 请求速率，防止触发限流
   rate_limit:
-    # 每分钟最大请求数（0表示不限制）
-    # OpenAI GPT-3.5: 60 (Tier 1), GPT-4: 20
-    # DeepSeek: 60, Moonshot: 30（根据套餐调整）
+    # 每分钟最大请求数（0表示不限制），默认60次，范围：0以上
     requests_per_minute: 60
     
-    # 最大并发请求数
+    # 最大并发请求数，默认3个，范围：1-100
     max_concurrency: 3
     
-    # 达到速率限制时是否排队等待（true推荐）
+    # 达到速率限制时是否排队等待（true推荐），默认开启
     # 如果设为 false，超过限制时会立即返回失败
     enable_queue: true
     
-    # 队列最大等待时间（秒）
+    # 队列最大等待时间（秒），默认300秒，范围：0以上
     # 超过此时间仍未获取到令牌则放弃
     queue_timeout: 300
   
@@ -99,25 +99,26 @@ ai:
   retry:
     # 最大重试次数
     # 429限流、5xx错误、网络错误时会自动重试
+    # 最大重试次数，默认3次，范围：0-20
     max_retries: 3
     
-    # 基础重试延迟（秒）
+    # 基础重试延迟（秒），默认2秒，范围：0以上
     # 第一次重试等待的时间
     base_delay: 2.0
-    
-    # 最大重试延迟（秒）
-    # 延迟不会超过此值
+
+    # 最大重试延迟（秒），默认60秒，范围：0以上
     max_delay: 60.0
     
-    # 退避倍数（指数退避）
+    # 退避倍数（指数退避），默认2.0，范围：1.0以上
     # 延迟计算公式: delay = base_delay * (backoff_factor ^ attempt) * jitter
     # 例如: 2s, 4s, 8s...（加上随机抖动）
     backoff_factor: 2.0
     
-    # 触发重试的HTTP状态码
+    # 触发重试的HTTP状态码，默认为以下五个状态码
     retry_on_status: [ 429, 500, 502, 503, 504 ]
     
-    # 网络错误（连接超时、断开等）是否重试
+    # 网络错误（连接超时、断开等）是否重试，默认开启
+    # 如果设为 false，网络错误时会立即返回失败
     retry_on_network_error: true
 
 feishu:
@@ -133,7 +134,7 @@ database:
   # 数据库文件存储目录（相对于项目根目录）
   # 例如 "./data" 表示 {项目根目录}/data
   data_dir: "./data"
-  # 保留的历史数据库文件数量
+  # 保留的历史数据库文件数量，默认10个，范围：1-100
   max_history: 10
   # 用户偏好数据库文件路径（可选，相对于项目根目录）
   # 默认使用 {data_dir}/user_preference.db
@@ -143,4 +144,5 @@ database:
 
 logging:
   # 日志级别: DEBUG, INFO, WARNING, ERROR
+  # 默认 INFO，如果需要调试信息，请设置为 DEBUG
   level: "INFO"
