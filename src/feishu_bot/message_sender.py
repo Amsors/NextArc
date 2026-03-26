@@ -49,7 +49,7 @@ class MessageSender:
         Returns:
             是否发送成功
         """
-        lines = ["❌ 操作失败"]
+        lines = ["操作失败"]
 
         if context:
             lines.append(f"上下文：{context}")
@@ -68,7 +68,7 @@ class MessageSender:
         Returns:
             是否发送成功
         """
-        return await self.send(f"✅ {message}")
+        return await self.send(f"成功 {message}")
 
     async def send_info(self, message: str) -> bool:
         """
@@ -80,7 +80,7 @@ class MessageSender:
         Returns:
             是否发送成功
         """
-        return await self.send(f"ℹ️ {message}")
+        return await self.send(f"信息 {message}")
 
     async def send_card(self, card_content: dict) -> bool:
         """

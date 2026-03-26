@@ -617,10 +617,9 @@ class UserPreferenceManager:
         """
         过滤掉被忽略的活动（同时考虑感兴趣白名单）
 
-        逻辑：
-        1. 如果活动在 interested 列表中，保留（绕过忽略）
-        2. 如果活动在 ignored 列表中，过滤
-        3. 其他活动保留
+        如果活动在 interested 列表中，保留（绕过忽略）
+        如果活动在 ignored 列表中，过滤
+        其他活动保留
 
         Args:
             activities: 活动对象列表（需要有 id 属性）

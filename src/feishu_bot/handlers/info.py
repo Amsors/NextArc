@@ -33,7 +33,7 @@ class InfoHandler(CommandHandler):
         # 获取最新数据库
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
-            return Response.text("❌ 暂无数据，请先执行 /update")
+            return Response.text("暂无数据，请先执行 /update")
 
         try:
             if not args:
@@ -70,7 +70,7 @@ class InfoHandler(CommandHandler):
             activities = await self._get_enrolled_activities(latest_db, filter)
 
             if not activities:
-                return Response.text("📋 已报名活动\n\n您目前没有报名任何活动")
+                return Response.text("已报名活动\n\n您目前没有报名任何活动")
 
             return Response.text(f"{hint}{format_enrolled_list(activities)}")
 

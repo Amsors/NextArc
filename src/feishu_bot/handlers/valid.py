@@ -79,7 +79,7 @@ class ValidHandler(CommandHandler):
         # 获取最新数据库
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
-            return Response.text("❌ 暂无数据，请先执行 /update 或 /valid 重新扫描")
+            return Response.text("暂无数据，请先执行 /update 或 /valid 重新扫描")
 
         try:
             # 从数据库获取可报名活动（状态为 PUBLISHED 或 APPLYING）
@@ -95,7 +95,7 @@ class ValidHandler(CommandHandler):
                             logger.warning(f"更新活动 {activity.id} 信息失败: {e}")
 
             if not activities:
-                lines = ["📋 可报名活动\n\n目前暂无可报名的活动"]
+                lines = ["可报名活动\n\n目前暂无可报名的活动"]
                 if need_rescan:
                     lines.insert(0, scan_info)
                     lines.insert(1, "")
@@ -117,21 +117,21 @@ class ValidHandler(CommandHandler):
                     enrolled_filter = EnrolledFilter(enrolled_ids)
                     activities, enrolled_filtered = enrolled_filter.filter_activities(activities)
                     if enrolled_filtered:
-                        filter_info.append(f"✅ 已报名筛选已过滤 {len(enrolled_filtered)} 个活动")
+                        filter_info.append(f"已报名筛选已过滤 {len(enrolled_filtered)} 个活动")
                         logger.info(f"已报名筛选过滤了 {len(enrolled_filtered)} 个活动")
 
                 # 应用数据库筛选（被用户标记为不感兴趣的活动）
                 if self._user_preference_manager:
                     activities, db_filtered = await self._user_preference_manager.filter_activities(activities)
                     if db_filtered:
-                        filter_info.append(f"🗑️ 数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
+                        filter_info.append(f"数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
                         logger.info(f"数据库筛选过滤了 {len(db_filtered)} 个活动")
 
                 # 应用时间筛选（如果启用）
                 if self._scanner.use_time_filter and self._scanner.time_filter:
                     activities, time_filtered = self._scanner.time_filter.filter_activities(activities)
                     if time_filtered:
-                        filter_info.append(f"⏰ 时间筛选已过滤 {len(time_filtered)} 个活动")
+                        filter_info.append(f"时间筛选已过滤 {len(time_filtered)} 个活动")
                         logger.info(f"时间筛选过滤了 {len(time_filtered)} 个活动")
 
                 # 应用 AI 筛选（如果启用）
@@ -146,7 +146,7 @@ class ValidHandler(CommandHandler):
                     )
                     ai_filtered_count = len(ai_filtered)
                     if ai_filtered_count > 0:
-                        filter_info.append(f"🤖 AI 筛选已过滤 {ai_filtered_count} 个活动")
+                        filter_info.append(f"AI 筛选已过滤 {ai_filtered_count} 个活动")
                         logger.info(f"AI 筛选过滤了 {ai_filtered_count} 个活动")
 
             filter_result = dict()
@@ -173,13 +173,13 @@ class ValidHandler(CommandHandler):
                     lines.append(scan_info)
                     lines.append("")
 
-                lines.append(f"📋 可报名活动（共 {original_count} 条，已筛选）：")
+                lines.append(f"可报名活动（共 {original_count} 条，已筛选）：")
                 for info in filter_info:
                     lines.append(f"  {info}")
                 lines.append("")
-                lines.append("🤷 筛选后暂无可报名的活动")
+                lines.append("筛选后暂无可报名的活动")
                 if not show_all:
-                    lines.append("💡 发送「/valid 全部」查看所有活动（不进行筛选）")
+                    lines.append("发送「/valid 全部」查看所有活动（不进行筛选）")
                 return Response.text("\n".join(lines))
 
             # 构建文本提示信息
@@ -190,17 +190,17 @@ class ValidHandler(CommandHandler):
 
             # 标题和筛选信息
             if show_all:
-                lines.append(f"📋 可报名活动（共 {original_count} 条，显示全部）：")
+                lines.append(f"可报名活动（共 {original_count} 条，显示全部）：")
             else:
                 if filter_info:
-                    lines.append(f"📋 可报名活动（共 {original_count} 条，已筛选）：")
+                    lines.append(f"可报名活动（共 {original_count} 条，已筛选）：")
                     for info in filter_info:
                         lines.append(f"  {info}")
                 else:
-                    lines.append(f"📋 可报名活动（共 {original_count} 条）：")
+                    lines.append(f"可报名活动（共 {original_count} 条）：")
 
             lines.append("")
-            lines.append(f"📋 已发送 {len(activities)} 个可报名活动的卡片")
+            lines.append(f"已发送 {len(activities)} 个可报名活动的卡片")
             lines.append("（使用折叠面板展示，点击活动名称查看详情）")
 
             # 提示信息
@@ -212,15 +212,15 @@ class ValidHandler(CommandHandler):
                         True  # 已报名筛选始终启用
                 )
                 if has_filter:
-                    lines.append("💡 发送「/valid 全部」查看所有活动（不进行筛选）")
+                    lines.append("发送「/valid 全部」查看所有活动（不进行筛选）")
 
             # 添加不感兴趣提示
-            lines.append("🗑️ 对活动不感兴趣？发送「不感兴趣 序号」或「不感兴趣 全部」")
+            lines.append("对活动不感兴趣？发送「不感兴趣 序号」或「不感兴趣 全部」")
 
             # 返回复合响应：先返回文本，metadata 包含活动列表用于发送卡片
             return Response.activity_list(
                 activities=activities,
-                title=f"📋 可报名活动（共 {len(activities)} 个）",
+                title=f"可报名活动（共 {len(activities)} 个）",
                 filters_applied=filter_info,
                 hint="\n".join(lines)  # 文本提示通过 metadata 传递
             )

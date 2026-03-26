@@ -60,12 +60,12 @@ class InterestedHandler(CommandHandler):
             回复消息
         """
         if not self._user_preference_manager:
-            return Response.text("❌ 感兴趣功能未初始化")
+            return Response.text("感兴趣功能未初始化")
 
         # 检查参数数量
         if len(args) < 2:
             return Response.text(
-                "❌ 格式错误\n\n"
+                "格式错误\n\n"
                 "用法：\n"
                 "• /interested ai 1,2,3 - 将AI筛选掉的第1、2、3个活动标记为感兴趣\n"
                 "• /interested time 1-5 - 将时间筛选掉的第1到5个活动标记为感兴趣\n"
@@ -75,7 +75,7 @@ class InterestedHandler(CommandHandler):
                 "• ai - AI筛选掉的活动\n"
                 "• time/时间 - 时间筛选掉的活动\n"
                 "• db/ignore/忽略 - 数据库筛选掉的活动\n"
-                "\n💡 提示：被标记为感兴趣的活动将绕过所有筛选，在后续扫描中会被推荐给您"
+                "\n被标记为感兴趣的活动将绕过所有筛选，在后续扫描中会被推荐"
             )
 
         # 解析筛选类型
@@ -84,7 +84,7 @@ class InterestedHandler(CommandHandler):
 
         if not filter_type:
             return Response.text(
-                f"❌ 未知的筛选类型: {args[0]}\n\n"
+                f"未知的筛选类型: {args[0]}\n\n"
                 "支持的筛选类型：\n"
                 "• ai - AI筛选掉的活动\n"
                 "• time/时间 - 时间筛选掉的活动\n"
@@ -100,7 +100,7 @@ class InterestedHandler(CommandHandler):
         if not filtered_activities:
             type_name = self._get_filter_type_name(filter_type)
             return Response.text(
-                f"❌ 没有被{type_name}筛选掉的活动\n\n"
+                f"没有被{type_name}筛选掉的活动\n\n"
                 "提示：只有在收到新活动通知后，才能使用该命令恢复被筛选的活动\n"
                 "筛选信息显示在通知消息中，包含被各类筛选器过滤掉的活动列表"
             )
@@ -110,11 +110,11 @@ class InterestedHandler(CommandHandler):
 
         if errors:
             error_msg = "\n".join(f"  • {e}" for e in errors)
-            return Response.text(f"❌ 解析失败\n\n{error_msg}")
+            return Response.text(f"解析失败\n\n{error_msg}")
 
         if not indices:
             return Response.text(
-                "❌ 没有有效的活动序号\n\n"
+                "没有有效的活动序号\n\n"
                 f"有效范围：1-{len(filtered_activities)}"
             )
 
@@ -130,17 +130,17 @@ class InterestedHandler(CommandHandler):
             activity_names.append(f"[{idx}] {activity.name}")
 
         if not activity_ids:
-            return Response.text("❌ 无法获取活动信息，请重试")
+            return Response.text("无法获取活动信息，请重试")
 
         # 添加到感兴趣数据库
         success_count, failed_count = await self._user_preference_manager.add_interested_activities(activity_ids)
 
         if success_count == 0:
-            return Response.text("❌ 添加失败，请稍后重试")
+            return Response.text("添加失败，请稍后重试")
 
         # 构建回复消息
         type_name = self._get_filter_type_name(filter_type)
-        lines = [f"✅ 已将 {success_count} 个{type_name}筛选掉的活动标记为感兴趣\n"]
+        lines = [f"已将 {success_count} 个{type_name}筛选掉的活动标记为感兴趣\n"]
 
         # 显示添加的活动
         lines.append("成功添加的活动：")
@@ -151,7 +151,7 @@ class InterestedHandler(CommandHandler):
             lines.append(f"  ... 还有 {len(activity_names) - 10} 个")
 
         if failed_count > 0:
-            lines.append(f"\n⚠️ {failed_count} 个活动添加失败")
+            lines.append(f"\n{failed_count} 个活动添加失败")
 
         logger.info(f"用户将 {success_count} 个被{type_name}筛选的活动标记为感兴趣")
 

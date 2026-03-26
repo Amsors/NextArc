@@ -38,14 +38,14 @@ class SearchHandler(CommandHandler):
         # 获取最新数据库
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
-            return Response.text("❌ 暂无数据，请先执行 /update")
+            return Response.text("暂无数据，请先执行 /update")
 
         try:
             # 搜索活动
             activities = await self._search_activities(latest_db, keyword)
 
             if not activities:
-                return Response.text(f'🔍 搜索「{keyword}」\n\n未找到匹配的活动，请尝试其他关键词')
+                return Response.text(f'搜索「{keyword}」\n\n未找到匹配的活动，请尝试其他关键词')
 
             # 使用 YouthService 上下文更新活动信息（获取最新报名人数等）
             try:
@@ -61,7 +61,7 @@ class SearchHandler(CommandHandler):
                 hint = "活动已经更新，最新报名人数已显示"
             except Exception as e:
                 logger.error(f"更新活动信息失败: {e}")
-                hint = "⚠️ 部分活动信息可能不是最新"
+                hint = "部分活动信息可能不是最新"
 
             # 保存搜索上下文
             session.set_search(keyword, activities)

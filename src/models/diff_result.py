@@ -26,22 +26,6 @@ class ActivityChange(BaseModel):
     change_type: Literal["added", "removed", "modified"]
     field_changes: list[FieldChange] = []
 
-    def get_type_emoji(self) -> str:
-        """获取变化类型的 emoji"""
-        return {
-            "added": "🆕",
-            "removed": "❌",
-            "modified": "📝",
-        }.get(self.change_type, "❓")
-
-    def get_type_text(self) -> str:
-        """获取变化类型的中文文本"""
-        return {
-            "added": "新增",
-            "removed": "删除",
-            "modified": "修改",
-        }.get(self.change_type, "未知")
-
     def format(self, index: int) -> str:
         """格式化为可读文本"""
         lines = [f"[{index}] {self.activity_name}"]
@@ -71,29 +55,29 @@ class DiffResult(BaseModel):
 
     def format_full(self) -> str:
         """格式化为完整报告"""
-        lines = ["📊 数据库对比结果：", ""]
+        lines = ["数据库对比结果：", ""]
 
         if not self.has_changes():
-            lines.append("✅ 无变化")
+            lines.append("无变化")
             return "\n".join(lines)
 
         # 新增
         if self.added:
-            lines.append(f"🆕 新增活动（{len(self.added)}个）：")
+            lines.append(f"新增活动（{len(self.added)}个）：")
             for i, change in enumerate(self.added, 1):
                 lines.append(change.format(i))
             lines.append("")
 
         # 删除
         if self.removed:
-            lines.append(f"❌ 删除活动（{len(self.removed)}个）：")
+            lines.append(f"删除活动（{len(self.removed)}个）：")
             for i, change in enumerate(self.removed, 1):
                 lines.append(change.format(i))
             lines.append("")
 
         # 修改
         if self.modified:
-            lines.append(f"📝 信息修改（{len(self.modified)}个）：")
+            lines.append(f"信息修改（{len(self.modified)}个）：")
             for i, change in enumerate(self.modified, 1):
                 lines.append(change.format(i))
             lines.append("")
@@ -118,16 +102,16 @@ class DiffResult(BaseModel):
         if not self.added:
             return ""
 
-        lines = ["🆕 发现新的第二课堂活动！", ""]
+        lines = ["发现新的第二课堂活动！", ""]
 
         # 显示数据采集时间
         if self.old_scan_time and self.new_scan_time:
-            lines.append(f"📊 数据对比：")
+            lines.append(f"数据对比：")
             lines.append(f"   上次采集：{self.old_scan_time.strftime('%Y-%m-%d %H:%M:%S')}")
             lines.append(f"   本次采集：{self.new_scan_time.strftime('%Y-%m-%d %H:%M:%S')}")
             lines.append("")
 
-        lines.append(f"📋 新增活动（共{len(self.added)}个）：")
+        lines.append(f"新增活动（共{len(self.added)}个）：")
         lines.append("")
 
         for i, change in enumerate(self.added, 1):

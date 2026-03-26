@@ -67,7 +67,10 @@ class FilteredActivity:
 
     def __str__(self) -> str:
         """字符串表示"""
-        return f"FilteredActivity(id={self.activity_id}, name={self.activity_name}, reason={self.reason}, type={self.filter_type})"
+        return (f"FilteredActivity(id={self.activity_id}, "
+                f"name={self.activity_name}, "
+                f"reason={self.reason}, "
+                f"type={self.filter_type})")
 
     def __repr__(self) -> str:
         """详细字符串表示"""

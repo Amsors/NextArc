@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING, Optional
 
 from src.utils.logger import get_logger
 
-# from src.utils.formatter import build_activity_card_for_update  # 暂不用于卡片更新
-
 if TYPE_CHECKING:
     from src.core import UserPreferenceManager, AuthManager
     from src.feishu_bot import FeishuBot
@@ -125,10 +123,10 @@ class CardActionHandler:
             # 构建响应
             if is_now_ignored:
                 toast_content = f"已将「{activity_name}」加入不感兴趣列表"
-                button_text = "✓ 已忽略"
+                button_text = "已忽略"
             else:
                 toast_content = f"已将「{activity_name}」移出不感兴趣列表"
-                button_text = "🗑️ 不感兴趣"
+                button_text = "不感兴趣"
 
             logger.info(f"切换不感兴趣状态成功: {activity_name}, is_ignored={is_now_ignored}")
 
@@ -183,7 +181,7 @@ class CardActionHandler:
 
                 # 检查是否已报名
                 if sc.applied:
-                    message = f"⚠️ 您已经报名了「{activity_name}」"
+                    message = f"您已经报名了「{activity_name}」"
                     await self._bot.send_text(message)
                     return {
                         "toast": {
@@ -195,7 +193,7 @@ class CardActionHandler:
                 # 检查是否可报名
                 if sc.status != Status.APPLYING and sc.status != Status.PUBLISHED:
                     message = (
-                        f"❌ 报名失败\n\n"
+                        f"报名失败\n\n"
                         f"活动：{activity_name}\n"
                         f"原因：当前状态不可报名（{sc.status.text if sc.status else '未知'}）"
                     )
@@ -218,11 +216,10 @@ class CardActionHandler:
                 if result:
                     # 报名成功
                     success_message = (
-                        f"✅ 报名成功\n\n"
+                        f"报名成功\n\n"
                         f"活动：{activity_name}\n"
                         f"时间：{sc.hold_time.start.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'} ~ "
                         f"{sc.hold_time.end.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'}\n\n"
-                        f"💡 提示：执行 /update 可更新报名状态"
                     )
                     await self._bot.send_text(success_message)
                     logger.info(f"卡片报名成功: {activity_name}")
@@ -235,7 +232,7 @@ class CardActionHandler:
                 else:
                     # 报名失败
                     fail_message = (
-                        f"❌ 报名失败\n\n"
+                        f"报名失败\n\n"
                         f"活动：{activity_name}\n"
                         f"原因：活动不可报名或名额已满"
                     )
@@ -251,7 +248,7 @@ class CardActionHandler:
         except Exception as e:
             logger.error(f"卡片报名失败: {e}")
             error_message = (
-                f"❌ 报名失败\n\n"
+                f"报名失败\n\n"
                 f"活动：{activity_name}\n"
                 f"错误：{str(e)}"
             )

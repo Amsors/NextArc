@@ -167,7 +167,6 @@ class ConfirmSession(BaseModel):
         """获取确认提示文本"""
         action = "取消报名" if self.operation == "cancel" else "报名"
         return (
-            f"⚠️ 请确认操作\n\n"
             f"确定要{action}「{self.activity_name}」吗？\n\n"
             f"回复「确认」执行操作\n"
             f"回复「取消」放弃操作"

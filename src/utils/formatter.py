@@ -30,9 +30,9 @@ def format_activity_list(activities: list[SecondClass], title: str = "活动列�
     Returns:
         格式化后的文本    """
     if not activities:
-        return f"📋 {title}\n\n暂无活动"
+        return f"{title}\n\n暂无活动"
 
-    lines = [f"📋 {title}（共{len(activities)}条）："]
+    lines = [f"{title}（共{len(activities)}条）："]
 
     for i, act in enumerate(activities, 1):
         lines.append(format_secondclass_for_list(act, i, simple_format))
@@ -68,7 +68,7 @@ def format_enrolled_list(activities: list[SecondClass]) -> str:
     lines = format_activity_list(activities, "已报名活动")
 
     if activities:
-        lines += "\n💡 使用 /cancel 序号 取消报名\n"
+        lines += "\n使用 /cancel 序号 取消报名\n"
 
     return lines
 
@@ -88,8 +88,8 @@ def format_search_results(activities: list[SecondClass], keyword: str, hint: str
     lines = format_activity_list(activities, f'搜索「{keyword}」结果')
 
     if activities:
-        lines += "\n💡 使用 /join 序号 报名指定活动\n"
-        lines += "⚠️ 搜索结果有效期5分钟\n"
+        lines += "\n使用 /join 序号 报名指定活动\n"
+        lines += "搜索结果有效期5分钟\n"
     else:
         lines += "未找到匹配的活动，请尝试其他关键词\n"
 
@@ -150,33 +150,33 @@ def format_status_message(
     Returns:
         格式化后的文本
     """
-    lines = ["📊 服务状态", ""]
+    lines = ["服务状态", ""]
 
     # 运行状态
     if is_running:
-        lines.append("🟢 服务运行中")
+        lines.append("服务运行中")
     else:
-        lines.append("🔴 服务已停止")
+        lines.append("服务已停止")
 
     # 登录状态
     if is_logged_in:
-        lines.append("✅ 已登录")
+        lines.append("已登录")
     else:
-        lines.append("❌ 未登录")
+        lines.append("未登录")
 
     lines.append("")
 
     # 扫描信息
     if last_scan:
-        lines.append(f"🕐 最后扫描：{last_scan.strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"最后扫描：{last_scan.strftime('%Y-%m-%d %H:%M:%S')}")
     else:
-        lines.append("🕐 最后扫描：无")
+        lines.append("最后扫描：无")
 
     if next_scan:
-        lines.append(f"⏰ 下次扫描：{next_scan.strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"下次扫描：{next_scan.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    lines.append(f"🗄️  数据库数量：{db_count}")
-    lines.append(f"🗑️  不感兴趣活动：{ignore_count}")
+    lines.append(f"数据库数量：{db_count}")
+    lines.append(f"不感兴趣活动：{ignore_count}")
     lines.append(f"⭐ 感兴趣活动：{interested_count}")
 
     return "\n".join(lines)
@@ -194,18 +194,18 @@ def format_scan_result(result: dict) -> str:
     """
     if not result.get("success"):
         error = result.get("error", "未知错误")
-        return f"❌ 扫描失败：{error}"
+        return f"扫描失败：{error}"
 
-    lines = ["✅ 扫描完成", ""]
+    lines = ["扫描完成", ""]
 
     if result.get("new_db_path"):
-        lines.append(f"🗄️  数据库：{result['new_db_path'].name}")
+        lines.append(f"数据库：{result['new_db_path'].name}")
 
-    lines.append(f"📊 活动数量：{result.get('activity_count', 0)}")
+    lines.append(f"活动数量：{result.get('activity_count', 0)}")
 
     if result.get("diff"):
         diff = result["diff"]
-        lines.append(f"📝 差异：{diff.get_summary()}")
+        lines.append(f"差异：{diff.get_summary()}")
 
     return "\n".join(lines)
 
@@ -221,7 +221,7 @@ def format_error_message(error: str, context: str = "") -> str:
     Returns:
         格式化后的文本
     """
-    lines = ["❌ 操作失败"]
+    lines = ["操作失败"]
 
     if context:
         lines.append(f"上下文：{context}")
@@ -238,7 +238,7 @@ def format_help_message() -> str:
     Returns:
         格式化后的文本
     """
-    return """🤖 NextArc - 第二课堂活动监控机器人
+    return """NextArc - 第二课堂活动监控机器人
 
 可用指令：
 /update - 手动更新数据库
@@ -250,7 +250,7 @@ def format_help_message() -> str:
 /join 序号 - 报名搜索结果的指定活动
 /alive  - 检查服务状态
 
-💡 提示：
+提示：
 - 搜索结果是有效期5分钟
 - 报名/取消报名需要二次确认
 - /valid 默认启用 AI/时间筛选，加「全部」参数可查看所有活动
@@ -280,7 +280,7 @@ def build_activity_card(
         return {
             "config": {"wide_screen_mode": True},
             "header": {
-                "title": {"tag": "plain_text", "content": f"📋 {title}"},
+                "title": {"tag": "plain_text", "content": f"{title}"},
                 "template": "blue"
             },
             "elements": [
@@ -315,7 +315,7 @@ def build_activity_card(
     return {
         "config": {"wide_screen_mode": True},
         "header": {
-            "title": {"tag": "plain_text", "content": f"📋 {title}"},
+            "title": {"tag": "plain_text", "content": f"{title}"},
             "template": "blue"
         },
         "elements": elements
@@ -348,26 +348,26 @@ def _build_activity_collapsible_panel(
     detail_elements.append(
         {
             "tag": "markdown",
-            "content": f"**📅 举办**\n{get_display_time(act, 'hold_time')}"
+            "content": f"**举办**\n{get_display_time(act, 'hold_time')}"
         }
     )
     if not act.is_series:
         detail_elements.append(
             {
                 "tag": "markdown",
-                "content": f"**📝 报名**\n{get_display_time(act, 'apply_time')}"
+                "content": f"**报名**\n{get_display_time(act, 'apply_time')}"
             }
         )
     detail_elements.append(
         {
             "tag": "markdown",
-            "content": f"**📌 模块**: {get_module_name(act)}"
+            "content": f"**模块**: {get_module_name(act)}"
         }
     )
     detail_elements.append(
         {
             "tag": "markdown",
-            "content": f"**👥 组织单位**: {get_department_name(act)}"
+            "content": f"**组织单位**: {get_department_name(act)}"
         }
     )
 
@@ -376,33 +376,33 @@ def _build_activity_collapsible_panel(
         # 系列活动只显示状态
         detail_elements.append({
             "tag": "markdown",
-            "content": f"**📌 状态：** {get_status_text(act)}"
+            "content": f"**状态：** {get_status_text(act)}"
         })
     else:
         # 单次活动显示状态、学时和报名人数
         detail_elements.append(
             {
                 "tag": "markdown",
-                "content": f"**📌 状态**: {get_status_text(act)}"
+                "content": f"**状态**: {get_status_text(act)}"
             }
         )
         detail_elements.append(
             {
                 "tag": "markdown",
-                "content": f"**⏱️ 学时**: {act.valid_hour or '未知'}"
+                "content": f"**学时**: {act.valid_hour or '未知'}"
             }
         )
         detail_elements.append(
             {
                 "tag": "markdown",
-                "content": f"**👥 报名**: {get_apply_progress(act)}"
+                "content": f"**报名**: {get_apply_progress(act)}"
             }
         )
 
     detail_elements.append(
         {
             "tag": "markdown",
-            "content": f"**📝 活动描述**\n{get_description_text(act)}"
+            "content": f"**活动描述**\n{get_description_text(act)}"
         }
     )
 
@@ -411,7 +411,7 @@ def _build_activity_collapsible_panel(
     if labels and labels != "无":
         detail_elements.append({
             "tag": "markdown",
-            "content": f"**🏷️ 标签：** {labels}"
+            "content": f"**标签：** {labels}"
         })
 
     # 添加分隔线
@@ -419,7 +419,7 @@ def _build_activity_collapsible_panel(
 
     # 构建按钮
     # 不感兴趣按钮：根据状态显示不同文本和样式
-    ignore_button_text = "✓ 已忽略" if is_ignored else "🗑️ 不感兴趣"
+    ignore_button_text = "已忽略" if is_ignored else "不感兴趣"
     ignore_button_type = "default" if is_ignored else "danger"
 
     # 报名按钮：系列活动不支持直接报名
@@ -450,7 +450,7 @@ def _build_activity_collapsible_panel(
             },
             {
                 "tag": "button",
-                "text": {"tag": "plain_text", "content": "✅ 去报名"},
+                "text": {"tag": "plain_text", "content": "去报名"},
                 "type": "primary",
                 "value": {
                     "action": "join",

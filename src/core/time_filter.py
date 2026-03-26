@@ -273,7 +273,7 @@ class TimeFilter:
         if not filtered:
             return ""
 
-        lines = [f"⏰ 根据时间偏好，已过滤 {len(filtered)} 个冲突活动："]
+        lines = [f"根据时间偏好，已过滤 {len(filtered)} 个冲突活动："]
 
         for i, item in enumerate(filtered, 1):
             activity = item.activity
@@ -299,11 +299,10 @@ class TimeFilter:
             格式化的配置摘要
         """
         if not self.is_enabled():
-            return "⏰ 时间筛选：未启用"
+            return "时间筛选：未启用"
 
-        lines = ["⏰ 时间筛选：已启用", ""]
-        lines.append("📅 您配置的不方便时间段：")
-        lines.append(self.time_config.weekly_preferences.format_preferences())
+        lines = ["时间筛选：已启用", "", "您配置的不方便时间段：",
+                 self.time_config.weekly_preferences.format_preferences()]
 
         return "\n".join(lines)
 

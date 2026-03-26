@@ -103,7 +103,7 @@ class Response:
             message: 错误信息
             context: 错误上下文
         """
-        lines = ["❌ 操作失败"]
+        lines = ["操作失败"]
         if context:
             lines.append(f"上下文：{context}")
         lines.append(f"错误：{message}")
@@ -112,12 +112,12 @@ class Response:
     @classmethod
     def success(cls, message: str) -> "Response":
         """创建成功响应"""
-        return cls.text(f"✅ {message}", success=True)
+        return cls.text(f"成功 {message}", success=True)
 
     @classmethod
     def info(cls, message: str) -> "Response":
         """创建信息响应"""
-        return cls.text(f"ℹ️ {message}", info=True)
+        return cls.text(f"信息 {message}", info=True)
 
     def is_empty(self) -> bool:
         """检查响应是否为空"""

@@ -27,7 +27,7 @@ class JoinHandler(CommandHandler):
 
         # 检查搜索上下文
         if not session.search or session.search.is_expired():
-            return Response.text("❌ 请先使用 /search 搜索活动\n\n示例：/search 讲座")
+            return Response.text("请先使用 /search 搜索活动\n\n示例：/search 讲座")
 
         # 检查参数
         if not args:
@@ -39,25 +39,25 @@ class JoinHandler(CommandHandler):
             if index < 1:
                 raise ValueError("序号必须大于0")
         except ValueError:
-            return Response.text("❌ 无效的序号，请输入正整数\n\n示例：/join 1")
+            return Response.text("无效的序号，请输入正整数\n\n示例：/join 1")
 
         # 获取搜索结果中的活动
         activity = session.search.get_result_by_index(index)
 
         if not activity:
-            return Response.text(f"❌ 序号超出范围，当前搜索结果共 {len(session.search.results)} 个活动")
+            return Response.text(f"序号超出范围，当前搜索结果共 {len(session.search.results)} 个活动")
 
         # 检查是否已报名
         if activity.applied:
-            return Response.text(f"⚠️ 您已经报名了「{activity.name}」")
+            return Response.text(f"您已经报名了「{activity.name}」")
 
         # 检查是否可报名
         if activity.status != Status.APPLYING and activity.status != Status.PUBLISHED:
-            return Response.text(f"❌ 「{activity.name}」当前状态不可报名\n状态：{activity.status()}")
+            return Response.text(f"「{activity.name}」当前状态不可报名\n状态：{activity.status()}")
 
         # 检查是否有待确认操作
         if session.confirm and not session.confirm.is_expired():
-            return Response.text("⚠️ 您有一个待确认的操作，请先回复「确认」或「取消」")
+            return Response.text("您有一个待确认的操作，请先回复「确认」或「取消」")
 
         # 设置确认会话
         session.set_confirm("join", activity.id, activity.name)
@@ -68,7 +68,7 @@ class JoinHandler(CommandHandler):
     async def execute_join(self, session: UserSession) -> Response:
         """执行报名操作"""
         if not session.confirm or session.confirm.operation != "join":
-            return Response.text("❌ 无效的操作")
+            return Response.text("无效的操作")
 
         activity_id = session.confirm.activity_id
         activity_name = session.confirm.activity_name
@@ -94,7 +94,7 @@ class JoinHandler(CommandHandler):
                 # 检查是否可报名
                 if not sc.applyable:
                     return Response.text(
-                        f"❌ 「{activity_name}」当前不可报名\n状态：{sc.status.text if sc.status else '未知'}")
+                        f"「{activity_name}」当前不可报名\n状态：{sc.status.text if sc.status else '未知'}")
 
                 # 检查是否需要报名信息
                 if sc.need_sign_info:
@@ -108,14 +108,14 @@ class JoinHandler(CommandHandler):
                 logger.info(f"apply() 返回值: {result}")
 
                 if not result:
-                    return Response.text(f"❌ 报名失败：活动不可报名或名额已满")
+                    return Response.text(f"报名失败：活动不可报名或名额已满")
 
             # 报名成功后，不立即扫描，避免覆盖结果
             # 让用户手动执行 /update 查看最新状态
             logger.info(f"报名成功: {activity_name}")
             return Response.text(
-                f"✅ 已成功报名「{activity_name}」\n\n"
-                f"💡 提示：执行 /update 可更新报名状态"
+                f"已成功报名「{activity_name}」\n\n"
+                f"提示：执行 /update 可更新报名状态"
             )
 
         except Exception as e:

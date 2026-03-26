@@ -292,8 +292,8 @@ class ActivityScanner:
                 # 第0步: 从感兴趣白名单中恢复活动（绕过所有筛选）
                 restored_activities = []
                 if self.user_preference_manager:
-                    activities, restored_activities = await self.user_preference_manager.restore_interested_activities(
-                        activities)
+                    activities, restored_activities = \
+                        await self.user_preference_manager.restore_interested_activities(activities)
                     if restored_activities:
                         logger.info(f"从感兴趣白名单恢复了 {len(restored_activities)} 个活动")
 
@@ -347,7 +347,8 @@ class ActivityScanner:
             if restored_activities:
                 activities = restored_activities + activities
                 logger.info(
-                    f"最终活动列表包含 {len(restored_activities)} 个白名单活动和 {len(activities) - len(restored_activities)} 个通过筛选的活动")
+                    f"最终活动列表包含 {len(restored_activities)} 个白名单活动"
+                    f"和 {len(activities) - len(restored_activities)} 个通过筛选的活动")
 
             # 注意：已报名的白名单活动不会被恢复，因为已报名意味着用户不需要再报名
 

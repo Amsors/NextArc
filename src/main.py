@@ -89,7 +89,7 @@ class NextArcApp:
             await self.user_preference_manager.initialize()
             ignored_count = await self.user_preference_manager.get_ignored_count()
             interested_count = await self.user_preference_manager.get_interested_count()
-            logger.info(f"✅ 用户偏好管理器初始化完成")
+            logger.info(f"用户偏好管理器初始化完成")
             logger.info(f"   不感兴趣活动: {ignored_count} 个")
             logger.info(f"   感兴趣活动: {interested_count} 个")
 
@@ -113,9 +113,9 @@ class NextArcApp:
             if self.settings.monitor.use_ai_filter and self.settings.ai.enabled:
                 try:
                     ai_filter = AIFilterConfig.create_from_settings(self.settings)
-                    logger.info(f"✅ AI 筛选器初始化完成，模型: {self.settings.ai.model}")
+                    logger.info(f"AI 筛选器初始化完成，模型: {self.settings.ai.model}")
                 except (ValueError, FileNotFoundError) as e:
-                    logger.error(f"❌ AI 功能初始化失败: {e}")
+                    logger.error(f"AI 功能初始化失败: {e}")
                     logger.error("请检查 config.yaml 中的 AI 配置和提示词文件")
                     raise RuntimeError(f"AI 功能初始化失败: {e}") from e
             else:
@@ -128,14 +128,14 @@ class NextArcApp:
                 if self.preferences.time_filter.weekly_preferences.has_any_preference():
                     self.time_filter = TimeFilter(self.preferences)
                     use_time_filter = True
-                    logger.info("✅ 时间筛选器初始化完成")
+                    logger.info("时间筛选器初始化完成")
                     logger.info(f"   重叠模式: {self.preferences.time_filter.get_overlap_mode_display()}")
-                    logger.info("📅 时间筛选配置:")
+                    logger.info("时间筛选配置:")
                     for line in self.preferences.time_filter.weekly_preferences.format_preferences().split("\n"):
                         if line.strip():  # 只显示非空行
                             logger.info(f"   {line}")
                 else:
-                    logger.warning("⚠️ 时间筛选已启用但未配置任何时间段，请在 config/preferences.yaml 中配置")
+                    logger.warning("时间筛选已启用但未配置任何时间段，请在 config/preferences.yaml 中配置")
             else:
                 logger.info("时间筛选: 已禁用")
 
@@ -159,7 +159,7 @@ class NextArcApp:
                 logger.info(f"AI 筛选: 开启，模型: {self.settings.ai.model}")
             if use_time_filter and self.time_filter:
                 logger.info("时间筛选: 开启")
-            logger.info("🗑️ 数据库筛选: 已启用")
+            logger.info("数据库筛选: 已启用")
 
             # 初始化消息路由器
             self.router = MessageRouter()
@@ -222,7 +222,7 @@ class NextArcApp:
                 else:
                     logger.info("飞书机器人初始化完成（未配置 chat_id，等待用户发送消息）")
             else:
-                logger.warning("⚠️ 未配置飞书 App ID 和 Secret，机器人功能不可用")
+                logger.warning("未配置飞书 App ID 和 Secret，机器人功能不可用")
 
             return True
 
@@ -241,9 +241,9 @@ class NextArcApp:
 
         # 检查是否在 conda 环境中
         if "conda" not in exe.lower() and "envs" not in exe:
-            logger.warning("⚠️ 未检测到 conda 环境，建议激活 'pyustc' 环境运行")
+            logger.warning("未检测到 conda 环境，建议激活 'pyustc' 环境运行")
         else:
-            logger.info("✅ 检测到 conda 环境")
+            logger.info("检测到 conda 环境")
 
     async def _handle_message(self, text: str, session) -> str | None:
         """
@@ -302,7 +302,7 @@ class NextArcApp:
                 # 尝试发送（如果已知 chat_id）
                 success = await self.bot.send_startup_message(startup_msg)
                 if not success:
-                    logger.info("💡 提示：请在飞书中给机器人发送任意消息以激活会话")
+                    logger.info("请在飞书中给机器人发送任意消息以激活会话")
 
             # 等待关闭信号
             logger.info("应用运行中，按 Ctrl+C 停止...")
@@ -319,7 +319,7 @@ class NextArcApp:
     def _get_startup_message(self) -> str:
         """获取启动问候消息"""
         lines = [
-            "🤖 NextArc 已启动！",
+            "NextArc 已启动！",
             "",
             "我是您的第二课堂活动监控助手。",
             "",
@@ -328,16 +328,16 @@ class NextArcApp:
         # 显示当前启用的筛选功能
         filter_details = []
         if self.settings and self.settings.monitor.use_ai_filter and self.settings.ai.enabled:
-            filter_details.append("🤖 AI筛选")
+            filter_details.append("AI筛选")
         if self.time_filter and self.time_filter.is_enabled():
             overlap_mode = self.preferences.time_filter.overlap_mode
             if overlap_mode == "partial":
                 mode_desc = "有重叠即过滤"
             else:
                 mode_desc = "完全包含才过滤"
-            filter_details.append(f"⏰ 时间筛选({mode_desc})")
+            filter_details.append(f"时间筛选({mode_desc})")
         # 数据库筛选始终启用
-        filter_details.append("🗑️ 数据库筛选(不感兴趣)")
+        filter_details.append("数据库筛选(不感兴趣)")
 
         if filter_details:
             lines.append("已启用筛选：")

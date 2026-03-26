@@ -51,7 +51,7 @@ def get_project_root() -> Path:
 class DatabaseConfig(BaseModel):
     """数据库配置
     
-    注意：所有路径都相对于项目根目录解析。
+    所有路径都相对于项目根目录解析。
     例如 "./data" 会被解析为 "{项目根目录}/data"
     """
     data_dir: Path = Path("./data")
@@ -160,7 +160,7 @@ class AIRetryConfig(BaseModel):
 class AIConfig(BaseModel):
     """AI 筛选配置
     
-    注意：如果启用 AI 功能（enabled: true），以下所有字段都必须显式配置，
+    如果启用 AI 功能（enabled: true），以下所有字段都必须显式配置，
     否则会在启动时报错。
     """
     enabled: bool = Field(default=False, description="是否启用 AI 筛选")

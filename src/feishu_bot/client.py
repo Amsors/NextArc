@@ -355,7 +355,7 @@ class FeishuBot:
             await asyncio.sleep(2)
 
             self._connected = True
-            logger.info("✅ 飞书机器人已启动，正在监听消息...")
+            logger.info("飞书机器人已启动，正在监听消息...")
 
         except Exception as e:
             logger.error(f"启动飞书机器人失败: {e}")

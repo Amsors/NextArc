@@ -64,7 +64,7 @@ class SecondClassFilter:
             return False
 
         if self.excluded_status:
-            logger.debug(f"检查活动状态 {activity.status.code} 是否在排除列表中")
+            # logger.debug(f"检查活动状态 {activity.status.code} 是否在排除列表中")
             try:
                 if activity.status in self.excluded_status:
                     return False

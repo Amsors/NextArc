@@ -66,7 +66,7 @@ class MessageRouter:
             parts = text.split()
 
         if not parts:
-            return Response.text("❌ 指令不能为空")
+            return Response.text("指令不能为空")
 
         cmd = parts[0].lower()
         args = parts[1:]
@@ -74,7 +74,7 @@ class MessageRouter:
         # 查找并执行处理器
         handler = self.handlers.get(cmd)
         if not handler:
-            return Response.text(f"❌ 未知指令: /{cmd}\n\n发送 /alive 查看可用指令")
+            return Response.text(f"未知指令: /{cmd}\n\n发送 /alive 查看可用指令")
 
         try:
             return await handler.handle(args, session)
@@ -105,28 +105,26 @@ class MessageRouter:
                 return await self.join_handler.execute_join(session)
             else:
                 session.clear_confirm()
-                return Response.text("❌ 未知的操作类型")
+                return Response.text("未知的操作类型")
 
         elif text == "取消":
             session.clear_confirm()
-            return Response.text("✅ 已取消操作")
+            return Response.text("已取消操作")
         else:
             # 不是确认或取消，提醒用户
             return Response.text(
                 f"{session.confirm.get_confirm_prompt()}\n\n"
-                f"⚠️ 请回复「确认」或「取消」"
+                f"请回复「确认」或「取消」"
             )
 
     def get_help_message(self) -> Response:
         """获取帮助信息"""
-        lines = ["🤖 NextArc - 第二课堂活动监控机器人\n", "可用指令："]
+        lines = ["NextArc - 第二课堂活动监控机器人\n", "可用指令："]
 
         for handler in self.handlers.values():
             lines.append(f"  /{handler.command} - {handler.get_usage()}")
 
         lines.append("")
-        lines.append("💡 提示：")
-        lines.append("- 搜索结果是有效期5分钟")
-        lines.append("- 报名/取消报名需要二次确认")
+        lines.append("搜索结果是有效期5分钟")
 
         return Response.text("\n".join(lines))

@@ -58,12 +58,12 @@ class IgnoreHandler(CommandHandler):
             回复消息
         """
         if not self._ignore_manager:
-            return Response.text("❌ 忽略功能未初始化")
+            return Response.text("忽略功能未初始化")
 
         # 检查参数
         if not args:
             return Response.text(
-                "❌ 格式错误\n\n"
+                "格式错误\n\n"
                 "用法：\n"
                 "• /ignore 1,2,3 - 忽略第1、2、3个活动\n"
                 "• /ignore 1-5 - 忽略第1到5个活动\n"
@@ -76,16 +76,16 @@ class IgnoreHandler(CommandHandler):
             ai_filtered_activities = session.get_filtered_activities_by_type("ai")
 
             if not ai_filtered_activities:
-                return Response.text("❌ 没有AI忽略的活动")
+                return Response.text("没有AI忽略的活动")
 
             ai_filtered_activities_ids = [activity.activity_id for activity in ai_filtered_activities]
 
             success_count, failed_count = await self._ignore_manager.add_ignored_activities(ai_filtered_activities_ids)
 
             if failed_count != 0:
-                return Response.text(f"❌ 添加失败，{failed_count}个活动未添加, {success_count}个活动成功添加")
+                return Response.text(f"添加失败，{failed_count}个活动未添加, {success_count}个活动成功添加")
 
-            return Response.text(f"✅ 已添加AI筛选出的{success_count}个活动到不感兴趣列表")
+            return Response.text(f"已添加AI筛选出的{success_count}个活动到不感兴趣列表")
 
         # 合并参数（支持 "不感兴趣 1 2 3" 或 "不感兴趣 1,2,3"）
         indices_str = " ".join(args).strip()
@@ -97,7 +97,7 @@ class IgnoreHandler(CommandHandler):
 
         if not displayed_activities:
             return Response.text(
-                "❌ 没有可操作的最近活动列表\n\n"
+                "没有可操作的最近活动列表\n\n"
                 "请先用以下指令查看活动：\n"
                 "• /valid - 查看可报名活动\n"
                 "• /search <关键词> - 搜索活动"
@@ -108,11 +108,11 @@ class IgnoreHandler(CommandHandler):
 
         if errors:
             error_msg = "\n".join(f"  • {e}" for e in errors)
-            return Response.text(f"❌ 解析失败\n\n{error_msg}")
+            return Response.text(f"解析失败\n\n{error_msg}")
 
         if not indices:
             return Response.text(
-                "❌ 没有有效的活动序号\n\n"
+                "没有有效的活动序号\n\n"
                 f"有效范围：1-{len(displayed_activities)}"
             )
 
@@ -127,16 +127,16 @@ class IgnoreHandler(CommandHandler):
                 activity_names.append(f"[{idx}] {activity.name}")
 
         if not activity_ids:
-            return Response.text("❌ 无法获取活动信息，请重试")
+            return Response.text("无法获取活动信息，请重试")
 
         # 添加到忽略数据库
         success_count, failed_count = await self._ignore_manager.add_ignored_activities(activity_ids)
 
         if success_count == 0:
-            return Response.text("❌ 添加失败，请稍后重试")
+            return Response.text("添加失败，请稍后重试")
 
         # 构建回复消息
-        lines = ["✅ 已添加到不感兴趣列表\n"]
+        lines = ["已添加到不感兴趣列表\n"]
 
         # 显示添加的活动
         lines.append(f"成功添加 {success_count} 个活动：")
@@ -147,7 +147,7 @@ class IgnoreHandler(CommandHandler):
             lines.append(f"  ... 还有 {len(activity_names) - 10} 个")
 
         if failed_count > 0:
-            lines.append(f"\n⚠️ {failed_count} 个活动添加失败")
+            lines.append(f"\n{failed_count} 个活动添加失败")
 
         logger.info(f"用户添加 {success_count} 个活动到忽略列表")
 

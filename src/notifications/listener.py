@@ -104,7 +104,7 @@ class NotificationListener:
 
             card_content = build_activity_card(
                 event.activities,
-                f"🆕 有 {event.final_count} 个你可能感兴趣的活动",
+                f"有 {event.final_count} 个你可能感兴趣的活动",
                 ignored_ids=ignored_ids
             )
             await self._notification_service.send_card(card_content)
@@ -138,8 +138,8 @@ class NotificationListener:
 
         for change in event.changes:
             message = (
-                f"🔔 已报名活动有更新\n\n"
-                f"📝 {change.activity_name}\n"
+                f"已报名活动有更新\n\n"
+                f"{change.activity_name}\n"
                 f"{change.format(1)}"
             )
             try:

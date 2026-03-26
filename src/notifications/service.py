@@ -75,7 +75,7 @@ class NotificationService(ABC):
 
     async def send_error(self, error: str, context: str = "") -> bool:
         """发送错误消息"""
-        lines = ["❌ 操作失败"]
+        lines = ["操作失败"]
         if context:
             lines.append(f"上下文：{context}")
         lines.append(f"错误：{error}")
@@ -83,8 +83,8 @@ class NotificationService(ABC):
 
     async def send_success(self, message: str) -> bool:
         """发送成功消息"""
-        return await self.send_text(f"✅ {message}")
+        return await self.send_text(f"成功 {message}")
 
     async def send_info(self, message: str) -> bool:
         """发送信息消息"""
-        return await self.send_text(f"ℹ️ {message}")
+        return await self.send_text(f"信息 {message}")

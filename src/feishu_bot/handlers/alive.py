@@ -34,7 +34,7 @@ class AliveHandler(CommandHandler):
         logger.info("执行 /alive 指令")
 
         if not self.check_dependencies():
-            return Response.text("⚠️ 服务未完全初始化\n\n部分功能可能不可用")
+            return Response.text("服务未完全初始化\n\n部分功能可能不可用")
 
         try:
             # 收集状态信息
