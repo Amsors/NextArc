@@ -347,21 +347,57 @@ class CardActionHandler:
                 for child in children:
                     await child.update()
 
-                # 发送子活动卡片
+                # 发送子活动卡片（支持分批发送）
                 from src.utils.formatter import build_activity_card
                 from src.core import UserPreferenceManager
+                from src.config import get_settings
 
                 # 获取用户忽略的活动ID集合（用于显示正确的按钮状态）
                 ignored_ids = set()
                 if self._user_preference_manager:
                     ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
 
-                card_content = build_activity_card(
-                    children,
-                    title=f'系列活动「{activity_name}」的子活动',
-                    ignored_ids=ignored_ids
-                )
-                await self._bot.send_card(card_content)
+                # 获取配置中的最大活动数限制
+                max_per_card = 20
+                try:
+                    settings = get_settings()
+                    max_per_card = settings.feishu.max_activities_per_card
+                except Exception:
+                    pass  # 使用默认值
+
+                # 分批发送子活动卡片
+                total = len(children)
+                if total <= max_per_card:
+                    # 单条发送
+                    card_content = build_activity_card(
+                        children,
+                        title=f'系列活动「{activity_name}」的子活动',
+                        ignored_ids=ignored_ids
+                    )
+                    await self._bot.send_card(card_content)
+                else:
+                    # 分批发送
+                    batches = (total + max_per_card - 1) // max_per_card
+                    for batch_idx in range(batches):
+                        start = batch_idx * max_per_card
+                        end = min(start + max_per_card, total)
+                        batch_children = children[start:end]
+                        start_index = start + 1
+
+                        batch_title = f'系列活动「{activity_name}」的子活动（{batch_idx + 1}/{batches}）'
+
+                        card_content = build_activity_card(
+                            batch_children,
+                            title=batch_title,
+                            ignored_ids=ignored_ids,
+                            start_index=start_index
+                        )
+                        await self._bot.send_card(card_content)
+
+                        # 分批发送之间添加短暂延迟
+                        if batch_idx < batches - 1:
+                            import asyncio
+                            await asyncio.sleep(0.5)
 
                 logger.info(f"成功发送系列活动「{activity_name}」的 {len(children)} 个子活动")
 

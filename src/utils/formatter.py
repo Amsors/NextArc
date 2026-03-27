@@ -260,7 +260,8 @@ def format_help_message() -> str:
 def build_activity_card(
         activities: list[SecondClass],
         title: str = "活动列表",
-        ignored_ids: set[str] | None = None
+        ignored_ids: set[str] | None = None,
+        start_index: int = 1
 ) -> dict:
     """
     构建活动列表的消息卡片（使用折叠面板）
@@ -269,6 +270,7 @@ def build_activity_card(
         activities: 活动列表
         title: 卡片标题
         ignored_ids: 已被忽略的活动ID集合，用于显示正确的按钮状态
+        start_index: 起始序号（默认为1，用于分批发送时保持序号连续）
 
     Returns:
         飞书消息卡片 JSON 字典
@@ -307,7 +309,7 @@ def build_activity_card(
     elements.append({"tag": "hr"})
 
     # 为每个活动创建一个折叠面板
-    for i, act in enumerate(activities, 1):
+    for i, act in enumerate(activities, start_index):
         is_ignored = act.id in ignored_ids
         collapsible_panel = _build_activity_collapsible_panel(act, i, is_ignored)
         elements.append(collapsible_panel)

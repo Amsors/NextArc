@@ -41,6 +41,12 @@ class FeishuConfig(BaseModel):
     app_secret: str = ""
     chat_id: str = Field(default="",
                          description="预配置的私聊会话ID，格式如 oc_xxx。若配置，则机器人启动即可发送消息，无需等待用户先发消息")
+    max_activities_per_card: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="每条消息最多显示的活动数量，超过则分多条消息发送（用于避免超出飞书消息长度限制）"
+    )
 
 
 def get_project_root() -> Path:
