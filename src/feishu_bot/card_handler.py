@@ -4,10 +4,13 @@
 - 切换不感兴趣状态
 - 执行报名操作
 """
+import traceback
 
+from pyustc.young import Status
 from typing import TYPE_CHECKING, Optional
 
 from src.utils.logger import get_logger
+from src.core import SecondClassFilter
 
 if TYPE_CHECKING:
     from src.core import UserPreferenceManager, AuthManager
@@ -75,6 +78,8 @@ class CardActionHandler:
             return await self._handle_toggle_ignore(activity_id, activity_name, open_message_id)
         elif action == "join":
             return await self._handle_join(activity_id, activity_name)
+        elif action == "view_children":
+            return await self._handle_view_children(activity_id, activity_name)
         else:
             return {
                 "toast": {
@@ -261,5 +266,128 @@ class CardActionHandler:
                 "toast": {
                     "type": "error",
                     "content": f"报名失败: {str(e)[:50]}"
+                }
+            }
+
+    async def _handle_view_children(self, activity_id: str, activity_name: str) -> dict:
+        """
+        处理查看子活动
+
+        点击系列活动"查看子活动"按钮后：
+        1. 调用 SecondClass.update() 更新系列活动和子活动（不写入数据库）
+        2. 获取子活动列表
+        3. 以可折叠卡片形式发送子活动详情
+
+        Args:
+            activity_id: 系列活动ID
+            activity_name: 系列活动名称
+
+        Returns:
+            响应数据字典
+        """
+        if not self._auth_manager or not self._bot:
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "服务未初始化，请稍后重试"
+                }
+            }
+
+        logger.info(f"查看系列活动子活动: {activity_name} ({activity_id})")
+
+        try:
+            # 导入 pyustc 相关模块
+            from pyustc.young import SecondClass
+
+            # 使用认证会话执行操作
+            async with self._auth_manager.create_session_once():
+                # 获取系列活动实例并更新
+                sc = SecondClass(activity_id, {})
+                await sc.update()
+
+                # 检查是否真的是系列活动
+                if not sc.is_series:
+                    return {
+                        "toast": {
+                            "type": "error",
+                            "content": "该活动不是系列活动"
+                        }
+                    }
+
+                # 获取子活动列表
+                children = await sc.get_children()
+
+                filter = SecondClassFilter().exclude_status([
+                    Status.ABNORMAL,
+                    # Status.PUBLISHED,
+                    # Status.APPLYING,
+                    Status.APPLY_ENDED,
+                    Status.HOUR_PUBLIC,
+                    Status.HOUR_APPEND_PUBLIC,
+                    Status.PUBLIC_ENDED,
+                    Status.HOUR_APPLYING,
+                    Status.HOUR_APPROVED,
+                    Status.HOUR_REJECTED,
+                    Status.FINISHED,
+                ])
+
+                children = filter(children)
+
+                if not children:
+                    # 没有子活动
+                    await self._bot.send_text(f'系列活动「{activity_name}」暂无可报名的子活动')
+                    return {
+                        "toast": {
+                            "type": "info",
+                            "content": "该系列活动暂无子活动"
+                        }
+                    }
+
+                # 更新每个子活动以获取最新信息
+                for child in children:
+                    await child.update()
+
+                # 发送子活动卡片
+                from src.utils.formatter import build_activity_card
+                from src.core import UserPreferenceManager
+
+                # 获取用户忽略的活动ID集合（用于显示正确的按钮状态）
+                ignored_ids = set()
+                if self._user_preference_manager:
+                    ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
+
+                card_content = build_activity_card(
+                    children,
+                    title=f'系列活动「{activity_name}」的子活动',
+                    ignored_ids=ignored_ids
+                )
+                await self._bot.send_card(card_content)
+
+                logger.info(f"成功发送系列活动「{activity_name}」的 {len(children)} 个子活动")
+
+                return {
+                    "toast": {
+                        "type": "success",
+                        "content": f"已发送 {len(children)} 个子活动"
+                    }
+                }
+
+        except Exception as e:
+            traceback.print_exc()
+            logger.error(f"查看子活动失败: {e}")
+            error_message = (
+                f"查看子活动失败\n\n"
+                f"系列活动：{activity_name}\n"
+                f"错误：{str(e)}"
+            )
+            try:
+                await self._bot.send_text(error_message)
+            except Exception as send_err:
+                logger.error(f"发送查看子活动失败消息失败: {send_err}")
+
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": f"查看子活动失败: {str(e)[:50]}"
                 }
             }

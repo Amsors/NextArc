@@ -424,17 +424,29 @@ def _build_activity_collapsible_panel(
 
     # 报名按钮：系列活动不支持直接报名
     if act.is_series:
-        # 系列活动只有"不感兴趣"按钮
-        button_elements = [{
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": ignore_button_text},
-            "type": ignore_button_type,
-            "value": {
-                "action": "toggle_ignore",
-                "activity_id": act.id,
-                "activity_name": act.name
+        # 系列活动显示"不感兴趣"和"查看子活动"按钮
+        button_elements = [
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": ignore_button_text},
+                "type": ignore_button_type,
+                "value": {
+                    "action": "toggle_ignore",
+                    "activity_id": act.id,
+                    "activity_name": act.name
+                }
+            },
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "查看子活动"},
+                "type": "primary",
+                "value": {
+                    "action": "view_children",
+                    "activity_id": act.id,
+                    "activity_name": act.name
+                }
             }
-        }]
+        ]
     else:
         # 单次活动有"不感兴趣"和"去报名"两个按钮
         button_elements = [
