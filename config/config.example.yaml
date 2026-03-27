@@ -168,3 +168,21 @@ logging:
   # 日志级别: DEBUG, INFO, WARNING, ERROR
   # 默认 INFO，如果需要调试信息，请设置为 DEBUG
   level: "INFO"
+  
+  # 文件日志配置（可选）
+  file:
+    # 是否启用文件日志，默认关闭
+    enabled: false
+    
+    # 日志文件路径（相对于项目根目录或绝对路径）
+    # 例如 "./logs/nextarc.log" 表示 {项目根目录}/logs/nextarc.log
+    path: "./logs/nextarc.log"
+    
+    # 单个日志文件最大大小（MB），达到后会自动轮转
+    # 默认 10MB，范围：1-1000
+    max_size_mb: 10
+    
+    # 保留的历史日志文件数量
+    # 默认 5 个，范围：0-100
+    # 例如设为 5 时，会保留 nextarc.log.1 到 nextarc.log.5
+    backup_count: 5

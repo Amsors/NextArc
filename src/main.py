@@ -65,11 +65,21 @@ class NextArcApp:
             self.preferences = load_preferences(preferences_path)
 
             # 初始化日志
-            setup_logging(self.settings.logging.level)
+            setup_logging(
+                level=self.settings.logging.level,
+                file_enabled=self.settings.logging.file.enabled,
+                file_path=self.settings.logging.file.path if self.settings.logging.file.enabled else None,
+                max_size_mb=self.settings.logging.file.max_size_mb,
+                backup_count=self.settings.logging.file.backup_count,
+            )
             logger.info("=" * 60)
             logger.info("NextArc 启动中...")
             logger.info("=" * 60)
             logger.info(f"日志级别: {self.settings.logging.level}")
+            if self.settings.logging.file.enabled:
+                logger.info(f"文件日志: {self.settings.logging.file.path}")
+                logger.info(f"   最大大小: {self.settings.logging.file.max_size_mb}MB")
+                logger.info(f"   历史文件数: {self.settings.logging.file.backup_count}")
 
             # 检查当前 Python 环境
             self._check_environment()

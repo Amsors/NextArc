@@ -2,16 +2,28 @@
 
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Optional
 
 
-def setup_logging(level: Optional[str] = None) -> logging.Logger:
+def setup_logging(
+        level: Optional[str] = None,
+        file_enabled: bool = False,
+        file_path: Optional[Path] = None,
+        max_size_mb: int = 10,
+        backup_count: int = 5,
+) -> logging.Logger:
     """
-    配置根日志输出到命令行，统一整个项目的日志格式
-    
+    配置根日志输出到命令行和文件（可选），统一整个项目的日志格式
+
     Args:
         level: 日志级别，默认为 INFO
-        
+        file_enabled: 是否启用文件日志
+        file_path: 日志文件路径
+        max_size_mb: 单个日志文件最大大小（MB）
+        backup_count: 保留的历史日志文件数量
+
     Returns:
         配置好的 logger 实例
     """
@@ -41,6 +53,34 @@ def setup_logging(level: Optional[str] = None) -> logging.Logger:
     # 添加 handler 到根 logger
     root_logger.addHandler(console_handler)
 
+    # 如果启用文件日志，添加 FileHandler
+    if file_enabled and file_path:
+        try:
+            # 确保日志目录存在
+            log_dir = file_path.parent
+            log_dir.mkdir(parents=True, exist_ok=True)
+
+            # 创建 RotatingFileHandler
+            file_handler = RotatingFileHandler(
+                filename=file_path,
+                maxBytes=max_size_mb * 1024 * 1024,
+                backupCount=backup_count,
+                encoding="utf-8",
+                delay=True,  # 延迟创建文件直到第一次写入
+            )
+            file_handler.setLevel(log_level)
+            file_handler.setFormatter(formatter)
+
+            # 添加 handler 到根 logger
+            root_logger.addHandler(file_handler)
+
+            # 记录文件日志已启用（使用 stderr 避免循环）
+            print(f"文件日志已启用: {file_path}", file=sys.stderr)
+
+        except Exception as e:
+            # 文件日志初始化失败，记录警告但不影响控制台日志
+            print(f"警告: 文件日志初始化失败: {e}", file=sys.stderr)
+
     # 设置第三方库的日志级别（降低噪音）
     logging.getLogger("apscheduler").setLevel(logging.WARNING)
     logging.getLogger("asyncio").setLevel(logging.WARNING)
@@ -55,6 +95,8 @@ def setup_logging(level: Optional[str] = None) -> logging.Logger:
     logging.getLogger("aiosqlite").setLevel(logging.WARNING)
     # 时间相关库
     logging.getLogger("tzlocal").setLevel(logging.WARNING)
+    # OpenAI 相关库
+    logging.getLogger("openai").setLevel(logging.WARNING)
     # Lark SDK 日志级别保持 INFO，以便看到连接状态
     logging.getLogger("Lark").setLevel(logging.INFO)
 

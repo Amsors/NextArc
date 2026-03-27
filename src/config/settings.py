@@ -89,9 +89,27 @@ class DatabaseConfig(BaseModel):
         return self.data_dir / "user_preference.db"
 
 
+class LogFileConfig(BaseModel):
+    """日志文件配置"""
+    enabled: bool = Field(default=False, description="是否启用文件日志")
+    path: Path = Field(default=Path("./logs/nextarc.log"), description="日志文件路径")
+    max_size_mb: int = Field(default=10, ge=1, le=1000, description="单个日志文件最大大小（MB）")
+    backup_count: int = Field(default=5, ge=0, le=100, description="保留的历史日志文件数量")
+
+    @field_validator("path")
+    @classmethod
+    def resolve_log_path(cls, v: Path) -> Path:
+        """将相对路径转换为相对于项目根目录的绝对路径"""
+        path = Path(v)
+        if not path.is_absolute():
+            path = get_project_root() / path
+        return path.resolve()
+
+
 class LogConfig(BaseModel):
     """日志配置"""
     level: str = "INFO"
+    file: LogFileConfig = Field(default_factory=LogFileConfig, description="文件日志配置")
 
 
 class AIRateLimitConfig(BaseModel):
