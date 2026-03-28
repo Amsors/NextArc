@@ -9,7 +9,8 @@ import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from pyustc.young import SecondClass
-from pyustc.young.db import SecondClassDB
+
+from src.core.secondclass_db import SecondClassDB
 
 from src.utils.logger import get_logger
 from .ai_filter import AIFilter

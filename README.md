@@ -120,11 +120,11 @@ git clone https://github.com/Amsors/NextArc
 git clone https://github.com/Amsors/pyustc
 ```
 
-⚠️**切换到数据库开发分支**
+⚠️**切换到NextArc适配分支**
 
 ```bash
 # 在 pyustc 库安装的根目录下
-git switch feat/database
+git switch adapt/NextArc
 ```
 
 #### 1.3 创建环境并安装依赖
