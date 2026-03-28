@@ -270,6 +270,20 @@ def get_description_text(sc: SecondClass) -> str:
     return sc.conceive or "无"
 
 
+def get_place_info(sc: SecondClass) -> str:
+    """获取活动地点信息"""
+    if sc.place_info:
+        return sc.place_info
+    return sc.place_info or "未提供"
+
+
+def get_participation_form(sc: SecondClass) -> str | None:
+    """获取活动参与形式"""
+    if sc.participation_form:
+        return sc.participation_form.text
+    return None
+
+
 def format_secondclass_for_list(sc: SecondClass, index: int, simple_format: bool = False) -> str:
     """格式化为列表显示
     
@@ -292,9 +306,18 @@ def format_secondclass_for_list(sc: SecondClass, index: int, simple_format: bool
         f"    组织单位：{get_department_name(sc)}\n"
         f"    状态：{get_status_text(sc)}\n"
     )
+
+    if not sc.place_info:
+        ret += f"    地点：{get_place_info(sc)}\n"
+    else:
+        ret += f"    地点：未提供\n"
+
     if not sc.is_series:
         ret += f"    学时：{sc.valid_hour or '未知'}\n"
         ret += f"    报名：{get_apply_progress(sc)}\n"
+
+    if sc.participation_form:
+        ret += f"    参与形式：{get_participation_form(sc)}\n"
 
     return ret
 

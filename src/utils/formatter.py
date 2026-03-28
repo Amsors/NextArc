@@ -14,7 +14,7 @@ from src.models.activity import (
     get_apply_progress,
     get_module_name,
     get_department_name,
-    get_labels_text, get_description_text,
+    get_labels_text, get_description_text, get_place_info, get_participation_form,
 )
 
 
@@ -372,6 +372,19 @@ def _build_activity_collapsible_panel(
             "content": f"**组织单位**: {get_department_name(act)}"
         }
     )
+    detail_elements.append(
+        {
+            "tag": "markdown",
+            "content": f"**地点**: {get_place_info(act)}"
+        }
+    )
+    if get_participation_form(act):
+        detail_elements.append(
+            {
+                "tag": "markdown",
+                "content": f"**参与形式**: {get_participation_form(act)}"
+            }
+        )
 
     # 状态和学时/报名人数
     if act.is_series:
