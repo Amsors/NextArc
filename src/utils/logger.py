@@ -98,7 +98,11 @@ def setup_logging(
     # OpenAI 相关库
     logging.getLogger("openai").setLevel(logging.WARNING)
     # Lark SDK 日志级别保持 INFO，以便看到连接状态
-    logging.getLogger("Lark").setLevel(logging.INFO)
+    # 清除其 handlers 并启用 propagate，使日志通过根 logger 输出（统一格式，避免重复）
+    lark_logger = logging.getLogger("Lark")
+    lark_logger.setLevel(logging.INFO)
+    lark_logger.handlers.clear()
+    lark_logger.propagate = True
 
     return logging.getLogger("nextarc")
 

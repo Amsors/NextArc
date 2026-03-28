@@ -419,8 +419,6 @@ async def main():
     if not await app.initialize():
         print("初始化失败，请检查配置")
         sys.exit(1)
-    else:
-        print("初始化成功！")
 
     # 运行应用
     try:
