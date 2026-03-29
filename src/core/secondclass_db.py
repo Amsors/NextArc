@@ -487,7 +487,8 @@ class SecondClassDB:
             self,
             secondclasses: list[SecondClass],
             deep_update: bool,
-            expand_series: bool = False
+            expand_series: bool = False,
+            max_concurrent: int = 5,
     ):
         """Update the all_secondclass table with full refresh.
 
@@ -499,6 +500,8 @@ class SecondClassDB:
         :type secondclasses: list[SecondClass]
         :param expand_series: Whether to fetch and store children of series.
         :type expand_series: bool
+        :param max_concurrent: Maximum concurrent updates for deep_update.
+        :type max_concurrent: int
         :raises RuntimeError: If the update fails and cannot be rolled back.
         """
         import sys
@@ -507,46 +510,66 @@ class SecondClassDB:
         rows_to_insert: list[dict[str, Any]] = []
         all_ids: set[str] = set()
 
-        # Process each secondclass
+        # Collect all instances that need deep update
+        instances_to_update: list[SecondClass] = []
+        parent_children_map: dict[str, list[SecondClass]] = {}  # parent_id -> children
+
         for sc in secondclasses:
             all_ids.add(sc.id)
 
             if deep_update:
-                await sc.update()
-
-            children_ids: list[str] | None = None
-            parent_id: str | None = None
+                instances_to_update.append(sc)
 
             if sc.is_series and expand_series:
                 try:
                     children = await sc.get_children()
-                    children_ids = [child.id for child in children]
+                    parent_children_map[sc.id] = children
+
                     # Add children to the processing list with parent_id set
                     for child in children:
                         if child.id not in all_ids:
                             all_ids.add(child.id)
                             if deep_update:
-                                await child.update();
-                            child_row = self._secondclass_to_row(
-                                child,
-                                children_ids=None,
-                                parent_id=sc.id,
-                                scan_timestamp=scan_timestamp,
-                            )
-                            rows_to_insert.append(child_row)
+                                instances_to_update.append(child)
                 except Exception as e:
                     # If fetching children fails, continue without children
-                    children_ids = None
+                    parent_children_map[sc.id] = []
+
+        # Perform concurrent deep updates
+        if deep_update and instances_to_update:
+            from .batch_updater import SecondClassBatchUpdater
+            updater = SecondClassBatchUpdater(max_concurrent)
+
+            _, failed = await updater.update_batch(instances_to_update, continue_on_error=True)
+            if failed:
+                print(f"[DB Debug] Deep update: {len(failed)} instances failed to update", file=sys.stderr)
+
+        # Build rows for insertion
+        for sc in secondclasses:
+            children = parent_children_map.get(sc.id, [])
+            children_ids = [child.id for child in children] if children else None
 
             row = self._secondclass_to_row(
                 sc,
                 children_ids=children_ids,
-                parent_id=parent_id,
+                parent_id=None,
                 scan_timestamp=scan_timestamp,
                 deep_scaned=deep_update,
                 deep_scaned_time=scan_timestamp if deep_update else None,
             )
             rows_to_insert.append(row)
+
+            # Add child rows
+            for child in children:
+                child_row = self._secondclass_to_row(
+                    child,
+                    children_ids=None,
+                    parent_id=sc.id,
+                    scan_timestamp=scan_timestamp,
+                    deep_scaned=deep_update,
+                    deep_scaned_time=scan_timestamp if deep_update else None,
+                )
+                rows_to_insert.append(child_row)
 
         print(f"[DB Debug] Prepared {len(rows_to_insert)} rows to insert, {len(all_ids)} unique IDs", file=sys.stderr)
 
@@ -607,7 +630,8 @@ class SecondClassDB:
     async def update_enrolled_secondclass(
             self,
             secondclasses: list[SecondClass],
-            deep_update: bool
+            deep_update: bool,
+            max_concurrent: int = 5,
     ):
         """Update the enrolled_secondclass table with full refresh.
 
@@ -616,6 +640,10 @@ class SecondClassDB:
 
         :param secondclasses: List of SecondClass objects to store.
         :type secondclasses: list[SecondClass]
+        :param deep_update: Whether to perform deep update by calling update() on each instance.
+        :type deep_update: bool
+        :param max_concurrent: Maximum concurrent updates for deep_update.
+        :type max_concurrent: int
         :raises RuntimeError: If the update fails and cannot be rolled back.
         """
         import sys
@@ -624,13 +652,21 @@ class SecondClassDB:
         rows_to_insert: list[dict[str, Any]] = []
         all_ids: set[str] = set()
 
-        # Process each secondclass
+        # Collect all IDs first
         for sc in secondclasses:
             all_ids.add(sc.id)
 
-            if deep_update:
-                await sc.update()
+        # Perform concurrent deep updates
+        if deep_update:
+            from .batch_updater import SecondClassBatchUpdater
+            updater = SecondClassBatchUpdater(max_concurrent)
 
+            _, failed = await updater.update_batch(secondclasses, continue_on_error=True)
+            if failed:
+                print(f"[DB Debug] Enrolled deep update: {len(failed)} instances failed to update", file=sys.stderr)
+
+        # Build rows for insertion
+        for sc in secondclasses:
             # For enrolled table, we don't track parent-child relationships
             row = self._secondclass_to_row(
                 sc,
@@ -719,6 +755,7 @@ class SecondClassDB:
             sc_generator,
             deep_update: bool,
             expand_series: bool,
+            max_concurrent: int = 5,
     ):
         """Update the all_secondclass table from an async generator.
 
@@ -728,6 +765,8 @@ class SecondClassDB:
         :param sc_generator: Async generator yielding SecondClass objects.
         :param expand_series: Whether to fetch and store children of series.
         :type expand_series: bool
+        :param max_concurrent: Maximum concurrent updates for deep_update.
+        :type max_concurrent: int
         :raises RuntimeError: If the update fails and cannot be rolled back.
 
         Example:
@@ -742,12 +781,18 @@ class SecondClassDB:
         secondclasses = []
         async for sc in sc_generator:
             secondclasses.append(sc)
-        await self.update_all_secondclass(secondclasses, expand_series=expand_series, deep_update=deep_update)
+        await self.update_all_secondclass(
+            secondclasses,
+            expand_series=expand_series,
+            deep_update=deep_update,
+            max_concurrent=max_concurrent,
+        )
 
     async def update_enrolled_from_generator(
             self,
             sc_generator,
             deep_update: bool,
+            max_concurrent: int = 5,
     ):
         """Update the enrolled_secondclass table from an async generator.
 
@@ -755,6 +800,10 @@ class SecondClassDB:
         (e.g., from SecondClass.get_participated()) and updates the database.
 
         :param sc_generator: Async generator yielding SecondClass objects.
+        :param deep_update: Whether to perform deep update by calling update() on each instance.
+        :type deep_update: bool
+        :param max_concurrent: Maximum concurrent updates for deep_update.
+        :type max_concurrent: int
         :raises RuntimeError: If the update fails and cannot be rolled back.
 
         Example:
@@ -768,7 +817,11 @@ class SecondClassDB:
         secondclasses = []
         async for sc in sc_generator:
             secondclasses.append(sc)
-        await self.update_enrolled_secondclass(secondclasses, deep_update=deep_update)
+        await self.update_enrolled_secondclass(
+            secondclasses,
+            deep_update=deep_update,
+            max_concurrent=max_concurrent,
+        )
 
     def close(self):
         """Close the database connection (no-op for sqlite3, but kept for API consistency)."""

@@ -426,35 +426,39 @@ class ActivityScanner:
             return job.next_run_time
         return None
 
-    async def get_activity_list_by_id(self, activity_ids: list[str]) -> list[SecondClass]:
+    async def get_activity_list_by_id(
+            self,
+            activity_ids: list[str],
+            max_concurrent: int = 5
+    ) -> list[SecondClass]:
         """
-        根据活动ID列表获取活动详情
-        
+        根据活动ID列表获取活动详情（支持并发）
+
         Args:
             activity_ids: 活动ID列表
-            
+            max_concurrent: 最大并发数，默认为 5
+
         Returns:
             SecondClass 对象列表（仅包含成功获取的活动）
         """
-        logger.info(f"开始获取 {len(activity_ids)} 个活动的详情...")
+        logger.info(f"开始获取 {len(activity_ids)} 个活动的详情，并发数: {max_concurrent}...")
 
         activities: list[SecondClass] = []
 
         async with self.auth_manager.create_session_once() as service:
-            for activity_id in activity_ids:
-                try:
-                    # 创建 SecondClass 实例并更新获取详情
-                    # SecondClass 使用单例模式，通过 id 缓存
-                    sc = SecondClass(activity_id, None)
-                    await sc.update()
-                    activities.append(sc)
+            # 创建所有 SecondClass 实例
+            sc_instances = [SecondClass(aid, None) for aid in activity_ids]
 
-                    logger.debug(f"获取活动成功: {sc.name} ({activity_id})")
+            # 使用批量并发更新
+            from .batch_updater import SecondClassBatchUpdater
+            updater = SecondClassBatchUpdater(max_concurrent)
 
-                except Exception as e:
-                    # 获取失败（活动可能已删除），跳过
-                    logger.warning(f"获取活动 {activity_id} 失败，可能已删除: {e}")
-                    continue
+            successful, failed = await updater.update_batch(sc_instances, continue_on_error=True)
+            activities.extend(successful)
+
+            if failed:
+                for sc, error in failed:
+                    logger.warning(f"获取活动 {sc.id} 失败，可能已删除: {error}")
 
         logger.info(f"成功获取 {len(activities)}/{len(activity_ids)} 个活动详情")
         return activities
