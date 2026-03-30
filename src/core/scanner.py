@@ -375,7 +375,7 @@ class ActivityScanner:
             weekday_name = weekday_names[config.day_of_week]
             logger.info(f"版本检查已启动，每周 {weekday_name} "
                         f"{config.hour:02d}:{config.minute:02d}")
-        
+
         self.scheduler.start()
         self._is_running = True
         logger.info(f"定时扫描已启动，间隔: {self.interval}分钟")

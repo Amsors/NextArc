@@ -121,7 +121,7 @@ class NotificationListener:
 
         # 构建通知消息
         lines = [
-            "🎉 NextArc 有新版本更新！",
+            "NextArc 有新版本更新",
             "",
             f"当前版本: `{event.current_sha[:7]}`",
             f"最新版本: `{event.latest_sha[:7]}`",
@@ -133,8 +133,7 @@ class NotificationListener:
         for i, commit in enumerate(event.new_commits[:5], 1):
             # 只取 commit message 的第一行
             message_first_line = commit.message.split("\n")[0][:50]
-            lines.append(f"{i}. {message_first_line}")
-            lines.append(f"   作者: {commit.author}  时间: {commit.date.strftime('%m-%d')}")
+            lines.append(f"{i}. {message_first_line} {commit.date}")
             lines.append("")
 
         if len(event.new_commits) > 5:
