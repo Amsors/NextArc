@@ -43,7 +43,7 @@ version_check:
   
   # Git 仓库设置
   remote_name: "origin"     # 远程仓库名称
-  branch_name: "main"       # 要跟踪的分支名称
+  branch_name: "master"       # 要跟踪的分支名称
   auto_fetch: true          # 检查前是否自动执行 git fetch
 
 # AI 筛选配置（使用 OpenAI API 格式）

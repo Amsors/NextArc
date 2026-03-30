@@ -84,9 +84,10 @@ class JoinHandler(CommandHandler):
                 if sc.need_sign_info:
                     from pyustc.young.second_class import SignInfo
                     sign_info = await SignInfo.get_self()
-                    result = await sc.apply(force=False, auto_cancel=False, sign_info=sign_info)
+                    result = await sc.apply(force=True, auto_cancel=False, sign_info=sign_info)
                 else:
-                    result = await sc.apply(force=False, auto_cancel=False)
+                    result = await sc.apply(force=True, auto_cancel=False)
+                    # TODO 添加是否强制报名的配置
 
                 logger.info(f"apply() 返回值: {result}")
 

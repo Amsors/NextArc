@@ -356,10 +356,19 @@ class ActivityScanner:
         )
 
         # 添加版本检查任务（如果启用）
+        logger.info(f"【Scanner】检查版本检查器: version_checker={self.version_checker is not None}")
+        if self.version_checker:
+            logger.info(f"【Scanner】版本检查器 enabled={self.version_checker.enabled}")
+
+        version_check_added = False
         if self.version_checker and self.version_checker.enabled:
             from apscheduler.triggers.cron import CronTrigger
 
             config = self.version_checker.config
+            logger.info(f"【Scanner】正在添加版本检查任务...")
+            logger.info(f"【Scanner】配置: day_of_week={config.day_of_week}, "
+                        f"hour={config.hour}, minute={config.minute}")
+
             self.scheduler.add_job(
                 self._check_version,
                 trigger=CronTrigger(
@@ -375,20 +384,38 @@ class ActivityScanner:
             weekday_name = weekday_names[config.day_of_week]
             logger.info(f"版本检查已启动，每周 {weekday_name} "
                         f"{config.hour:02d}:{config.minute:02d}")
+            version_check_added = True
+        else:
+            logger.info("【Scanner】版本检查任务未添加（未启用或未初始化）")
 
         self.scheduler.start()
         self._is_running = True
         logger.info(f"定时扫描已启动，间隔: {self.interval}分钟")
 
+        # scheduler 启动后才能获取下次运行时间
+        if version_check_added:
+            job = self.scheduler.get_job("version_check")
+            if job and hasattr(job, 'next_run_time') and job.next_run_time:
+                logger.info(f"版本检查下次运行时间: {job.next_run_time}")
+
     async def _check_version(self) -> None:
         """执行版本检查"""
+        logger.info("【版本检查】定时任务触发，开始检查版本更新...")
+
         if not self.version_checker:
+            logger.warning("【版本检查】版本检查器未初始化，跳过检查")
             return
 
         try:
+            logger.info("【版本检查】正在检查更新...")
             result = await self.version_checker.check_for_updates()
-            if result and result.commits_behind > 0:
-                logger.info(f"发现新版本，落后 {result.commits_behind} 个 commit")
+
+            if result is None:
+                logger.info("【版本检查】已是最新版本或检查失败（返回 None）")
+            elif result.commits_behind > 0:
+                logger.info(f"【版本检查】发现新版本！落后 {result.commits_behind} 个 commit")
+                logger.info(f"【版本检查】当前版本: {result.current_sha[:7]}, "
+                            f"最新版本: {result.latest_sha[:7]}")
                 if self.event_bus:
                     event = VersionUpdateEvent(
                         current_sha=result.current_sha,
@@ -398,10 +425,18 @@ class ActivityScanner:
                         repo_url=result.repo_url,
                     )
                     await self.event_bus.publish(event)
+                    logger.info("【版本检查】已发布 VersionUpdateEvent 事件")
+                else:
+                    logger.warning("【版本检查】EventBus 未设置，无法发布事件")
             else:
-                logger.debug("当前已是最新版本，无需通知")
+                logger.info("【版本检查】当前已是最新版本，无需通知")
+
         except Exception as e:
-            logger.error(f"版本检查失败: {e}")
+            logger.error(f"【版本检查】版本检查失败: {e}")
+            import traceback
+            traceback.print_exc()
+
+        logger.info("【版本检查】检查完成")
 
     def stop(self) -> None:
         """停止定时任务"""
@@ -426,6 +461,16 @@ class ActivityScanner:
             return None
 
         job = self.scheduler.get_job("activity_scan")
+        if job and job.next_run_time:
+            return job.next_run_time
+        return None
+
+    def get_next_version_check_time(self) -> Optional[datetime]:
+        """获取下次版本检查时间"""
+        if not self._is_running:
+            return None
+
+        job = self.scheduler.get_job("version_check")
         if job and job.next_run_time:
             return job.next_run_time
         return None

@@ -90,16 +90,17 @@ class VersionChecker:
     async def get_current_version(self) -> Optional[str]:
         returncode, stdout, stderr = await self._run_git_command(["rev-parse", "HEAD"])
         if returncode != 0:
-            logger.warning(f"获取当前版本失败: {stderr}")
+            logger.warning(f"【VersionChecker】获取当前版本失败: {stderr}")
             return None
         return stdout
 
     async def get_remote_version(self) -> Optional[str]:
         """获取远程最新 commit SHA（本地缓存的）"""
         remote_ref = f"{self.config.remote_name}/{self.config.branch_name}"
+        logger.debug(f"【VersionChecker】获取远程版本: {remote_ref}")
         returncode, stdout, stderr = await self._run_git_command(["rev-parse", remote_ref])
         if returncode != 0:
-            logger.warning(f"获取远程版本失败: {stderr}")
+            logger.warning(f"【VersionChecker】获取远程版本失败: {stderr}")
             return None
         return stdout
 
@@ -109,9 +110,9 @@ class VersionChecker:
             ["fetch", self.config.remote_name, self.config.branch_name]
         )
         if returncode != 0:
-            logger.warning(f"git fetch 失败: {stderr}")
+            logger.warning(f"【VersionChecker】git fetch 失败: {stderr}")
             return False
-        logger.debug("git fetch 成功")
+        logger.info("【VersionChecker】git fetch 成功")
         return True
 
     async def get_commits_between(self, from_sha: str, to_sha: str) -> list[CommitInfo]:
@@ -124,6 +125,7 @@ class VersionChecker:
         Returns:
             CommitInfo 列表（按时间倒序，最新的在前）
         """
+        logger.debug(f"【VersionChecker】获取 commit 列表: {from_sha[:7]}..{to_sha[:7]}")
         # 格式: SHA|作者|日期|消息
         format_str = "%H|%an|%ad|%s"
         returncode, stdout, stderr = await self._run_git_command([
@@ -134,7 +136,7 @@ class VersionChecker:
         ])
 
         if returncode != 0:
-            logger.warning(f"获取 commit 列表失败: {stderr}")
+            logger.warning(f"【VersionChecker】获取 commit 列表失败: {stderr}")
             return []
 
         commits = []
@@ -170,6 +172,7 @@ class VersionChecker:
                 url=url,
             ))
 
+        logger.debug(f"【VersionChecker】解析到 {len(commits)} 个 commit")
         return commits
 
     async def get_commits_behind_count(self, local_sha: str, remote_sha: str) -> int:
@@ -182,6 +185,7 @@ class VersionChecker:
         Returns:
             落后的 commit 数量
         """
+        logger.debug(f"【VersionChecker】计算落后数量...")
         returncode, stdout, stderr = await self._run_git_command([
             "rev-list",
             "--count",
@@ -189,11 +193,13 @@ class VersionChecker:
         ])
 
         if returncode != 0:
-            logger.warning(f"获取落后数量失败: {stderr}")
+            logger.warning(f"【VersionChecker】获取落后数量失败: {stderr}")
             return 0
 
         try:
-            return int(stdout)
+            count = int(stdout)
+            logger.debug(f"【VersionChecker】落后数量: {count}")
+            return count
         except ValueError:
             return 0
 
@@ -203,7 +209,7 @@ class VersionChecker:
         )
 
         if returncode != 0:
-            logger.warning(f"获取远程 URL 失败: {stderr}")
+            logger.warning(f"【VersionChecker】获取远程 URL 失败: {stderr}")
             return ""
 
         url = stdout.strip()
@@ -219,53 +225,69 @@ class VersionChecker:
         if url.endswith(".git"):
             url = url[:-4]
 
+        logger.debug(f"【VersionChecker】远程 URL: {url}")
         return url
 
     async def check_for_updates(self) -> Optional[VersionUpdateResult]:
         """检查是否有新版本
-        
+
         Returns:
             VersionUpdateResult: 如果有新版本，返回更新信息
             None: 如果没有新版本、已经是最新、或检查失败
         """
+        logger.info("【VersionChecker】开始检查版本更新...")
+        logger.info(f"【VersionChecker】项目目录: {self.project_root}")
+
         if not self.is_git_repo():
-            logger.warning("当前目录不是 git 仓库")
+            logger.warning("【VersionChecker】当前目录不是 git 仓库")
             return None
+
+        logger.info("【VersionChecker】确认是 git 仓库")
 
         # 获取当前本地版本
         current_sha = await self.get_current_version()
         if not current_sha:
+            logger.warning("【VersionChecker】无法获取当前本地版本")
             return None
 
-        logger.debug(f"当前本地版本: {current_sha[:7]}")
+        logger.info(f"【VersionChecker】当前本地版本: {current_sha[:7]}")
 
         # 如果需要，先 fetch 远程
         if self.config.auto_fetch:
-            if not await self.fetch_remote():
-                logger.debug("使用本地缓存的远程引用继续检查")
+            logger.info(f"【VersionChecker】auto_fetch 启用，正在 fetch {self.config.remote_name}...")
+            fetch_success = await self.fetch_remote()
+            if not fetch_success:
+                # fetch 失败但继续尝试使用本地缓存的远程引用
+                logger.warning("【VersionChecker】fetch 失败，使用本地缓存的远程引用继续检查")
+        else:
+            logger.info("【VersionChecker】auto_fetch 禁用，使用本地缓存的远程引用")
 
         # 获取远程最新版本
         remote_sha = await self.get_remote_version()
         if not remote_sha:
-            logger.warning("无法获取远程版本信息")
+            logger.warning("【VersionChecker】无法获取远程版本信息")
             return None
 
-        logger.debug(f"远程最新版本: {remote_sha[:7]}")
+        logger.info(f"【VersionChecker】远程最新版本: {remote_sha[:7]}")
 
         if current_sha == remote_sha:
-            logger.debug("当前已是最新版本")
+            logger.info("【VersionChecker】当前已是最新版本")
             return None
 
         commits_behind = await self.get_commits_behind_count(current_sha, remote_sha)
+        logger.info(f"【VersionChecker】落后 commit 数量: {commits_behind}")
+
         if commits_behind == 0:
-            logger.debug("没有检测到新版本")
+            logger.info("【VersionChecker】没有检测到新版本")
             return None
 
-        logger.info(f"检测到新版本，落后 {commits_behind} 个 commit")
+        logger.info(f"【VersionChecker】检测到新版本，落后 {commits_behind} 个 commit")
 
         new_commits = await self.get_commits_between(current_sha, remote_sha)
+        logger.info(f"【VersionChecker】获取到 {len(new_commits)} 个 commit 详情")
 
         repo_url = await self.get_remote_url()
+        logger.info(f"【VersionChecker】仓库 URL: {repo_url}")
 
         return VersionUpdateResult(
             current_sha=current_sha,

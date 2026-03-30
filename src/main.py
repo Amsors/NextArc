@@ -134,8 +134,17 @@ class NextArcApp:
 
             # 初始化版本检查器（如果启用）
             self.version_checker = None
+            logger.info(f"版本检查配置: enabled={self.settings.version_check.enabled}")
             if self.settings.version_check.enabled:
                 from src.core.version_checker import VersionChecker
+                logger.info("正在初始化版本检查器...")
+                logger.info(f"   配置: day_of_week={self.settings.version_check.day_of_week}, "
+                            f"hour={self.settings.version_check.hour}, "
+                            f"minute={self.settings.version_check.minute}")
+                logger.info(f"   远程: {self.settings.version_check.remote_name}/"
+                            f"{self.settings.version_check.branch_name}, "
+                            f"auto_fetch={self.settings.version_check.auto_fetch}")
+
                 self.version_checker = VersionChecker(
                     config=self.settings.version_check,
                     project_root=project_root,
@@ -145,6 +154,7 @@ class NextArcApp:
                     logger.warning("版本检查已启用，但当前目录不是 git 仓库")
                     self.version_checker = None
                 else:
+                    logger.info("版本检查器: 检测到 git 仓库")
                     current_ver = await self.version_checker.get_current_version()
                     remote_url = await self.version_checker.get_remote_url()
                     logger.info(f"版本检查器初始化完成")
