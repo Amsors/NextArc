@@ -3,7 +3,6 @@
 import json
 import shutil
 import sqlite3
-import sys
 import threading
 import time
 from datetime import datetime
@@ -12,6 +11,10 @@ from typing import Any, Self
 
 from pyustc.young import SecondClass
 from pyustc.young.filter import Department, Label, Module, TimePeriod
+
+from src.utils.logger import get_logger
+
+logger = get_logger("secondclass_db")
 
 
 class DepartmentDB:
@@ -157,7 +160,7 @@ class DepartmentDB:
 
         try:
             all_nodes = self._collect_nodes(root)
-            print(f"[DepartmentDB] Collected {len(all_nodes)} nodes from JSON", file=sys.stderr)
+            logger.info(f"Collected {len(all_nodes)} nodes from JSON")
 
             all_issues = []
             for node in all_nodes:
@@ -165,7 +168,7 @@ class DepartmentDB:
                 all_issues.extend(issues)
 
             for issue in all_issues:
-                print(issue, file=sys.stdout)
+                logger.warning(issue)
 
             rows_to_insert = []
             for node in all_nodes:
@@ -184,7 +187,7 @@ class DepartmentDB:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("DELETE FROM departments")
-                    print(f"[DepartmentDB] Cleared existing data", file=sys.stderr)
+                    logger.info("Cleared existing data")
 
                     for row in rows_to_insert:
                         cursor.execute(
@@ -203,7 +206,7 @@ class DepartmentDB:
             self._remove_backup(backup_path)
 
         except Exception as e:
-            print(f"[DepartmentDB] Exception occurred: {e}", file=sys.stderr)
+            logger.error(f"Exception occurred: {e}")
             self._restore_backup(backup_path)
             raise RuntimeError(f"Failed to import departments: {e}") from e
 
@@ -409,8 +412,6 @@ class SecondClassDB:
             max_concurrent: int = 5,
     ):
         """更新 all_secondclass 表"""
-        import sys
-
         scan_timestamp = int(time.time())
         rows_to_insert: list[dict[str, Any]] = []
         all_ids: set[str] = set()
@@ -443,7 +444,7 @@ class SecondClassDB:
 
             _, failed = await updater.update_batch(instances_to_update, continue_on_error=True)
             if failed:
-                print(f"[DB Debug] Deep update: {len(failed)} instances failed to update", file=sys.stderr)
+                logger.warning(f"Deep update: {len(failed)} instances failed to update")
 
         for sc in secondclasses:
             children = parent_children_map.get(sc.id, [])
@@ -470,7 +471,7 @@ class SecondClassDB:
                 )
                 rows_to_insert.append(child_row)
 
-        print(f"[DB Debug] Prepared {len(rows_to_insert)} rows to insert, {len(all_ids)} unique IDs", file=sys.stderr)
+        logger.info(f"Prepared {len(rows_to_insert)} rows to insert, {len(all_ids)} unique IDs")
 
         backup_path = self._create_backup()
 
@@ -485,10 +486,10 @@ class SecondClassDB:
                             f"DELETE FROM all_secondclass WHERE id NOT IN ({placeholders})",
                             list(all_ids),
                         )
-                        print(f"[DB Debug] Deleted records not in current batch", file=sys.stderr)
+                        logger.info("Deleted records not in current batch")
                     else:
                         cursor.execute("DELETE FROM all_secondclass")
-                        print(f"[DB Debug] Deleted all records (empty batch)", file=sys.stderr)
+                        logger.info("Deleted all records (empty batch)")
 
                     for row in rows_to_insert:
                         cursor.execute(
@@ -515,7 +516,7 @@ class SecondClassDB:
                     conn.commit()
 
             self._remove_backup(backup_path)
-            print(f"[DB Debug] Backup removed, update completed successfully", file=sys.stderr)
+            logger.info("Backup removed, update completed successfully")
 
         except Exception as e:
             self._restore_backup(backup_path)
@@ -528,8 +529,6 @@ class SecondClassDB:
             max_concurrent: int = 5,
     ):
         """更新 enrolled_secondclass 表"""
-        import sys
-
         scan_timestamp = int(time.time())
         rows_to_insert: list[dict[str, Any]] = []
         all_ids: set[str] = set()
@@ -543,7 +542,7 @@ class SecondClassDB:
 
             _, failed = await updater.update_batch(secondclasses, continue_on_error=True)
             if failed:
-                print(f"[DB Debug] Enrolled deep update: {len(failed)} instances failed to update", file=sys.stderr)
+                logger.warning(f"Enrolled deep update: {len(failed)} instances failed to update")
 
         for sc in secondclasses:
             row = self._secondclass_to_row(
@@ -556,7 +555,7 @@ class SecondClassDB:
             )
             rows_to_insert.append(row)
 
-        print(f"[DB Debug] Prepared {len(rows_to_insert)} rows to insert, {len(all_ids)} unique IDs", file=sys.stderr)
+        logger.info(f"Prepared {len(rows_to_insert)} rows to insert, {len(all_ids)} unique IDs")
 
         backup_path = self._create_backup()
 
@@ -597,12 +596,12 @@ class SecondClassDB:
                         )
 
                     conn.commit()
-                    print(f"[DB Debug] Committed successfully", file=sys.stderr)
+                    logger.info("Committed successfully")
 
             self._remove_backup(backup_path)
 
         except Exception as e:
-            print(f"[DB Debug] Exception occurred: {e}", file=sys.stderr)
+            logger.error(f"Exception occurred: {e}")
             self._restore_backup(backup_path)
             raise RuntimeError(f"Failed to update enrolled_secondclass: {e}") from e
 
