@@ -18,6 +18,10 @@ from .scan_events import (
     EnrolledActivityChangedEvent,
     ActivityIgnoredEvent,
 )
+from .version_events import (
+    VersionUpdateEvent,
+    CommitInfo,
+)
 
 __all__ = [
     "EventBus",
@@ -25,6 +29,8 @@ __all__ = [
     "NewActivitiesFoundEvent",
     "EnrolledActivityChangedEvent",
     "ActivityIgnoredEvent",
+    "VersionUpdateEvent",
+    "CommitInfo",
 ]
 
 T = TypeVar("T")

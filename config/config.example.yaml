@@ -29,6 +29,23 @@ monitor:
   # 是否使用 AI 筛选新活动（需要配置 ai 部分），默认关闭
   use_ai_filter: false
 
+version_check:
+  # 是否启用新版本检查功能，默认关闭
+  # 启用后，会在指定时间自动检查本地 git 仓库与远程仓库的版本差异
+  # 如果有新版本，会通过飞书推送更新通知
+  enabled: false
+  
+  # 检查时间设置（使用 24 小时制）
+  # day_of_week: 0=周一, 1=周二, ..., 6=周日
+  day_of_week: 6
+  hour: 18
+  minute: 0
+  
+  # Git 仓库设置
+  remote_name: "origin"     # 远程仓库名称
+  branch_name: "main"       # 要跟踪的分支名称
+  auto_fetch: true          # 检查前是否自动执行 git fetch
+
 # AI 筛选配置（使用 OpenAI API 格式）
 # 重要：如果启用 AI 功能（enabled: true），以下所有带 [必填] 标记的配置项都必须填写，
 # 否则程序启动时会报错。如果不使用 AI 功能，请保持 enabled: false

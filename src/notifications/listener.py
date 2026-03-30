@@ -7,6 +7,7 @@ from src.core.events.scan_events import (
     NewActivitiesFoundEvent,
     EnrolledActivityChangedEvent,
 )
+from src.core.events.version_events import VersionUpdateEvent
 from src.utils.formatter import format_db_filtered_result, \
     format_ai_filtered_result, format_time_filtered_result, format_enrolled_filtered_result
 from src.utils.logger import get_logger
@@ -111,9 +112,50 @@ class NotificationListener:
             except Exception as e:
                 logger.error(f"发送变更通知失败: {e}")
 
+    async def on_version_update(self, event: VersionUpdateEvent) -> None:
+        """处理版本更新事件"""
+        if not event.new_commits:
+            return
+
+        logger.info(f"收到版本更新事件: 落后 {event.commits_behind} 个 commit")
+
+        # 构建通知消息
+        lines = [
+            "🎉 NextArc 有新版本更新！",
+            "",
+            f"当前版本: `{event.current_sha[:7]}`",
+            f"最新版本: `{event.latest_sha[:7]}`",
+            f"共 {event.commits_behind} 个新提交：",
+            "",
+        ]
+
+        # 列出前 5 个 commit（避免消息过长）
+        for i, commit in enumerate(event.new_commits[:5], 1):
+            # 只取 commit message 的第一行
+            message_first_line = commit.message.split("\n")[0][:50]
+            lines.append(f"{i}. {message_first_line}")
+            lines.append(f"   作者: {commit.author}  时间: {commit.date.strftime('%m-%d')}")
+            lines.append("")
+
+        if len(event.new_commits) > 5:
+            lines.append(f"... 还有 {len(event.new_commits) - 5} 个提交")
+            lines.append("")
+
+        # 添加对比链接
+        if event.repo_url:
+            compare_url = f"{event.repo_url}/compare/{event.current_sha[:7]}...{event.latest_sha[:7]}"
+            lines.append(f"查看详情: {compare_url}")
+
+        try:
+            await self._notification_service.send_text("\n".join(lines))
+            logger.info("已发送版本更新通知")
+        except Exception as e:
+            logger.error(f"发送版本更新通知失败: {e}")
+
     def subscribe(self, event_bus) -> None:
         """订阅事件到 EventBus"""
         event_bus.subscribe(ScanCompletedEvent, self.on_scan_completed)
         event_bus.subscribe(NewActivitiesFoundEvent, self.on_new_activities_found)
         event_bus.subscribe(EnrolledActivityChangedEvent, self.on_enrolled_activity_changed)
+        event_bus.subscribe(VersionUpdateEvent, self.on_version_update)
         logger.info("通知监听器已订阅所有事件")

@@ -35,6 +35,17 @@ class MonitorConfig(BaseModel):
     use_ai_filter: bool = Field(default=False, description="是否使用 AI 筛选新活动")
 
 
+class VersionCheckConfig(BaseModel):
+    """新版本检查配置"""
+    enabled: bool = Field(default=False, description="是否启用新版本检查")
+    day_of_week: int = Field(default=6, ge=0, le=6, description="周几检查 (0=周一, 6=周日)")
+    hour: int = Field(default=18, ge=0, le=23, description="检查时间 - 小时")
+    minute: int = Field(default=0, ge=0, le=59, description="检查时间 - 分钟")
+    remote_name: str = Field(default="origin", description="远程仓库名称")
+    branch_name: str = Field(default="main", description="要跟踪的分支名称")
+    auto_fetch: bool = Field(default=True, description="检查前是否自动执行 git fetch")
+
+
 class FeishuConfig(BaseModel):
     """飞书配置"""
     app_id: str = ""
@@ -248,6 +259,7 @@ class Settings(BaseSettings):
     filter: FilterConfig = FilterConfig()
     behavior: BehaviorConfig = BehaviorConfig()
     monitor: MonitorConfig = MonitorConfig()
+    version_check: VersionCheckConfig = VersionCheckConfig()
     feishu: FeishuConfig = FeishuConfig()
     database: DatabaseConfig = DatabaseConfig()
     logging: LogConfig = LogConfig()

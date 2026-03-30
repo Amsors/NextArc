@@ -28,6 +28,7 @@ from src.core.events.scan_events import (
     EnrolledActivityChangedEvent,
     NewActivitiesFoundEvent,
 )
+from src.core.events.version_events import VersionUpdateEvent
 
 logger = get_logger("scanner")
 
@@ -53,6 +54,7 @@ class ActivityScanner:
             time_filter: Optional[TimeFilter] = None,
             use_time_filter: bool = False,
             user_preference_manager: Optional[UserPreferenceManager] = None,
+            version_checker: Optional["VersionChecker"] = None,
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
@@ -65,6 +67,7 @@ class ActivityScanner:
         self.time_filter = time_filter
         self.use_time_filter = use_time_filter
         self.user_preference_manager = user_preference_manager
+        self.version_checker = version_checker
         self.scheduler = AsyncIOScheduler()
         self.diff_engine = DiffEngine()
         self._last_scan_time: Optional[datetime] = None
@@ -351,9 +354,54 @@ class ActivityScanner:
                 "notify_enrolled_change": True,
             }
         )
+
+        # 添加版本检查任务（如果启用）
+        if self.version_checker and self.version_checker.enabled:
+            from apscheduler.triggers.cron import CronTrigger
+
+            config = self.version_checker.config
+            self.scheduler.add_job(
+                self._check_version,
+                trigger=CronTrigger(
+                    day_of_week=config.day_of_week,
+                    hour=config.hour,
+                    minute=config.minute,
+                ),
+                id="version_check",
+                replace_existing=True,
+                max_instances=1,
+            )
+            weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+            weekday_name = weekday_names[config.day_of_week]
+            logger.info(f"版本检查已启动，每周 {weekday_name} "
+                        f"{config.hour:02d}:{config.minute:02d}")
+        
         self.scheduler.start()
         self._is_running = True
         logger.info(f"定时扫描已启动，间隔: {self.interval}分钟")
+
+    async def _check_version(self) -> None:
+        """执行版本检查"""
+        if not self.version_checker:
+            return
+
+        try:
+            result = await self.version_checker.check_for_updates()
+            if result and result.commits_behind > 0:
+                logger.info(f"发现新版本，落后 {result.commits_behind} 个 commit")
+                if self.event_bus:
+                    event = VersionUpdateEvent(
+                        current_sha=result.current_sha,
+                        latest_sha=result.latest_sha,
+                        commits_behind=result.commits_behind,
+                        new_commits=result.new_commits,
+                        repo_url=result.repo_url,
+                    )
+                    await self.event_bus.publish(event)
+            else:
+                logger.debug("当前已是最新版本，无需通知")
+        except Exception as e:
+            logger.error(f"版本检查失败: {e}")
 
     def stop(self) -> None:
         """停止定时任务"""

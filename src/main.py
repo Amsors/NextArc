@@ -47,6 +47,7 @@ class NextArcApp:
         self.router: MessageRouter = None
         self.time_filter: TimeFilter = None
         self.card_handler: CardActionHandler = None
+        self.version_checker = None
         self._shutdown_event = asyncio.Event()
 
     async def initialize(self) -> bool:
@@ -131,6 +132,27 @@ class NextArcApp:
             else:
                 logger.info("AI 筛选: 已禁用")
 
+            # 初始化版本检查器（如果启用）
+            self.version_checker = None
+            if self.settings.version_check.enabled:
+                from src.core.version_checker import VersionChecker
+                self.version_checker = VersionChecker(
+                    config=self.settings.version_check,
+                    project_root=project_root,
+                )
+                # 验证 git 仓库
+                if not self.version_checker.is_git_repo():
+                    logger.warning("版本检查已启用，但当前目录不是 git 仓库")
+                    self.version_checker = None
+                else:
+                    current_ver = await self.version_checker.get_current_version()
+                    remote_url = await self.version_checker.get_remote_url()
+                    logger.info(f"版本检查器初始化完成")
+                    logger.info(f"   远程仓库: {remote_url or 'unknown'}")
+                    logger.info(f"   当前版本: {current_ver[:7] if current_ver else 'unknown'}")
+            else:
+                logger.info("版本检查: 已禁用")
+
             # 初始化时间筛选器（如果启用）
             self.time_filter = None
             use_time_filter = False
@@ -162,6 +184,7 @@ class NextArcApp:
                 time_filter=self.time_filter,
                 use_time_filter=use_time_filter,
                 user_preference_manager=self.user_preference_manager,
+                version_checker=self.version_checker,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
