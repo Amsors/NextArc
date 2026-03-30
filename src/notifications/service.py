@@ -31,7 +31,8 @@ class NotificationService(ABC):
             activities = response.metadata.get("activities")
             if activities is not None and isinstance(activities, list):
                 title = response.metadata.get("title", "活动列表")
-                return await self.send_activity_list_card(activities, title)
+                show_ignore_button = response.metadata.get("show_ignore_button", True)
+                return await self.send_activity_list_card(activities, title, show_ignore_button=show_ignore_button)
             else:
                 return await self.send_card(response.content)
 
@@ -57,7 +58,8 @@ class NotificationService(ABC):
             self,
             activities: list,
             title: str = "活动列表",
-            ignored_ids: set[str] | None = None
+            ignored_ids: set[str] | None = None,
+            show_ignore_button: bool = True
     ) -> bool:
         """
         发送活动列表卡片
@@ -67,7 +69,7 @@ class NotificationService(ABC):
         from src.utils.formatter import build_activity_card
 
         if not activities:
-            card_content = build_activity_card(activities, title, ignored_ids)
+            card_content = build_activity_card(activities, title, ignored_ids, show_ignore_button=show_ignore_button)
             return await self.send_card(card_content)
 
         max_per_card = DEFAULT_MAX_ACTIVITIES_PER_CARD
@@ -79,7 +81,7 @@ class NotificationService(ABC):
             pass
 
         if len(activities) <= max_per_card:
-            card_content = build_activity_card(activities, title, ignored_ids)
+            card_content = build_activity_card(activities, title, ignored_ids, show_ignore_button=show_ignore_button)
             return await self.send_card(card_content)
 
         # 分批发送
@@ -99,7 +101,8 @@ class NotificationService(ABC):
                 batch_activities,
                 batch_title,
                 ignored_ids,
-                start_index=start_index
+                start_index=start_index,
+                show_ignore_button=show_ignore_button
             )
 
             success = await self.send_card(card_content)

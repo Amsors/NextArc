@@ -55,10 +55,15 @@ class MessageSender:
 
         return await self._bot.send_card(card_content)
 
-    async def send_activity_list_card(self, activities: list[SecondClass], title: str = "活动列表") -> bool:
+    async def send_activity_list_card(
+            self,
+            activities: list[SecondClass],
+            title: str = "活动列表",
+            show_ignore_button: bool = True
+    ) -> bool:
         """发送活动列表卡片（带折叠面板）"""
         if not activities:
-            card_content = build_activity_card(activities, title)
+            card_content = build_activity_card(activities, title, show_ignore_button=show_ignore_button)
             return await self.send_card(card_content)
 
         max_per_card = DEFAULT_MAX_ACTIVITIES_PER_CARD
@@ -70,7 +75,7 @@ class MessageSender:
             logger.warning(f"获取配置失败，使用默认值 {DEFAULT_MAX_ACTIVITIES_PER_CARD}: {e}")
 
         if len(activities) <= max_per_card:
-            card_content = build_activity_card(activities, title)
+            card_content = build_activity_card(activities, title, show_ignore_button=show_ignore_button)
             return await self.send_card(card_content)
 
         # 分批发送
@@ -93,7 +98,8 @@ class MessageSender:
             card_content = build_activity_card(
                 batch_activities,
                 batch_title,
-                start_index=start_index
+                start_index=start_index,
+                show_ignore_button=show_ignore_button
             )
 
             success = await self.send_card(card_content)

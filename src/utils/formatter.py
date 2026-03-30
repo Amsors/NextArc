@@ -263,7 +263,8 @@ def build_activity_card(
         activities: list[SecondClass],
         title: str = "活动列表",
         ignored_ids: set[str] | None = None,
-        start_index: int = 1
+        start_index: int = 1,
+        show_ignore_button: bool = True
 ) -> dict:
     """
     构建活动列表的消息卡片（使用折叠面板）
@@ -273,6 +274,7 @@ def build_activity_card(
         title: 卡片标题
         ignored_ids: 已被忽略的活动ID集合，用于显示正确的按钮状态
         start_index: 起始序号（默认为1，用于分批发送时保持序号连续）
+        show_ignore_button: 是否显示"不感兴趣"按钮（默认为True）
 
     Returns:
         飞书消息卡片 JSON 字典
@@ -309,7 +311,7 @@ def build_activity_card(
 
     for i, act in enumerate(activities, start_index):
         is_ignored = act.id in ignored_ids
-        collapsible_panel = _build_activity_collapsible_panel(act, i, is_ignored)
+        collapsible_panel = _build_activity_collapsible_panel(act, i, is_ignored, show_ignore_button)
         elements.append(collapsible_panel)
 
     return {
@@ -325,7 +327,8 @@ def build_activity_card(
 def _build_activity_collapsible_panel(
         act: SecondClass,
         index: int,
-        is_ignored: bool = False
+        is_ignored: bool = False,
+        show_ignore_button: bool = True
 ) -> dict:
     """
     为单个活动构建折叠面板
@@ -334,6 +337,7 @@ def _build_activity_collapsible_panel(
         act: SecondClass 活动对象
         index: 序号（从1开始）
         is_ignored: 是否已被忽略（用于显示正确的按钮状态）
+        show_ignore_button: 是否显示"不感兴趣"按钮（默认为True）
 
     Returns:
         折叠面板 JSON 字典
@@ -423,55 +427,45 @@ def _build_activity_collapsible_panel(
 
     detail_elements.append({"tag": "hr"})
 
-    ignore_button_text = "已忽略" if is_ignored else "不感兴趣"
-    ignore_button_type = "default" if is_ignored else "danger"
+    button_elements = []
+
+    # 根据 show_ignore_button 参数决定是否显示"不感兴趣"按钮
+    if show_ignore_button:
+        ignore_button_text = "已忽略" if is_ignored else "不感兴趣"
+        ignore_button_type = "default" if is_ignored else "danger"
+        button_elements.append({
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": ignore_button_text},
+            "type": ignore_button_type,
+            "value": {
+                "action": "toggle_ignore",
+                "activity_id": act.id,
+                "activity_name": act.name
+            }
+        })
 
     if act.is_series:
-        button_elements = [
-            {
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": ignore_button_text},
-                "type": ignore_button_type,
-                "value": {
-                    "action": "toggle_ignore",
-                    "activity_id": act.id,
-                    "activity_name": act.name
-                }
-            },
-            {
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": "查看子活动"},
-                "type": "primary",
-                "value": {
-                    "action": "view_children",
-                    "activity_id": act.id,
-                    "activity_name": act.name
-                }
+        button_elements.append({
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "查看子活动"},
+            "type": "primary",
+            "value": {
+                "action": "view_children",
+                "activity_id": act.id,
+                "activity_name": act.name
             }
-        ]
+        })
     else:
-        button_elements = [
-            {
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": ignore_button_text},
-                "type": ignore_button_type,
-                "value": {
-                    "action": "toggle_ignore",
-                    "activity_id": act.id,
-                    "activity_name": act.name
-                }
-            },
-            {
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": "去报名"},
-                "type": "primary",
-                "value": {
-                    "action": "join",
-                    "activity_id": act.id,
-                    "activity_name": act.name
-                }
+        button_elements.append({
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "去报名"},
+            "type": "primary",
+            "value": {
+                "action": "join",
+                "activity_id": act.id,
+                "activity_name": act.name
             }
-        ]
+        })
 
     detail_elements.append({
         "tag": "action",

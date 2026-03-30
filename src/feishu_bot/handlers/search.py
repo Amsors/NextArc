@@ -6,7 +6,6 @@ from pyustc.young import SecondClass
 
 from src.models import UserSession, secondclass_from_db_row
 from src.notifications import Response
-from src.utils.formatter import format_search_results
 from src.utils.logger import get_logger
 from .base import CommandHandler
 
@@ -60,7 +59,15 @@ class SearchHandler(CommandHandler):
 
             session.set_search(keyword, activities)
 
-            return Response.text(format_search_results(activities, keyword, hint=hint))
+            # 不显示"不感兴趣"按钮
+            title = f'搜索「{keyword}」结果（共{len(activities)}个）'
+            if hint:
+                title += f"\n{hint}"
+            return Response.activity_list(
+                activities,
+                title=title,
+                show_ignore_button=False
+            )
 
         except Exception as e:
             logger.error(f"搜索活动失败: {e}")

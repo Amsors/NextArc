@@ -40,17 +40,19 @@ class Response:
             activities: list,
             title: str = "活动列表",
             filters_applied: list[str] | None = None,
+            show_ignore_button: bool = True,
             **metadata
     ) -> "Response":
         """创建活动列表卡片响应"""
         from src.utils.formatter import build_activity_card
 
-        card_content = build_activity_card(activities, title)
+        card_content = build_activity_card(activities, title, show_ignore_button=show_ignore_button)
 
         meta = {
             "activities": activities,
             "title": title,
             "filters_applied": filters_applied or [],
+            "show_ignore_button": show_ignore_button,
             **metadata
         }
 
