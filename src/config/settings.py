@@ -37,7 +37,7 @@ class MonitorConfig(BaseModel):
 
 class VersionCheckConfig(BaseModel):
     """新版本检查配置"""
-    enabled: bool = Field(default=False, description="是否启用新版本检查")
+    enabled: bool = Field(default=True, description="是否启用新版本检查")
     day_of_week: int = Field(default=6, ge=0, le=6, description="周几检查 (0=周一, 6=周日)")
     hour: int = Field(default=18, ge=0, le=23, description="检查时间 - 小时")
     minute: int = Field(default=0, ge=0, le=59, description="检查时间 - 分钟")

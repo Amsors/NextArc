@@ -1,15 +1,17 @@
 # NextArc 配置文件模板
 # 复制此文件并填写实际值后使用
 
+# 必须填写下方标记为【必填】的内容
+
 ustc:
-  # 认证模式: "file" 从本文件读取，"env" 从环境变量读取，默认从file读取
+  # 认证模式: "file" 从本文件读取，"env" 从环境变量读取，默认从file，即此文件读取
   auth_mode: "file"
   
-  # auth_mode=file 时使用以下配置
+  # auth_mode=file 时使用以下配置 【如果从file读取，则必填！】
   username: "PB12345678"           # USTC学号，如 "SA22000001"
   password: "12345678"           # 统一身份认证密码
   
-  # auth_mode=env 时从以下环境变量名读取
+  # auth_mode=env 时从以下环境变量名读取，【如果从env读取，请保证你已经设置了这两个环境变量】
   env_username: "USTC_USERNAME"
   env_password: "USTC_PASSWORD"
 
@@ -18,7 +20,7 @@ filter:
   ignore_participated_but_ended_activity: true
 
 behavior:
-  # 是否在程序启动时扫描所有活动，不建议开启，默认关闭
+  # 是否在程序启动时扫描所有活动，建议关闭，默认关闭
   scan_on_start: false
 
 monitor:
@@ -30,10 +32,11 @@ monitor:
   use_ai_filter: false
 
 version_check:
-  # 是否启用新版本检查功能，默认关闭
+  # 是否启用新版本检查功能，默认开启，建议开启
   # 启用后，会在指定时间自动检查本地 git 仓库与远程仓库的版本差异
   # 如果有新版本，会通过飞书推送更新通知
-  enabled: false
+  # 每周检查一次，默认在周日18:00检查，可在以下配置中修改
+  enabled: true
   
   # 检查时间设置（使用 24 小时制）
   # day_of_week: 0=周一, 1=周二, ..., 6=周日
@@ -41,7 +44,7 @@ version_check:
   hour: 18
   minute: 0
   
-  # Git 仓库设置
+  # Git 仓库设置，默认无需修改
   remote_name: "origin"     # 远程仓库名称
   branch_name: "master"       # 要跟踪的分支名称
   auto_fetch: true          # 检查前是否自动执行 git fetch
@@ -87,12 +90,12 @@ ai:
     - 篮球、排球、乒乓球等专门体育赛事或训练，但观赛或充当志愿者不算在内
   
 
-  # 系统提示词文件路径 [必填]（如果 enabled: true），默认情况下已经配置好，无需人为创建或修改
+  # 系统提示词文件路径，默认情况下已经配置好，无需人为创建或修改
   # 相对于项目根目录或绝对路径
   # 该文件必须存在且不能为空，否则启动时报错
   system_prompt_file: "config/prompts/system_prompt.txt"
   
-  # 用户提示词模板文件路径 [必填]（如果 enabled: true），默认情况下已经配置好，无需人为创建或修改
+  # 用户提示词模板文件路径，默认情况下已经配置好，无需人为创建或修改
   # 相对于项目根目录或绝对路径
   # 该文件必须存在且不能为空，否则启动时报错
   # 可用变量：{user_info}, {activity_info}
@@ -100,7 +103,7 @@ ai:
   
   # 采样温度 [必填]（如果 enabled: true）
   # 范围：0.0-2.0，越低结果越确定，越高结果越多样
-  # 建议值：0.3（较为确定）到 0.7（较为灵活）
+  # 建议值：0.3（较为确定）到 0.7（较为灵活），请根据你使用模型的实际情况调整
   temperature:
 
   # 额外的请求体参数 [可选]
@@ -161,6 +164,7 @@ ai:
     retry_on_network_error: true
 
 feishu:
+  # 【以下内容必填】
   # 飞书应用凭证（在飞书开放平台获取）
   app_id: "cli_xxxxxxxxxxxxxxxx"             # 如 "cli_xxxxxxxxxxxxxxxx"
   app_secret: "qwertyuiop1234567890"         # 应用密钥
