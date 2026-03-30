@@ -25,15 +25,7 @@ class SearchSession(BaseModel):
         return datetime.now() - self.created_at > timedelta(minutes=5)
 
     def get_result_by_index(self, index: int) -> Optional[SecondClass]:
-        """
-        根据序号获取搜索结果
-        
-        Args:
-            index: 序号（从1开始）
-            
-        Returns:
-            SecondClass 或 None（序号无效或已过期）
-        """
+        """根据序号获取搜索结果（序号从1开始）"""
         if self.is_expired():
             return None
         if index < 1 or index > len(self.results):
@@ -42,12 +34,12 @@ class SearchSession(BaseModel):
 
 
 class DisplayedActivitiesSession(BaseModel):
-    """最近显示的活动列表会话（用于"不感兴趣"功能）"""
+    """最近显示的活动列表会话"""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     activities: list[SecondClass]
     filtered_activities: dict[str, list[FilteredActivity]] | None = None
-    source: str  # 来源："valid", "new_activities", "search" 等
+    source: str  # "valid", "new_activities", "search" 等
     created_at: datetime
 
     def is_expired(self) -> bool:
@@ -55,15 +47,7 @@ class DisplayedActivitiesSession(BaseModel):
         return datetime.now() - self.created_at > timedelta(minutes=10)
 
     def get_activity_by_index(self, index: int) -> Optional[SecondClass]:
-        """
-        根据序号获取活动
-        
-        Args:
-            index: 序号（从1开始）
-            
-        Returns:
-            SecondClass 或 None（序号无效或已过期）
-        """
+        """根据序号获取活动（序号从1开始）"""
         if self.is_expired():
             return None
         if index < 1 or index > len(self.activities):
@@ -77,31 +61,17 @@ class DisplayedActivitiesSession(BaseModel):
         return self.activities
 
     def parse_indices(self, indices_str: str) -> tuple[list[int], list[str]]:
-        """
-        解析序号字符串
-        
-        支持的格式：
-        - "1,2,3" -> [1, 2, 3]
-        - "1-5" -> [1, 2, 3, 4, 5]
-        - "1,3-5,10" -> [1, 3, 4, 5, 10]
-        - "全部" 或 "所有" -> 所有序号
-        
-        Args:
-            indices_str: 序号字符串
-            
-        Returns:
-            (有效的序号列表, 错误信息列表)
+        """解析序号字符串
+
+        支持格式："1,2,3"、"1-5"、"1,3-5,10"、"全部"
         """
         indices_str = indices_str.strip()
 
-        # 处理"全部"或"所有"
         if indices_str in ["全部", "所有"]:
             return list(range(1, len(self.activities) + 1)), []
 
         indices = []
         errors = []
-
-        # 按逗号分割
         parts = indices_str.split(",")
 
         for part in parts:
@@ -109,7 +79,6 @@ class DisplayedActivitiesSession(BaseModel):
             if not part:
                 continue
 
-            # 检查是否是范围（如 "1-5"）
             if "-" in part:
                 range_parts = part.split("-", 1)
                 try:
@@ -119,7 +88,6 @@ class DisplayedActivitiesSession(BaseModel):
                     if start > end:
                         start, end = end, start
 
-                    # 验证范围
                     if start < 1 or end > len(self.activities):
                         errors.append(f"范围 {part} 超出有效范围（1-{len(self.activities)}）")
                         continue
@@ -130,7 +98,6 @@ class DisplayedActivitiesSession(BaseModel):
                     errors.append(f"无法解析范围: {part}")
                     continue
             else:
-                # 单个数字
                 try:
                     idx = int(part)
                     if idx < 1 or idx > len(self.activities):
@@ -141,7 +108,6 @@ class DisplayedActivitiesSession(BaseModel):
                     errors.append(f"无法解析序号: {part}")
                     continue
 
-        # 去重并保持顺序
         seen = set()
         unique_indices = []
         for idx in indices:
@@ -218,14 +184,7 @@ class UserSession:
             activities: list[SecondClass],
             filtered_activities: dict[str, list[FilteredActivity]] | None = None,
             source: str = "unknown") -> None:
-        """
-        设置最近显示的活动列表
-        
-        Args:
-            activities: 活动列表
-            source: 来源标识（如 "valid", "new_activities" 等）
-            filtered_activities: 过滤后的活动列表（可选）
-        """
+        """设置最近显示的活动列表"""
         self.displayed_activities = DisplayedActivitiesSession(
             activities=activities,
             source=source,
@@ -239,51 +198,25 @@ class UserSession:
         self.displayed_activities = None
 
     def get_displayed_activity_by_index(self, index: int) -> Optional[SecondClass]:
-        """
-        根据序号获取显示的活动（带过期检查）
-        
-        Args:
-            index: 序号（从1开始）
-            
-        Returns:
-            SecondClass 或 None
-        """
+        """根据序号获取显示的活动（带过期检查）"""
         if not self.displayed_activities:
             return None
         return self.displayed_activities.get_activity_by_index(index)
 
     def get_all_displayed_activities(self) -> list[SecondClass]:
-        """
-        获取所有显示的活动（带过期检查）
-        
-        Returns:
-            活动列表，如果过期则返回空列表
-        """
+        """获取所有显示的活动（带过期检查）"""
         if not self.displayed_activities:
             return []
         return self.displayed_activities.get_all_activities()
 
     def get_filtered_activities(self) -> Optional[dict[str, list[FilteredActivity]]]:
-        """
-        获取所有过滤后的活动（带过期检查）
-
-        Returns:
-            过滤后的活动字典，键为筛选类型（如 "ai", "db", "time"），值为活动列表
-        """
+        """获取所有过滤后的活动（带过期检查）"""
         if not self.displayed_activities.filtered_activities:
             return None
         return self.displayed_activities.filtered_activities
 
     def get_filtered_activities_by_type(self, filter_type: str) -> list[FilteredActivity]:
-        """
-        获取特定类型的被筛选活动（带过期检查）
-
-        Args:
-            filter_type: 筛选器类型（"ai", "db", "ignore", "time"）
-
-        Returns:
-            该类型的被筛选活动列表，如果过期或无数据则返回空列表
-        """
+        """获取特定类型的被筛选活动（带过期检查）"""
         if not self.displayed_activities:
             return []
 
@@ -294,7 +227,6 @@ class UserSession:
         if not filtered:
             return []
 
-        # 支持多种类型别名映射
         type_mapping = {
             "ai": ["ai"],
             "db": ["db", "ignore"],
@@ -312,26 +244,14 @@ class UserSession:
         return result
 
     def parse_displayed_indices(self, indices_str: str) -> tuple[list[int], list[str]]:
-        """
-        解析显示活动的序号字符串
-        
-        Args:
-            indices_str: 序号字符串（如 "1,2-5,10" 或 "全部"）
-            
-        Returns:
-            (有效的序号列表, 错误信息列表)
-        """
+        """解析显示活动的序号字符串"""
         if not self.displayed_activities:
             return [], ["没有可操作的最近活动列表"]
         return self.displayed_activities.parse_indices(indices_str)
 
     def check_confirm(self, response: str) -> Optional[tuple[str, str]]:
-        """
-        检查确认响应
-        
-        Args:
-            response: 用户响应文本
-            
+        """检查确认响应
+
         Returns:
             (operation, activity_id) 如果确认执行
             None 如果取消或无效响应
@@ -347,4 +267,4 @@ class UserSession:
             self.clear_confirm()
             return None
 
-        return None  # 无效响应
+        return None

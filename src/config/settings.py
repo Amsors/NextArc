@@ -57,12 +57,10 @@ def get_project_root() -> Path:
 class DatabaseConfig(BaseModel):
     """数据库配置
     
-    所有路径都相对于项目根目录解析。
-    例如 "./data" 会被解析为 "{项目根目录}/data"
+    所有路径都相对于项目根目录解析
     """
     data_dir: Path = Path("./data")
     max_history: int = Field(default=10, ge=1, le=100)
-    # 用户偏好数据库路径（可选，默认为 data_dir/user_preference.db）
     preference_db_path: Optional[Path] = Field(
         default=None,
         description="用户偏好数据库文件路径，默认使用 data_dir/user_preference.db"
@@ -105,7 +103,6 @@ class LogFileConfig(BaseModel):
     @field_validator("path")
     @classmethod
     def resolve_log_path(cls, v: Path) -> Path:
-        """将相对路径转换为相对于项目根目录的绝对路径"""
         path = Path(v)
         if not path.is_absolute():
             path = get_project_root() / path
@@ -119,10 +116,7 @@ class LogConfig(BaseModel):
 
 
 class AIRateLimitConfig(BaseModel):
-    """AI API 速率限制配置
-    
-    用于控制 API 请求速率，防止触发限流
-    """
+    """AI API 速率限制配置"""
     requests_per_minute: int = Field(
         default=0,
         ge=0,
@@ -146,10 +140,7 @@ class AIRateLimitConfig(BaseModel):
 
 
 class AIRetryConfig(BaseModel):
-    """AI API 重试配置
-    
-    用于配置请求失败时的重试策略
-    """
+    """AI API 重试配置"""
     max_retries: int = Field(
         default=3,
         ge=0,
@@ -184,11 +175,11 @@ class AIRetryConfig(BaseModel):
 class AIConfig(BaseModel):
     """AI 筛选配置
     
-    如果启用 AI 功能（enabled: true），以下所有字段都必须显式配置，
-    否则会在启动时报错。
+    启用 AI 功能时，api_key、model、user_info、system_prompt_file、
+    user_prompt_template_file、temperature 必须配置
     """
     enabled: bool = Field(default=False, description="是否启用 AI 筛选")
-    # 以下字段都有默认值，但启用 AI 时会进行严格验证
+
     api_key: str = Field(default="", description="API 密钥（enabled: true 时必填）")
     base_url: str = Field(default="", description="API 基础 URL（可选，用于第三方兼容服务）")
     model: str = Field(default="", description="模型名称（enabled: true 时必填，如：gpt-3.5-turbo）")
@@ -196,7 +187,7 @@ class AIConfig(BaseModel):
         default="",
         description="用户偏好描述（enabled: true 时必填），用于指导 AI 筛选"
     )
-    # 提示词文件路径（相对于项目根目录或绝对路径）
+
     system_prompt_file: str = Field(
         default="config/prompts/system_prompt.txt",
         description="系统提示词文件路径（enabled: true 时必填）"
@@ -210,12 +201,12 @@ class AIConfig(BaseModel):
         description="采样温度（enabled: true 时必填，0.0-2.0，建议 0.3）"
     )
     timeout: int = Field(default=30, ge=5, le=300, description="请求超时时间（秒，可选）")
-    # 额外的请求体参数（用于第三方 API 的扩展功能，如 Kimi 的 thinking 控制）
+
     extra_body: Optional[dict] = Field(
         default=None,
         description="额外的 API 请求体参数，用于第三方 API 扩展功能（如 Kimi 的 thinking 控制）"
     )
-    # 速率限制配置（可选）
+
     rate_limit: AIRateLimitConfig = Field(
         default_factory=AIRateLimitConfig,
         description="速率限制配置"
@@ -227,39 +218,27 @@ class AIConfig(BaseModel):
     )
 
     def validate_required_fields(self) -> None:
-        """
-        验证必填字段（当 enabled: true 时调用）
-        
-        Raises:
-            ValueError: 如果有必填字段未填写
-        """
+        """验证必填字段（当 enabled: true 时调用）"""
         if not self.enabled:
             return
 
-        missing_fields = []
-
+        missing = []
         if not self.api_key:
-            missing_fields.append("api_key")
-
+            missing.append("api_key")
         if not self.model:
-            missing_fields.append("model")
-
+            missing.append("model")
         if not self.user_info:
-            missing_fields.append("user_info")
-
+            missing.append("user_info")
         if not self.system_prompt_file:
-            missing_fields.append("system_prompt_file")
-
+            missing.append("system_prompt_file")
         if not self.user_prompt_template_file:
-            missing_fields.append("user_prompt_template_file")
-
+            missing.append("user_prompt_template_file")
         if self.temperature is None:
-            missing_fields.append("temperature")
+            missing.append("temperature")
 
-        if missing_fields:
+        if missing:
             raise ValueError(
-                f"AI 功能已启用 (enabled: true)，但以下配置项未填写：{', '.join(missing_fields)}\n"
-                f"请在 config.yaml 的 ai 部分填写所有必需的配置项"
+                f"AI 功能已启用，但以下配置项未填写：{', '.join(missing)}"
             )
 
 
@@ -306,7 +285,6 @@ class Settings(BaseSettings):
         self.database.data_dir.mkdir(parents=True, exist_ok=True)
 
 
-# 全局配置实例
 _settings: Optional[Settings] = None
 
 
@@ -315,7 +293,6 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     global _settings
     if _settings is None:
         if config_path is None:
-            # 默认从项目根目录的 config/ 目录加载
             project_root = Path(__file__).parent.parent.parent
             config_path = project_root / "config" / "config.yaml"
         _settings = Settings.from_yaml(config_path)
@@ -331,25 +308,13 @@ def get_settings() -> Settings:
 
 
 def load_prompt_file(file_path: str, default_content: str = "") -> str:
-    """
-    加载提示词文件
+    """加载提示词文件
     
     支持相对路径（相对于项目根目录）和绝对路径
-    
-    Args:
-        file_path: 文件路径
-        default_content: 文件不存在时的默认内容
-        
-    Returns:
-        文件内容或默认内容
     """
-    # 获取项目根目录
     project_root = Path(__file__).parent.parent.parent
-
-    # 尝试作为绝对路径或相对路径解析
     path = Path(file_path)
     if not path.is_absolute():
-        # 相对于项目根目录
         path = project_root / file_path
 
     if path.exists():
@@ -366,28 +331,17 @@ def load_prompt_file(file_path: str, default_content: str = "") -> str:
 
 
 def load_prompt_file_strict(file_path: str) -> str:
-    """
-    严格加载提示词文件（文件必须存在）
+    """严格加载提示词文件（文件必须存在且不为空）
     
     支持相对路径（相对于项目根目录）和绝对路径
     
-    Args:
-        file_path: 文件路径
-        
-    Returns:
-        文件内容
-        
     Raises:
-        FileNotFoundError: 如果文件不存在或为空
+        FileNotFoundError: 如果文件不存在
         ValueError: 如果文件内容为空
     """
-    # 获取项目根目录
     project_root = Path(__file__).parent.parent.parent
-
-    # 尝试作为绝对路径或相对路径解析
     path = Path(file_path)
     if not path.is_absolute():
-        # 相对于项目根目录
         path = project_root / file_path
 
     if not path.exists():

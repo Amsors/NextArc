@@ -40,8 +40,6 @@ class CheckHandler(CommandHandler):
                 notify_enrolled_change = True
             if "对比差异" in args:
                 notify_diff = True
-            # if "全部" in args or "所有" in args:
-            #     notify_new_activities = True
 
         try:
             result = await self._scanner.scan(
@@ -55,7 +53,6 @@ class CheckHandler(CommandHandler):
             if result["success"]:
                 lines = [format_scan_result(result)]
 
-                # 添加差异详情
                 diff = result.get("diff")
                 if not diff or not diff.has_changes():
                     lines.append("")

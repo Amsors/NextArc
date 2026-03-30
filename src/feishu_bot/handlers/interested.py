@@ -29,7 +29,6 @@ class InterestedHandler(CommandHandler):
     - 序号格式：1,2,3 或 1-5 或 1,3-5,10 或 全部
     """
 
-    # 类级别的共享实例
     _user_preference_manager: UserPreferenceManager = None
 
     @classmethod
@@ -49,20 +48,10 @@ class InterestedHandler(CommandHandler):
         )
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """
-        处理 /interested 或 感兴趣 指令
-
-        Args:
-            args: 指令参数列表，如 ["ai", "1,2,3"] 或 ["时间", "1-5"]
-            session: 用户会话
-
-        Returns:
-            回复消息
-        """
+        """处理 /interested 或 感兴趣 指令"""
         if not self._user_preference_manager:
             return Response.text("感兴趣功能未初始化")
 
-        # 检查参数数量
         if len(args) < 2:
             return Response.text(
                 "格式错误\n\n"
@@ -78,7 +67,6 @@ class InterestedHandler(CommandHandler):
                 "\n被标记为感兴趣的活动将绕过所有筛选，在后续扫描中会被推荐"
             )
 
-        # 解析筛选类型
         filter_type_arg = args[0].lower()
         filter_type = self._parse_filter_type(filter_type_arg)
 
@@ -91,10 +79,8 @@ class InterestedHandler(CommandHandler):
                 "• db/ignore/忽略 - 数据库筛选掉的活动"
             )
 
-        # 合并序号参数（支持 "/interested ai 1 2 3" 或 "/interested ai 1,2,3"）
         indices_str = " ".join(args[1:]).strip()
 
-        # 获取对应筛选类型的活动列表
         filtered_activities = session.get_filtered_activities_by_type(filter_type)
 
         if not filtered_activities:
@@ -105,7 +91,6 @@ class InterestedHandler(CommandHandler):
                 "筛选信息显示在通知消息中，包含被各类筛选器过滤掉的活动列表"
             )
 
-        # 解析序号
         indices, errors = self._parse_indices(indices_str, len(filtered_activities))
 
         if errors:
@@ -118,12 +103,10 @@ class InterestedHandler(CommandHandler):
                 f"有效范围：1-{len(filtered_activities)}"
             )
 
-        # 获取要标记为感兴趣的活动ID
         activity_ids = []
         activity_names = []
 
         for idx in indices:
-            # 序号从1开始，列表索引从0开始
             filtered_activity = filtered_activities[idx - 1]
             activity = filtered_activity.activity
             activity_ids.append(activity.id)
@@ -132,19 +115,16 @@ class InterestedHandler(CommandHandler):
         if not activity_ids:
             return Response.text("无法获取活动信息，请重试")
 
-        # 添加到感兴趣数据库
         success_count, failed_count = await self._user_preference_manager.add_interested_activities(activity_ids)
 
         if success_count == 0:
             return Response.text("添加失败，请稍后重试")
 
-        # 构建回复消息
         type_name = self._get_filter_type_name(filter_type)
         lines = [f"已将 {success_count} 个{type_name}筛选掉的活动标记为感兴趣\n"]
 
-        # 显示添加的活动
         lines.append("成功添加的活动：")
-        for name in activity_names[:10]:  # 最多显示10个
+        for name in activity_names[:10]:
             lines.append(f"  • {name}")
 
         if len(activity_names) > 10:
@@ -158,15 +138,7 @@ class InterestedHandler(CommandHandler):
         return Response.text("\n".join(lines))
 
     def _parse_filter_type(self, arg: str) -> str | None:
-        """
-        解析筛选类型参数
-
-        Args:
-            arg: 用户输入的筛选类型
-
-        Returns:
-            标准化的筛选类型（ai, db, time）或 None
-        """
+        """解析筛选类型参数，返回标准化的筛选类型（ai, db, time）或 None"""
         ai_aliases = ["ai", "人工智能", "智能"]
         db_aliases = ["db", "ignore", "数据库", "忽略", "不感兴趣"]
         time_aliases = ["time", "时间", "时间筛选"]
@@ -181,15 +153,7 @@ class InterestedHandler(CommandHandler):
         return None
 
     def _get_filter_type_name(self, filter_type: str) -> str:
-        """
-        获取筛选类型的中文名称
-
-        Args:
-            filter_type: 标准化的筛选类型
-
-        Returns:
-            中文名称
-        """
+        """获取筛选类型的中文名称"""
         names = {
             "ai": "AI",
             "db": "数据库",
@@ -198,26 +162,15 @@ class InterestedHandler(CommandHandler):
         return names.get(filter_type, filter_type)
 
     def _parse_indices(self, indices_str: str, max_index: int) -> tuple[list[int], list[str]]:
-        """
-        解析序号字符串
-
-        Args:
-            indices_str: 序号字符串（如 "1,2,3" 或 "1-5" 或 "全部"）
-            max_index: 最大有效序号
-
-        Returns:
-            (有效的序号列表, 错误信息列表)
-        """
+        """解析序号字符串（如 "1,2,3" 或 "1-5" 或 "全部"）"""
         indices_str = indices_str.strip()
 
-        # 处理"全部"或"所有"
         if indices_str in ["全部", "所有"]:
             return list(range(1, max_index + 1)), []
 
         indices = []
         errors = []
 
-        # 按逗号分割
         parts = indices_str.split(",")
 
         for part in parts:
@@ -225,7 +178,6 @@ class InterestedHandler(CommandHandler):
             if not part:
                 continue
 
-            # 检查是否是范围（如 "1-5"）
             if "-" in part:
                 range_parts = part.split("-", 1)
                 try:
@@ -235,7 +187,6 @@ class InterestedHandler(CommandHandler):
                     if start > end:
                         start, end = end, start
 
-                    # 验证范围
                     if start < 1 or end > max_index:
                         errors.append(f"范围 {part} 超出有效范围（1-{max_index}）")
                         continue
@@ -246,7 +197,6 @@ class InterestedHandler(CommandHandler):
                     errors.append(f"无法解析范围: {part}")
                     continue
             else:
-                # 单个数字
                 try:
                     idx = int(part)
                     if idx < 1 or idx > max_index:
@@ -257,7 +207,6 @@ class InterestedHandler(CommandHandler):
                     errors.append(f"无法解析序号: {part}")
                     continue
 
-        # 去重并保持顺序
         seen = set()
         unique_indices = []
         for idx in indices:

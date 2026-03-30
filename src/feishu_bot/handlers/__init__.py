@@ -94,7 +94,6 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
     for instruction in valid_instructions:
         ret[instruction] = ValidHandler()
 
-    # 注册不感兴趣指令（支持 /ignore 和 不感兴趣）
     ignore_instructions = [
         "ignore",
         "不感兴趣",
@@ -103,7 +102,6 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
     for instruction in ignore_instructions:
         ret[instruction] = IgnoreHandler()
 
-    # 注册感兴趣指令（支持 /interested 和 感兴趣）
     interested_instructions = [
         "interested",
         "感兴趣",

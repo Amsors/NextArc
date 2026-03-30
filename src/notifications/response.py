@@ -1,7 +1,4 @@
-"""通知响应对象
-
-统一处理所有类型的通知响应，支持文本和卡片格式。
-"""
+"""通知响应对象"""
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -17,46 +14,19 @@ class ResponseType(Enum):
 
 @dataclass
 class Response:
-    """
-    统一响应对象
-
-    用于 Handler 返回需要发送给用户的内容，
-    支持文本消息和消息卡片两种格式。
-
-    示例:
-        # 返回文本
-        return Response.text("Hello World")
-
-        # 返回卡片
-        return Response.card(card_content_dict)
-
-        # 返回活动列表卡片
-        return Response.activity_list(activities, title="活动列表")
-    """
+    """统一响应对象，支持文本消息和消息卡片"""
     type: ResponseType
     content: str | dict | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def text(cls, content: str, **metadata) -> "Response":
-        """
-        创建文本响应
-
-        Args:
-            content: 文本内容
-            **metadata: 额外元数据
-        """
+        """创建文本响应"""
         return cls(type=ResponseType.TEXT, content=content, metadata=metadata)
 
     @classmethod
     def card(cls, card_content: dict, **metadata) -> "Response":
-        """
-        创建卡片响应
-
-        Args:
-            card_content: 飞书消息卡片内容字典
-            **metadata: 额外元数据
-        """
+        """创建卡片响应"""
         return cls(type=ResponseType.CARD, content=card_content, metadata=metadata)
 
     @classmethod
@@ -72,15 +42,7 @@ class Response:
             filters_applied: list[str] | None = None,
             **metadata
     ) -> "Response":
-        """
-        创建活动列表卡片响应
-
-        Args:
-            activities: SecondClass 对象列表
-            title: 卡片标题
-            filters_applied: 应用的筛选器信息列表
-            **metadata: 额外元数据
-        """
+        """创建活动列表卡片响应"""
         from src.utils.formatter import build_activity_card
 
         card_content = build_activity_card(activities, title)
@@ -96,13 +58,7 @@ class Response:
 
     @classmethod
     def error(cls, message: str, context: str = "") -> "Response":
-        """
-        创建错误响应
-
-        Args:
-            message: 错误信息
-            context: 错误上下文
-        """
+        """创建错误响应"""
         lines = ["操作失败"]
         if context:
             lines.append(f"上下文：{context}")

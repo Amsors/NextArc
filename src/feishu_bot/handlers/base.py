@@ -16,7 +16,6 @@ logger = get_logger("feishu.handler")
 class CommandHandler(ABC):
     """指令处理器基类"""
 
-    # 类级别的共享实例引用
     _scanner: "ActivityScanner" = None
     _auth_manager: "AuthManager" = None
     _db_manager: "DatabaseManager" = None
@@ -41,16 +40,7 @@ class CommandHandler(ABC):
 
     @abstractmethod
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """
-        处理指令
-
-        Args:
-            args: 指令参数列表
-            session: 用户会话
-
-        Returns:
-            Response 响应对象
-        """
+        """处理指令"""
         pass
 
     def get_usage(self) -> str:

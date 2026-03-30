@@ -21,14 +21,15 @@ from src.models.activity import (
 def format_activity_list(activities: list[SecondClass], title: str = "活动列表", simple_format: bool = False) -> str:
     """
     格式化活动列表
-    
+
     Args:
         activities: 活动列表
         title: 列表标题
         simple_format: 是否使用简单格式
 
     Returns:
-        格式化后的文本    """
+        格式化后的文本
+    """
     if not activities:
         return f"{title}\n\n暂无活动"
 
@@ -45,10 +46,10 @@ def format_activity_list(activities: list[SecondClass], title: str = "活动列�
 def format_diff_result(diff: DiffResult) -> str:
     """
     格式化差异结果
-    
+
     Args:
         diff: 差异结果
-        
+
     Returns:
         格式化后的文本
     """
@@ -58,10 +59,10 @@ def format_diff_result(diff: DiffResult) -> str:
 def format_enrolled_list(activities: list[SecondClass]) -> str:
     """
     格式化已报名活动列表
-    
+
     Args:
         activities: 已报名活动列表
-        
+
     Returns:
         格式化后的文本
     """
@@ -76,7 +77,7 @@ def format_enrolled_list(activities: list[SecondClass]) -> str:
 def format_search_results(activities: list[SecondClass], keyword: str, hint: str = "") -> str:
     """
     格式化搜索结果
-    
+
     Args:
         activities: 搜索结果列表
         keyword: 搜索关键词
@@ -100,6 +101,7 @@ def format_search_results(activities: list[SecondClass], keyword: str, hint: str
 
 
 def format_ai_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    """格式化AI筛选掉的活动列表"""
     activities = [act.activity for act in activities_filtered]
     lines = format_activity_list(activities, "因AI筛选被筛选掉的活动", simple_format=True)
     lines += "\n"
@@ -107,6 +109,7 @@ def format_ai_filtered_result(activities_filtered: list[FilteredActivity]) -> st
 
 
 def format_time_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    """格式化因时间冲突被筛选掉的活动列表"""
     activities = [act.activity for act in activities_filtered]
     lines = format_activity_list(activities, "因空闲时间不符被筛选掉的活动", simple_format=True)
     lines += "\n"
@@ -114,6 +117,7 @@ def format_time_filtered_result(activities_filtered: list[FilteredActivity]) -> 
 
 
 def format_db_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    """格式化因数据库记录被筛选掉的活动列表"""
     activities = [act.activity for act in activities_filtered]
     lines = format_activity_list(activities, "因数据库记录不感兴趣被筛选掉的活动", simple_format=True)
     lines += "\n"
@@ -121,6 +125,7 @@ def format_db_filtered_result(activities_filtered: list[FilteredActivity]) -> st
 
 
 def format_enrolled_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    """格式化因已报名被筛选掉的活动列表"""
     activities = [act.activity for act in activities_filtered]
     lines = format_activity_list(activities, "因已报名被筛选掉的活动", simple_format=True)
     lines += "\n"
@@ -138,7 +143,7 @@ def format_status_message(
 ) -> str:
     """
     格式化状态消息
-    
+
     Args:
         is_running: 是否运行中
         last_scan: 上次扫描时间
@@ -146,19 +151,17 @@ def format_status_message(
         is_logged_in: 是否已登录
         db_count: 数据库数量
         ignore_count: 被忽略的活动数量
-        
+
     Returns:
         格式化后的文本
     """
     lines = ["服务状态", ""]
 
-    # 运行状态
     if is_running:
         lines.append("服务运行中")
     else:
         lines.append("服务已停止")
 
-    # 登录状态
     if is_logged_in:
         lines.append("已登录")
     else:
@@ -166,7 +169,6 @@ def format_status_message(
 
     lines.append("")
 
-    # 扫描信息
     if last_scan:
         lines.append(f"最后扫描：{last_scan.strftime('%Y-%m-%d %H:%M:%S')}")
     else:
@@ -185,10 +187,10 @@ def format_status_message(
 def format_scan_result(result: dict) -> str:
     """
     格式化扫描结果
-    
+
     Args:
         result: scan() 方法返回的结果字典
-        
+
     Returns:
         格式化后的文本
     """
@@ -213,11 +215,11 @@ def format_scan_result(result: dict) -> str:
 def format_error_message(error: str, context: str = "") -> str:
     """
     格式化错误消息
-    
+
     Args:
         error: 错误信息
         context: 错误上下文
-        
+
     Returns:
         格式化后的文本
     """
@@ -234,7 +236,7 @@ def format_error_message(error: str, context: str = "") -> str:
 def format_help_message() -> str:
     """
     格式化帮助消息
-    
+
     Returns:
         格式化后的文本
     """
@@ -293,10 +295,8 @@ def build_activity_card(
             ]
         }
 
-    # 构建折叠面板元素列表
     elements = []
 
-    # 添加统计信息
     elements.append({
         "tag": "div",
         "text": {
@@ -305,10 +305,8 @@ def build_activity_card(
         }
     })
 
-    # 添加分隔线
     elements.append({"tag": "hr"})
 
-    # 为每个活动创建一个折叠面板
     for i, act in enumerate(activities, start_index):
         is_ignored = act.id in ignored_ids
         collapsible_panel = _build_activity_collapsible_panel(act, i, is_ignored)
@@ -342,10 +340,8 @@ def _build_activity_collapsible_panel(
     """
     activity_type = "系列活动" if act.is_series else "单次活动"
 
-    # 面板标题：活动名称和类型
     header_title = f"[{index}] {act.name} ({activity_type})"
 
-    # 构建详细内容元素
     detail_elements = []
     detail_elements.append(
         {
@@ -386,15 +382,12 @@ def _build_activity_collapsible_panel(
             }
         )
 
-    # 状态和学时/报名人数
     if act.is_series:
-        # 系列活动只显示状态
         detail_elements.append({
             "tag": "markdown",
             "content": f"**状态：** {get_status_text(act)}"
         })
     else:
-        # 单次活动显示状态、学时和报名人数
         detail_elements.append(
             {
                 "tag": "markdown",
@@ -421,7 +414,6 @@ def _build_activity_collapsible_panel(
         }
     )
 
-    # 标签（如果有）
     labels = get_labels_text(act)
     if labels and labels != "无":
         detail_elements.append({
@@ -429,17 +421,12 @@ def _build_activity_collapsible_panel(
             "content": f"**标签：** {labels}"
         })
 
-    # 添加分隔线
     detail_elements.append({"tag": "hr"})
 
-    # 构建按钮
-    # 不感兴趣按钮：根据状态显示不同文本和样式
     ignore_button_text = "已忽略" if is_ignored else "不感兴趣"
     ignore_button_type = "default" if is_ignored else "danger"
 
-    # 报名按钮：系列活动不支持直接报名
     if act.is_series:
-        # 系列活动显示"不感兴趣"和"查看子活动"按钮
         button_elements = [
             {
                 "tag": "button",
@@ -463,7 +450,6 @@ def _build_activity_collapsible_panel(
             }
         ]
     else:
-        # 单次活动有"不感兴趣"和"去报名"两个按钮
         button_elements = [
             {
                 "tag": "button",
@@ -492,7 +478,6 @@ def _build_activity_collapsible_panel(
         "actions": button_elements
     })
 
-    # 构建折叠面板
     return {
         "tag": "collapsible_panel",
         "expanded": False,

@@ -1,7 +1,4 @@
-"""时间筛选器
-
-根据用户配置的时间偏好，筛选出与用户没空时间冲突的活动。
-"""
+"""时间筛选器"""
 
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
@@ -18,24 +15,14 @@ logger = get_logger("time_filter")
 
 @dataclass
 class TimeFilterDetail:
-    """时间筛选的详细信息，用于 FilteredActivity.extra_data"""
-    conflicting_ranges: list[TimeRange]  # 冲突的时间段
+    """时间筛选的详细信息"""
+    conflicting_ranges: list[TimeRange]
 
 
 class TimeFilter:
-    """
-    时间筛选器
-    
-    根据用户的推送偏好配置，筛选出与用户没空时间冲突的活动。
-    """
+    """根据用户配置的时间偏好筛选活动"""
 
     def __init__(self, preferences: Optional[PushPreferences] = None):
-        """
-        初始化时间筛选器
-        
-        Args:
-            preferences: 推送偏好配置，如果为 None 则加载默认配置
-        """
         if preferences is None:
             from src.config.preferences import load_preferences
             preferences = load_preferences()
@@ -44,22 +31,14 @@ class TimeFilter:
         self.time_config = preferences.time_filter
 
     def is_enabled(self) -> bool:
-        """检查时间筛选是否启用且有配置"""
+        """检查时间筛选是否启用"""
         return self.time_config.is_enabled_and_configured()
 
     def filter_activities(
             self,
             activities: list[SecondClass]
     ) -> tuple[list[SecondClass], list[FilteredActivity]]:
-        """
-        筛选活动，返回不冲突的活动列表和被过滤的活动列表
-        
-        Args:
-            activities: 待筛选的活动列表
-            
-        Returns:
-            (通过筛选的活动列表, 被过滤的 FilteredActivity 列表)
-        """
+        """筛选活动，返回不冲突和被过滤的活动列表"""
         if not self.is_enabled():
             logger.debug("时间筛选未启用，返回所有活动")
             return activities, []
@@ -84,96 +63,61 @@ class TimeFilter:
         return passed, filtered
 
     def _check_time_conflict(self, activity: SecondClass) -> Optional[FilteredActivity]:
-        """
-        检查活动是否与用户没空时间冲突
-        
-        根据配置的 overlap_mode 判断冲突方式：
-        - partial: 有重叠即过滤（活动与没时间段有任何交集）
-        - full: 完全包含才过滤（活动时间必须完全被没时间段包含）
-        - threshold: 按比例阈值过滤（冲突时间占活动总时长的比例 >= 阈值才过滤）
-        
-        Args:
-            activity: 活动对象
-            
-        Returns:
-            如果冲突返回 FilteredActivity，否则返回 None
-        """
-        # 获取活动举办时间
+        """检查活动是否与用户没空时间冲突"""
         hold_time = activity.hold_time
         if hold_time is None:
-            # 无法获取活动时间，保守处理：保留该活动
             logger.debug(f"活动 '{activity.name}' 无法获取举办时间，保留")
             return None
 
-        # 获取活动开始时间，用于确定是星期几
         activity_start = hold_time.start
         if activity_start is None:
             logger.debug(f"活动 '{activity.name}' 无法获取开始时间，保留")
             return None
 
-        # 确定是星期几（0=周一，6=周日）
         weekday = activity_start.weekday()
-
-        # 获取该日期用户没空的时间段
         busy_ranges = self.time_config.weekly_preferences.get_day_preference(weekday)
         if not busy_ranges:
-            # 该日期没有配置没空时间，保留该活动
             return None
 
-        # 获取活动时间段的 time 对象
         act_start_time = activity_start.time()
         act_end_time = hold_time.end.time() if hold_time.end else None
 
-        # 如果活动没有结束时间，假设活动持续2小时
         if act_end_time is None:
             act_end_time = (datetime.combine(datetime.today(), act_start_time) + timedelta(hours=2)).time()
 
-        # 检查是否与任何没空时间段冲突
         overlap_mode = self.time_config.overlap_mode
         conflicting_ranges = []
 
         for busy_range in busy_ranges:
             busy_start, busy_end = busy_range.to_time_objects()
 
-            # 根据重叠模式判断冲突
             if overlap_mode == "partial":
-                # 模式1: 有重叠即过滤
-                # 重叠条件：活动开始时间 < 忙碌结束时间 且 活动结束时间 > 忙碌开始时间
                 if act_start_time < busy_end and act_end_time > busy_start:
                     conflicting_ranges.append(busy_range)
 
             elif overlap_mode == "full":
-                # 模式2: 完全包含才过滤
-                # 完全包含条件：忙碌开始时间 <= 活动开始时间 且 活动结束时间 <= 忙碌结束时间
                 if busy_start <= act_start_time and act_end_time <= busy_end:
                     conflicting_ranges.append(busy_range)
 
             elif overlap_mode == "threshold":
-                # 模式3: 按比例阈值过滤
-                # 检查是否有重叠，记录所有冲突的时间段
                 if act_start_time < busy_end and act_end_time > busy_start:
                     conflicting_ranges.append(busy_range)
 
         if conflicting_ranges:
             day_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
             day_name = day_names[weekday]
-
-            # 格式化冲突时间段
             ranges_str = ", ".join(str(r) for r in conflicting_ranges)
 
-            # 根据模式显示不同的过滤原因
             if overlap_mode == "partial":
                 overlap_desc = "时间冲突"
             elif overlap_mode == "full":
                 overlap_desc = "时间完全被占用"
-            else:  # threshold
-                # 计算重叠比例
+            else:
                 overlap_ratio = self._calculate_overlap_ratio(
                     act_start_time, act_end_time, conflicting_ranges
                 )
                 threshold = self.time_config.overlap_threshold
 
-                # 如果重叠比例小于阈值，不过滤
                 if overlap_ratio < threshold:
                     logger.debug(
                         f"活动 '{activity.name}' 重叠比例 {overlap_ratio:.2%} < 阈值 {threshold:.2%}，保留"
@@ -183,7 +127,6 @@ class TimeFilter:
                 overlap_desc = f"时间冲突比例 {overlap_ratio:.1%} >= 阈值 {threshold:.1%}"
 
             reason = f"与{day_name}的{overlap_desc} ({ranges_str})"
-
             logger.debug(f"活动 '{activity.name}' {reason}")
 
             extra_data = {
@@ -192,7 +135,6 @@ class TimeFilter:
                 "day_name": day_name,
             }
 
-            # threshold 模式下添加重叠比例信息
             if overlap_mode == "threshold":
                 extra_data["overlap_ratio"] = overlap_ratio
                 extra_data["overlap_threshold"] = self.time_config.overlap_threshold
@@ -212,33 +154,19 @@ class TimeFilter:
             act_end: time,
             busy_ranges: list[TimeRange]
     ) -> float:
-        """
-        计算活动时间与忙碌时间段的重叠比例
-        
-        Args:
-            act_start: 活动开始时间
-            act_end: 活动结束时间
-            busy_ranges: 冲突的忙碌时间段列表
-            
-        Returns:
-            重叠比例 (0.0 ~ 1.0)，表示冲突时间占活动总时长的比例
-        """
-        # 计算活动总时长（分钟）
+        """计算活动时间与忙碌时间段的重叠比例"""
         today = datetime.today()
         act_start_dt = datetime.combine(today, act_start)
         act_end_dt = datetime.combine(today, act_end)
 
-        # 处理跨天情况（虽然实际情况中活动时间通常不会跨天）
         if act_end_dt < act_start_dt:
             act_end_dt += timedelta(days=1)
 
         activity_duration = (act_end_dt - act_start_dt).total_seconds() / 60
 
-        # 活动时长为0，避免除零错误
         if activity_duration <= 0:
             return 0.0
 
-        # 计算总冲突时长（分钟）
         total_conflict_minutes = 0.0
 
         for busy_range in busy_ranges:
@@ -246,7 +174,6 @@ class TimeFilter:
             busy_start_dt = datetime.combine(today, busy_start)
             busy_end_dt = datetime.combine(today, busy_end)
 
-            # 计算当前忙碌时间段与活动的重叠部分
             overlap_start = max(act_start_dt, busy_start_dt)
             overlap_end = min(act_end_dt, busy_end_dt)
 
@@ -254,22 +181,11 @@ class TimeFilter:
                 overlap_minutes = (overlap_end - overlap_start).total_seconds() / 60
                 total_conflict_minutes += overlap_minutes
 
-        # 计算重叠比例
         overlap_ratio = total_conflict_minutes / activity_duration
-
-        # 确保比例不超过1.0（虽然理论上不应该超过，但以防万一）
         return min(overlap_ratio, 1.0)
 
     def get_filter_summary(self, filtered: list[FilteredActivity]) -> str:
-        """
-        生成被过滤活动的汇总信息
-        
-        Args:
-            filtered: 被过滤的活动列表
-            
-        Returns:
-            格式化的汇总文本
-        """
+        """生成被过滤活动的汇总信息"""
         if not filtered:
             return ""
 
@@ -279,7 +195,6 @@ class TimeFilter:
             activity = item.activity
             lines.append(f"[{i}] {activity.name}")
 
-            # 添加活动时间信息
             if activity.hold_time and activity.hold_time.start:
                 start = activity.hold_time.start
                 end = activity.hold_time.end
@@ -292,12 +207,7 @@ class TimeFilter:
         return "\n".join(lines)
 
     def get_preferences_summary(self) -> str:
-        """
-        获取当前时间偏好配置的摘要
-        
-        Returns:
-            格式化的配置摘要
-        """
+        """获取当前时间偏好配置的摘要"""
         if not self.is_enabled():
             return "时间筛选：未启用"
 
@@ -308,12 +218,7 @@ class TimeFilter:
 
 
 def create_time_filter_from_config() -> TimeFilter:
-    """
-    从配置创建时间筛选器实例
-    
-    Returns:
-        TimeFilter 实例
-    """
+    """从配置创建时间筛选器实例"""
     from src.config.preferences import load_preferences
 
     preferences = load_preferences()

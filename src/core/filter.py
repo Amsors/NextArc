@@ -1,3 +1,5 @@
+"""SecondClass 基础筛选器"""
+
 from dataclasses import dataclass, field
 from typing import List, Optional, Callable
 
@@ -10,19 +12,16 @@ logger = get_logger("filter")
 
 @dataclass
 class SecondClassFilter:
-    # 基础条件（所有条件默认None表示不限制）
+    """SecondClass 筛选器，支持链式组合条件"""
+
     name_contains: Optional[str] = None
     excluded_status: Optional[list[SecondClassStatus]] = None
-
-    # 高级：自定义谓词函数
     custom_predicate: Optional[Callable[[SecondClass], bool]] = None
 
-    # 逻辑组合（用于复杂查询）
+    # 逻辑组合
     _and_filters: List['SecondClassFilter'] = field(default_factory=list)
     _or_filters: List['SecondClassFilter'] = field(default_factory=list)
     _not_filter: Optional['SecondClassFilter'] = None
-
-    # ==================== 链式构建方法 ====================
 
     def with_name(self, keyword: str) -> 'SecondClassFilter':
         """活动名包含关键词"""
@@ -50,36 +49,29 @@ class SecondClassFilter:
         new_filter._not_filter = self
         return new_filter
 
-    # ==================== 执行方法 ====================
-
     def apply(self, activities: List[SecondClass]) -> List[SecondClass]:
         """执行筛选"""
         return [c for c in activities if self._matches(c)]
 
     def _matches(self, activity: SecondClass) -> bool:
         """检查单个活动是否匹配"""
-
-        # 检查基础条件
         if self.name_contains and self.name_contains not in activity.name:
             return False
 
         if self.excluded_status:
-            # logger.debug(f"检查活动状态 {activity.status.code} 是否在排除列表中")
             try:
                 if activity.status in self.excluded_status:
                     return False
             except Exception as e:
                 logger.error(f"检查活动状态时出错: {e}, 状态={activity.status}")
-                return True  # 出错时默认包含
-
-        # 逻辑组合条件
+                return True
 
         # AND: 所有附加条件必须满足
         for f in self._and_filters:
             if not f._matches(activity):
                 return False
 
-        # OR: 至少一个附加条件满足（如果没有OR条件则跳过）
+        # OR: 至少一个附加条件满足
         if self._or_filters:
             if not any(f._matches(activity) for f in self._or_filters):
                 return False

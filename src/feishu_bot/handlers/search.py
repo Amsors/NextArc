@@ -28,26 +28,22 @@ class SearchHandler(CommandHandler):
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
-        # 检查参数
         if not args:
             return Response.text(f"用法：{self.get_usage()}\n\n示例：/search 讲座")
 
         keyword = " ".join(args)
         logger.info(f"执行 /search 指令，关键词: {keyword}")
 
-        # 获取最新数据库
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
 
         try:
-            # 搜索活动
             activities = await self._search_activities(latest_db, keyword)
 
             if not activities:
                 return Response.text(f'搜索「{keyword}」\n\n未找到匹配的活动，请尝试其他关键词')
 
-            # 使用 YouthService 上下文更新活动信息（获取最新报名人数等）
             try:
                 async with self._auth_manager.create_session_once() as service:
                     for activity in activities:
@@ -56,14 +52,12 @@ class SearchHandler(CommandHandler):
                             logger.debug(f"更新活动信息成功: {activity.name}")
                         except Exception as e:
                             logger.warning(f"更新活动 {activity.id} 信息失败: {e}")
-                            # 继续处理其他活动，不中断
 
                 hint = "活动已经更新，最新报名人数已显示"
             except Exception as e:
                 logger.error(f"更新活动信息失败: {e}")
                 hint = "部分活动信息可能不是最新"
 
-            # 保存搜索上下文
             session.set_search(keyword, activities)
 
             return Response.text(format_search_results(activities, keyword, hint=hint))
@@ -82,7 +76,6 @@ class SearchHandler(CommandHandler):
 
         async with aiosqlite.connect(db_path) as conn:
             conn.row_factory = aiosqlite.Row
-            # 使用 LIKE 进行模糊搜索
             async with conn.execute(
                     "SELECT * FROM all_secondclass WHERE LOWER(name) LIKE ? ORDER BY name",
                     (f"%{keyword_lower}%",)
@@ -92,14 +85,12 @@ class SearchHandler(CommandHandler):
 
         logger.debug(f"搜索结果: {len(activities)} 个活动")
 
-        # 如果没有结果，记录一些调试信息
         if not activities:
             async with aiosqlite.connect(db_path) as conn:
                 async with conn.execute("SELECT COUNT(*) FROM all_secondclass") as cursor:
                     total = (await cursor.fetchone())[0]
                     logger.debug(f"数据库中共有 {total} 个活动")
 
-                # 列出几个活动名称供参考
                 async with conn.execute(
                         "SELECT name FROM all_secondclass LIMIT 5"
                 ) as cursor:

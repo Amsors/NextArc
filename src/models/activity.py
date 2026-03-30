@@ -1,7 +1,6 @@
 """活动数据模型兼容层
 
-本模块提供从 SecondClass 到数据库行的转换工具函数，
-以及 SecondClassStatus 枚举（兼容 pyustc 的 Status）。
+提供 SecondClass 到数据库行的转换工具函数。
 """
 
 import json
@@ -12,7 +11,7 @@ from pyustc.young import SecondClass, Status
 
 
 class SecondClassStatus:
-    """第二课堂活动状态（兼容 pyustc.Status 的静态包装）"""
+    """第二课堂活动状态（兼容 pyustc.Status）"""
 
     ABNORMAL = Status.ABNORMAL
     PUBLISHED = Status.PUBLISHED
@@ -37,29 +36,15 @@ class SecondClassStatus:
 
     @classmethod
     def from_code(cls, code: int) -> Optional[Status]:
-        """根据状态码获取 Status 枚举成员"""
+        """根据状态码获取 Status 枚举"""
         try:
             return Status.from_code(code)
         except ValueError:
             return None
 
 
-# ==================== SecondClass 扩展工具函数 ====================
-
 def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
-    """
-    从数据库行创建 SecondClass 对象
-    
-    注意：由于 SecondClass 使用 data 字典存储原始数据，
-    我们需要将数据库中的 JSON 字符串还原为原始格式
-    
-    Args:
-        row: 数据库行字典
-        
-    Returns:
-        SecondClass 对象
-    """
-    # 构建原始 data 字典（与 API 响应格式一致）
+    """从数据库行创建 SecondClass 对象"""
     data = {
         "id": row["id"],
         "itemName": row["name"],
@@ -71,7 +56,6 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
         "itemCategory": "1" if row["is_series"] else "0",
     }
 
-    # 处理时间字段（从 JSON 还原）
     if row.get("create_time"):
         try:
             create_data = json.loads(row["create_time"])
@@ -103,7 +87,6 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
         except (json.JSONDecodeError, KeyError):
             pass
 
-    # 处理可选字段
     if row.get("valid_hour") is not None:
         data["validHour"] = row["valid_hour"]
 
@@ -113,7 +96,6 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
     if row.get("apply_limit") is not None:
         data["peopleNum"] = row["apply_limit"]
 
-    # 处理 module（从 JSON 还原）
     if row.get("module") and row["module"] != "null":
         try:
             module_data = json.loads(row["module"])
@@ -123,7 +105,6 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    # 处理 department（从 JSON 还原）
     if row.get("department") and row["department"] != "null":
         try:
             dept_data = json.loads(row["department"])
@@ -133,7 +114,6 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    # 处理 labels（从 JSON 还原）
     if row.get("labels") and row["labels"] != "null":
         try:
             labels_data = json.loads(row["labels"])
@@ -143,7 +123,6 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    # 处理 children_id 和 parent_id
     if row.get("children_id"):
         try:
             children_data = json.loads(row["children_id"])
@@ -159,15 +138,7 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
 
 
 def get_display_time(sc: SecondClass, field: str) -> str:
-    """获取格式化的时间显示
-    
-    Args:
-        sc: SecondClass 对象
-        field: 字段名 ('create_time', 'apply_time', 'hold_time')
-        
-    Returns:
-        格式化后的时间字符串
-    """
+    """获取格式化的时间显示"""
     day_of_week_chinese = {
         0: "周一",
         1: "周二",
@@ -285,16 +256,7 @@ def get_participation_form(sc: SecondClass) -> str | None:
 
 
 def format_secondclass_for_list(sc: SecondClass, index: int, simple_format: bool = False) -> str:
-    """格式化为列表显示
-    
-    Args:
-        sc: SecondClass 对象
-        index: 序号（从1开始）
-        simple_format: 是否使用简单格式
-
-    Returns:
-        格式化的文本
-    """
+    """格式化为列表显示"""
     if simple_format:
         return f"[{index}] {sc.name}({'系列活动' if sc.is_series else '单次活动'})"
 
@@ -323,14 +285,7 @@ def format_secondclass_for_list(sc: SecondClass, index: int, simple_format: bool
 
 
 def secondclass_to_display_dict(sc: SecondClass) -> dict[str, str]:
-    """转换为显示用的字典
-    
-    Args:
-        sc: SecondClass 对象
-        
-    Returns:
-        显示用的字典
-    """
+    """转换为显示用的字典"""
     return {
         "id": sc.id,
         "name": sc.name,

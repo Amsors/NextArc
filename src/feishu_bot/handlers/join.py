@@ -25,15 +25,12 @@ class JoinHandler(CommandHandler):
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
-        # 检查搜索上下文
         if not session.search or session.search.is_expired():
             return Response.text("请先使用 /search 搜索活动\n\n示例：/search 讲座")
 
-        # 检查参数
         if not args:
             return Response.text(f"用法：{self.get_usage()}\n\n当前搜索结果可用序号：1-{len(session.search.results)}")
 
-        # 解析序号
         try:
             index = int(args[0])
             if index < 1:
@@ -41,28 +38,22 @@ class JoinHandler(CommandHandler):
         except ValueError:
             return Response.text("无效的序号，请输入正整数\n\n示例：/join 1")
 
-        # 获取搜索结果中的活动
         activity = session.search.get_result_by_index(index)
 
         if not activity:
             return Response.text(f"序号超出范围，当前搜索结果共 {len(session.search.results)} 个活动")
 
-        # 检查是否已报名
         if activity.applied:
             return Response.text(f"您已经报名了「{activity.name}」")
 
-        # 检查是否可报名
         if activity.status != Status.APPLYING and activity.status != Status.PUBLISHED:
             return Response.text(f"「{activity.name}」当前状态不可报名\n状态：{activity.status()}")
 
-        # 检查是否有待确认操作
         if session.confirm and not session.confirm.is_expired():
             return Response.text("您有一个待确认的操作，请先回复「确认」或「取消」")
 
-        # 设置确认会话
         session.set_confirm("join", activity.id, activity.name)
 
-        # 返回确认提示
         return Response.text(session.confirm.get_confirm_prompt())
 
     async def execute_join(self, session: UserSession) -> Response:
@@ -73,32 +64,24 @@ class JoinHandler(CommandHandler):
         activity_id = session.confirm.activity_id
         activity_name = session.confirm.activity_name
 
-        # 清除确认会话和搜索上下文
         session.clear_confirm()
         session.clear_search()
 
         logger.info(f"执行报名: {activity_name} ({activity_id})")
 
         try:
-            # 使用认证会话执行报名
             from pyustc.young.second_class import SecondClass
 
             async with self._auth_manager.create_session_once():
-                # 获取活动实例并报名
-                # SecondClass 使用单例模式，需要提供 data 参数（可为 None）
                 sc = SecondClass(activity_id, {})
 
-                # 先更新活动信息（从服务器获取最新数据）
                 await sc.update()
 
-                # 检查是否可报名
                 if not sc.applyable:
                     return Response.text(
                         f"「{activity_name}」当前不可报名\n状态：{sc.status.text if sc.status else '未知'}")
 
-                # 检查是否需要报名信息
                 if sc.need_sign_info:
-                    # 如果需要报名信息，使用自动填充的 SignInfo
                     from pyustc.young.second_class import SignInfo
                     sign_info = await SignInfo.get_self()
                     result = await sc.apply(force=False, auto_cancel=False, sign_info=sign_info)
@@ -110,8 +93,6 @@ class JoinHandler(CommandHandler):
                 if not result:
                     return Response.text(f"报名失败：活动不可报名或名额已满")
 
-            # 报名成功后，不立即扫描，避免覆盖结果
-            # 让用户手动执行 /update 查看最新状态
             logger.info(f"报名成功: {activity_name}")
             return Response.text(
                 f"已成功报名「{activity_name}」\n\n"

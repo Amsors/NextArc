@@ -1,7 +1,4 @@
-"""推送偏好配置管理
-
-用于管理用户的推送偏好设置，包括时间筛选、活动类型筛选等。
-"""
+"""推送偏好配置管理"""
 
 from datetime import datetime, time
 from pathlib import Path
@@ -19,7 +16,6 @@ class TimeRange(BaseModel):
     @field_validator("start", "end")
     @classmethod
     def validate_time_format(cls, v: str) -> str:
-        """验证时间格式"""
         try:
             datetime.strptime(v, "%H:%M")
         except ValueError:
@@ -28,7 +24,6 @@ class TimeRange(BaseModel):
 
     @model_validator(mode="after")
     def validate_time_range(self) -> Self:
-        """验证开始时间早于结束时间"""
         start = datetime.strptime(self.start, "%H:%M")
         end = datetime.strptime(self.end, "%H:%M")
         if start >= end:
@@ -36,7 +31,6 @@ class TimeRange(BaseModel):
         return self
 
     def to_time_objects(self) -> tuple[time, time]:
-        """转换为 time 对象"""
         start = datetime.strptime(self.start, "%H:%M").time()
         end = datetime.strptime(self.end, "%H:%M").time()
         return start, end
@@ -56,15 +50,7 @@ class WeeklyTimePreference(BaseModel):
     sunday: list[TimeRange] = Field(default=[], description="周日没空的时间段")
 
     def get_day_preference(self, weekday: int) -> list[TimeRange]:
-        """
-        获取指定星期几的时间偏好
-        
-        Args:
-            weekday: 星期几（0=周一，6=周日）
-            
-        Returns:
-            该日期没空的时间段列表
-        """
+        """获取指定星期几的时间偏好（0=周一，6=周日）"""
         days = [self.monday, self.tuesday, self.wednesday,
                 self.thursday, self.friday, self.saturday, self.sunday]
         if 0 <= weekday <= 6:
@@ -96,16 +82,14 @@ class TimeFilterConfig(BaseModel):
     """时间筛选器配置"""
     enabled: bool = Field(default=False, description="是否启用时间筛选")
 
-    # 时间重叠判断模式
     overlap_mode: str = Field(
         default="partial",
         description="时间重叠判断模式: 'partial'(有重叠即过滤)、'full'(完全包含才过滤) 或 'threshold'(按比例阈值过滤)"
     )
 
-    # 重叠比例阈值（仅当 overlap_mode 为 "threshold" 时使用）
     overlap_threshold: float = Field(
         default=0.5,
-        description="重叠比例阈值，当 overlap_mode='threshold' 时使用，范围 0.0~1.0，表示冲突时间占活动总时长的比例"
+        description="重叠比例阈值，当 overlap_mode='threshold' 时使用，范围 0.0~1.0"
     )
 
     weekly_preferences: WeeklyTimePreference = Field(
@@ -116,16 +100,13 @@ class TimeFilterConfig(BaseModel):
     @field_validator("overlap_mode")
     @classmethod
     def validate_overlap_mode(cls, v: str) -> str:
-        """验证重叠模式"""
-        valid_modes = ["partial", "full", "threshold"]
-        if v not in valid_modes:
-            raise ValueError(f"无效的 overlap_mode: {v}，必须是 {valid_modes} 之一")
+        if v not in ("partial", "full", "threshold"):
+            raise ValueError(f"无效的 overlap_mode: {v}")
         return v
 
     @field_validator("overlap_threshold")
     @classmethod
     def validate_overlap_threshold(cls, v: float) -> float:
-        """验证重叠比例阈值"""
         if not 0.0 <= v <= 1.0:
             raise ValueError(f"overlap_threshold 必须在 0.0~1.0 之间，当前值: {v}")
         return v
@@ -155,7 +136,6 @@ class PushPreferences(BaseModel):
     def from_yaml(cls, yaml_path: Path) -> Self:
         """从 YAML 文件加载配置"""
         if not yaml_path.exists():
-            # 返回默认配置
             return cls()
 
         with open(yaml_path, "r", encoding="utf-8") as f:
@@ -176,7 +156,6 @@ class PushPreferences(BaseModel):
             )
 
 
-# 全局配置实例
 _preferences: Optional[PushPreferences] = None
 
 
@@ -185,7 +164,6 @@ def load_preferences(config_path: Optional[Path] = None) -> PushPreferences:
     global _preferences
     if _preferences is None:
         if config_path is None:
-            # 默认路径：项目根目录下的 config/preferences.yaml
             config_path = Path(__file__).parent.parent.parent / "config" / "preferences.yaml"
         _preferences = PushPreferences.from_yaml(config_path)
     return _preferences

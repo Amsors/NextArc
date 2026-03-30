@@ -14,7 +14,6 @@ logger = get_logger("feishu.handler.alive")
 class AliveHandler(CommandHandler):
     """检查服务状态指令"""
 
-    # 类级别的忽略管理器
     _ignore_manager: UserPreferenceManager = None
 
     @classmethod
@@ -37,14 +36,12 @@ class AliveHandler(CommandHandler):
             return Response.text("服务未完全初始化\n\n部分功能可能不可用")
 
         try:
-            # 收集状态信息
             is_running = self._scanner.is_running()
             last_scan = self._scanner.get_last_scan_time()
             next_scan = self._scanner.get_next_scan_time()
             is_logged_in = self._auth_manager.is_logged_in()
             db_count = self._db_manager.get_db_count()
 
-            # 获取忽略数量和感兴趣数量
             ignore_count = 0
             interested_count = 0
             if self._ignore_manager:

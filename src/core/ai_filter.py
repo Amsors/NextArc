@@ -1,7 +1,6 @@
-"""AI 活动筛选器 - 增强版
+"""AI 活动筛选器
 
-使用大模型 API 筛选用户感兴趣的新活动
-支持 OpenAI API 格式，带速率限制和重试机制
+使用大模型 API 筛选用户感兴趣的新活动，支持速率限制和重试机制。
 """
 
 import asyncio
@@ -32,7 +31,7 @@ logger = get_logger("ai_filter")
 
 
 class AIRateLimiterConfig:
-    """AI API 速率限制配置包装器"""
+    """AI API 速率限制配置"""
 
     def __init__(
             self,
@@ -46,7 +45,6 @@ class AIRateLimiterConfig:
         self.enable_queue = enable_queue
         self.queue_timeout = queue_timeout
 
-        # 初始化速率限制器
         self._wrapper = RateLimiterWrapper(
             requests_per_minute=requests_per_minute,
             max_concurrency=max_concurrency,
@@ -60,7 +58,7 @@ class AIRateLimiterConfig:
             logger.info(f"AI API 无速率限制, 最大并发: {max_concurrency}")
 
     def acquire(self):
-        """获取执行许可的上下文管理器（返回异步上下文管理器）"""
+        """获取执行许可的上下文管理器"""
         return self._wrapper.acquire()
 
 
@@ -100,15 +98,7 @@ class AIRetryConfig(RetryConfig):
 
 
 class AIFilter:
-    """
-    AI 活动筛选器（增强版）
-    
-    特性：
-    - 支持速率限制（每分钟请求数 + 并发数）
-    - 智能重试机制（指数退避）
-    - 429限流自动处理
-    - 可配置的容错策略
-    """
+    """AI 活动筛选器，支持速率限制、智能重试和缓存。"""
 
     def __init__(
             self,
@@ -120,12 +110,10 @@ class AIFilter:
             base_url: Optional[str] = None,
             timeout: int = 30,
             extra_body: Optional[dict] = None,
-            # 速率限制参数
             rate_limit_requests_per_minute: int = 0,
             rate_limit_max_concurrency: int = 3,
             rate_limit_enable_queue: bool = True,
             rate_limit_queue_timeout: float = 300.0,
-            # 重试参数
             retry_max_retries: int = 3,
             retry_base_delay: float = 2.0,
             retry_max_delay: float = 60.0,
@@ -135,8 +123,8 @@ class AIFilter:
     ):
         """
         初始化 AI 筛选器
-        
-        Args:
+
+        参数:
             api_key: API 密钥
             base_url: API 基础 URL（可选，用于第三方兼容服务）
             model: 模型名称
@@ -145,14 +133,10 @@ class AIFilter:
             temperature: 采样温度
             timeout: 请求超时时间（秒）
             extra_body: 额外的请求体参数
-            
-            # 速率限制参数
             rate_limit_requests_per_minute: 每分钟最大请求数（0表示不限制）
             rate_limit_max_concurrency: 最大并发数
             rate_limit_enable_queue: 达到限制时是否排队等待
             rate_limit_queue_timeout: 队列最大等待时间（秒）
-            
-            # 重试配置
             retry_max_retries: 最大重试次数
             retry_base_delay: 基础重试延迟（秒）
             retry_max_delay: 最大重试延迟（秒）
@@ -160,7 +144,6 @@ class AIFilter:
             retry_on_status: 触发重试的HTTP状态码列表
             retry_on_network_error: 网络错误是否重试
         """
-        # 验证必填参数
         if not api_key:
             raise ValueError("AI 筛选器初始化失败：api_key 不能为空")
         if not model:
@@ -181,7 +164,6 @@ class AIFilter:
         self.timeout = timeout
         self.extra_body = extra_body or {}
 
-        # 初始化速率限制器
         self.rate_limiter = AIRateLimiterConfig(
             requests_per_minute=rate_limit_requests_per_minute,
             max_concurrency=rate_limit_max_concurrency,
@@ -189,7 +171,6 @@ class AIFilter:
             queue_timeout=rate_limit_queue_timeout,
         )
 
-        # 初始化重试配置
         self.retry_config = AIRetryConfig(
             max_retries=retry_max_retries,
             base_delay=retry_base_delay,
@@ -199,7 +180,6 @@ class AIFilter:
             retry_on_network_error=retry_on_network_error,
         )
 
-        # 初始化 OpenAI 客户端
         client_kwargs = {"api_key": api_key}
         if base_url:
             client_kwargs["base_url"] = base_url
@@ -212,15 +192,7 @@ class AIFilter:
             logger.info(f"已配置额外请求参数: {self.extra_body}")
 
     def _format_activity_info(self, activity: SecondClass) -> str:
-        """
-        格式化活动信息为文本
-        
-        Args:
-            activity: SecondClass 对象
-            
-        Returns:
-            格式化后的活动信息文本
-        """
+        """格式化活动信息为文本"""
         lines = [
             f"活动名称：{activity.name}",
             f"活动状态：{get_status_text(activity)}",
@@ -232,9 +204,8 @@ class AIFilter:
             lines.append(f"学时：{activity.valid_hour or '未知'}")
             lines.append(f"已报名/名额：{get_apply_progress(activity)}")
 
-        # 添加活动简介（如果存在且不太长）
         if activity.conceive and len(activity.conceive) > 10:
-            conceive = activity.conceive[:500]  # 限制长度
+            conceive = activity.conceive[:500]
             lines.append(f"活动简介：{conceive}")
 
         return "\n".join(lines)
@@ -248,14 +219,14 @@ class AIFilter:
             preference_manager: Optional['UserPreferenceManager'] = None,
     ) -> tuple[list[SecondClass], list[FilteredActivity]]:
         """
-        批量筛选活动（带速率限制、重试机制和缓存支持）
+        批量筛选活动
 
         Args:
             activities: 待筛选的活动列表
             user_info: 用户信息描述
             write_to_db: 是否将审核结果写入数据库
             prefer_cached: 是否优先从数据库读取已有审核结果
-            preference_manager: 用户偏好数据库管理器（用于数据库操作）
+            preference_manager: 用户偏好数据库管理器
 
         Returns:
             (保留的活动列表, 被过滤掉的 FilteredActivity 列表)
@@ -267,7 +238,6 @@ class AIFilter:
             logger.warning("未配置 API 密钥，跳过 AI 筛选")
             return activities, []
 
-        # 如果启用缓存优先，先查询数据库
         cached_results: dict[str, dict] = {}
         activities_to_judge = activities
 
@@ -275,7 +245,6 @@ class AIFilter:
             activity_ids = [a.id for a in activities]
             cached_results = await preference_manager.get_ai_filter_results(activity_ids)
 
-            # 分离已缓存和未缓存的活动
             cached_ids = set(cached_results.keys())
             activities_to_judge = [a for a in activities if a.id not in cached_ids]
 
@@ -283,24 +252,17 @@ class AIFilter:
         else:
             logger.info(f"开始 AI 筛选 {len(activities)} 个活动（带速率限制和重试）...")
 
-        # 对未缓存的活动进行 API 审核
         api_results: list[tuple[SecondClass, bool, str]] = []
         if activities_to_judge:
             api_results = await self._judge_activities_batch(activities_to_judge, user_info)
 
-        # 合并结果（缓存 + API）
         all_results = self._merge_results(activities, cached_results, api_results)
 
-        # 如果需要写入数据库
         if write_to_db and preference_manager:
-            # 只保存新审核的结果（如果 prefer_cached=True）
-            # 或者保存所有结果（如果 prefer_cached=False，表示重新审核全部）
             results_to_save: list[tuple[str, bool, str, Optional[int]]] = []
             current_time = int(time.time())
 
             for activity, is_interested, reason in all_results:
-                # 如果 prefer_cached=True，只保存新审核的（不在缓存中的）
-                # 如果 prefer_cached=False，保存所有（因为都是重新审核的）
                 if not prefer_cached or activity.id not in cached_results:
                     results_to_save.append((activity.id, is_interested, reason, current_time))
 
@@ -308,7 +270,6 @@ class AIFilter:
                 success, failed = await preference_manager.save_ai_filter_results(results_to_save)
                 logger.debug(f"保存 AI 筛选结果到数据库: 成功 {success} 个, 失败 {failed} 个")
 
-        # 分离保留和过滤的活动
         kept_activities: list[SecondClass] = []
         filtered_activities: list[FilteredActivity] = []
 
@@ -333,32 +294,18 @@ class AIFilter:
             cached_results: dict[str, dict],
             api_results: list[tuple[SecondClass, bool, str]]
     ) -> list[tuple[SecondClass, bool, str]]:
-        """
-        合并缓存结果和 API 审核结果
-
-        Args:
-            activities: 所有活动列表
-            cached_results: 缓存的结果 {activity_id: {...}}
-            api_results: API 审核结果 [(activity, is_interested, reason), ...]
-
-        Returns:
-            合并后的结果列表 [(activity, is_interested, reason), ...]
-        """
-        # 构建 API 结果字典
+        """合并缓存结果和 API 审核结果"""
         api_results_dict = {activity.id: (is_interested, reason) for activity, is_interested, reason in api_results}
 
         merged: list[tuple[SecondClass, bool, str]] = []
         for activity in activities:
             if activity.id in cached_results:
-                # 使用缓存结果
                 cached = cached_results[activity.id]
                 merged.append((activity, cached["is_interested"], cached["reason"]))
             elif activity.id in api_results_dict:
-                # 使用 API 结果
                 is_interested, reason = api_results_dict[activity.id]
                 merged.append((activity, is_interested, reason))
             else:
-                # 默认保留（不应该发生）
                 logger.warning(f"活动 '{activity.name}' 没有审核结果，默认保留")
                 merged.append((activity, True, "无审核结果，默认保留"))
 
@@ -369,22 +316,12 @@ class AIFilter:
             activities: list[SecondClass],
             user_info: str
     ) -> list[tuple[SecondClass, bool, str]]:
-        """
-        批量审核活动（带速率限制和重试）
-
-        Args:
-            activities: 待审核的活动列表
-            user_info: 用户信息描述
-
-        Returns:
-            [(activity, is_interested, reason), ...]
-        """
+        """批量审核活动（带速率限制和重试）"""
 
         async def judge_with_limit_and_retry(activity: SecondClass) -> tuple[SecondClass, bool, str]:
             """带速率限制和重试的判断任务"""
             async with self.rate_limiter.acquire():
                 try:
-                    # 使用重试机制执行判断
                     is_interested, reason = await with_retry(
                         self._judge_activity_with_reason,
                         activity,
@@ -400,15 +337,12 @@ class AIFilter:
                     traceback.print_exc()
                     return activity, True, f"AI判断失败: {e}，默认保留"
 
-        # 并发执行所有判断任务
         tasks = [judge_with_limit_and_retry(activity) for activity in activities]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 处理结果
         processed_results: list[tuple[SecondClass, bool, str]] = []
         for result in results:
             if isinstance(result, Exception):
-                # 任务本身出错（不应该发生，但保险起见）
                 logger.error(f"AI 筛选任务异常: {result}")
                 continue
             processed_results.append(result)
@@ -416,16 +350,7 @@ class AIFilter:
         return processed_results
 
     async def _judge_activity_with_reason(self, activity: SecondClass, user_info: str) -> tuple[bool, str]:
-        """
-        判断单个活动是否符合用户兴趣（内部方法，会被重试包装）
-
-        Args:
-            activity: SecondClass 对象
-            user_info: 用户信息描述
-
-        Returns:
-            (是否感兴趣, 原因说明)
-        """
+        """判断单个活动是否符合用户兴趣"""
         activity_info = self._format_activity_info(activity)
 
         user_prompt = self.user_prompt_template.format(
@@ -433,7 +358,6 @@ class AIFilter:
             activity_info=activity_info,
         )
 
-        # 构建请求参数
         request_params = {
             "model": self.model,
             "messages": [
@@ -443,7 +367,6 @@ class AIFilter:
             "timeout": self.timeout,
         }
 
-        # 添加额外的请求体参数（如 Kimi 的 thinking 控制）
         if self.extra_body:
             request_params["extra_body"] = self.extra_body
 
@@ -451,7 +374,6 @@ class AIFilter:
 
         content = response.choices[0].message.content.strip()
 
-        # 解析 JSON 响应
         result = self._parse_response(content)
         reason = result.get('reason', '')
 
@@ -463,25 +385,14 @@ class AIFilter:
             return False, reason
 
     def _parse_response(self, content: str) -> dict:
-        """
-        解析 AI 响应内容
-        
-        Args:
-            content: AI 返回的文本内容
-            
-        Returns:
-            解析后的字典
-        """
-        # 尝试直接解析 JSON
+        """解析 AI 响应内容"""
         try:
             return json.loads(content)
         except json.JSONDecodeError:
             pass
 
-        # 尝试提取 JSON 代码块
         import re
 
-        # 匹配 ```json ... ``` 格式
         json_pattern = r"```(?:json)?\s*(.*?)\s*```"
         matches = re.findall(json_pattern, content, re.DOTALL)
 
@@ -491,7 +402,6 @@ class AIFilter:
             except json.JSONDecodeError:
                 continue
 
-        # 尝试匹配 { ... } 格式
         brace_pattern = r"(\{[\s\S]*\})"
         matches = re.findall(brace_pattern, content)
 
@@ -501,7 +411,6 @@ class AIFilter:
             except json.JSONDecodeError:
                 continue
 
-        # 解析失败，返回默认值（保守起见认为感兴趣）
         logger.warning(f"无法解析 AI 响应: {content[:200]}...")
         return {"interested": True, "reason": "解析失败，默认保留"}
 
@@ -511,11 +420,7 @@ class AIFilterConfig:
 
     @staticmethod
     def create_from_settings(settings) -> Optional[AIFilter]:
-        """
-        从配置创建 AI 筛选器实例
-        
-        支持新的速率限制和重试配置
-        """
+        """从配置创建 AI 筛选器实例"""
         if not hasattr(settings, 'ai'):
             return None
 
@@ -525,10 +430,8 @@ class AIFilterConfig:
             logger.info("AI 筛选功能已禁用")
             return None
 
-        # 验证必填配置项（调用配置类的验证方法）
         ai_config.validate_required_fields()
 
-        # 从文件加载提示词（严格要求文件必须存在）
         from src.config.settings import load_prompt_file_strict
 
         system_prompt = load_prompt_file_strict(ai_config.system_prompt_file)
@@ -537,7 +440,6 @@ class AIFilterConfig:
         logger.info(f"已加载系统提示词: {ai_config.system_prompt_file}")
         logger.info(f"已加载用户提示词模板: {ai_config.user_prompt_template_file}")
 
-        # 构建速率限制参数
         rate_limit_kwargs = {}
         if hasattr(ai_config, 'rate_limit') and ai_config.rate_limit:
             rate_limit = ai_config.rate_limit
@@ -546,7 +448,6 @@ class AIFilterConfig:
             rate_limit_kwargs['rate_limit_enable_queue'] = getattr(rate_limit, 'enable_queue', True)
             rate_limit_kwargs['rate_limit_queue_timeout'] = getattr(rate_limit, 'queue_timeout', 300.0)
 
-        # 构建重试参数
         retry_kwargs = {}
         if hasattr(ai_config, 'retry') and ai_config.retry:
             retry = ai_config.retry

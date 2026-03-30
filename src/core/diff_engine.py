@@ -17,10 +17,10 @@ from src.utils.logger import get_logger
 
 logger = get_logger("diff")
 
-# 需要忽略的字段（不参与差异比较）
+# 忽略字段（不参与差异比较）
 IGNORE_FIELDS = {"scan_timestamp", "deep_scaned", "deep_scaned_time"}
 
-# 需要比较的字段列表（与数据库表结构一致）
+# 比较的字段列表
 COMPARABLE_FIELDS = {
     "id",
     "name",
@@ -45,26 +45,12 @@ COMPARABLE_FIELDS = {
 
 
 class DiffEngine:
-    """
-    对比两个数据库状态的差异
-    - 比较 all_secondclass 表
-    - 生成新增/删除/修改列表
-    """
+    """对比两个数据库状态的差异"""
 
     async def diff(self, old_db_path: Path, new_db_path: Path) -> DiffResult:
-        """
-        对比两个数据库，返回差异结果
-        
-        Args:
-            old_db_path: 旧数据库路径
-            new_db_path: 新数据库路径
-            
-        Returns:
-            DiffResult 差异结果
-        """
+        """对比两个数据库，返回差异结果"""
         logger.info(f"开始对比数据库: {old_db_path.name} -> {new_db_path.name}")
 
-        # 加载两个数据库的活动数据
         old_activities = await self._load_activities(old_db_path)
         new_activities = await self._load_activities(new_db_path)
 
@@ -75,7 +61,7 @@ class DiffEngine:
         removed = []
         modified = []
 
-        # 新增：在新数据库中但不在旧数据库中
+        # 新增
         for aid in new_ids - old_ids:
             act = new_activities[aid]
             added.append(ActivityChange(
@@ -85,7 +71,7 @@ class DiffEngine:
             ))
             logger.debug(f"新增活动: {act.name} ({aid})")
 
-        # 删除：在旧数据库中但不在新数据库中
+        # 删除
         for aid in old_ids - new_ids:
             act = old_activities[aid]
             removed.append(ActivityChange(
@@ -95,7 +81,7 @@ class DiffEngine:
             ))
             logger.debug(f"删除活动: {act.name} ({aid})")
 
-        # 修改：在两个数据库中都存在，但字段有变化
+        # 修改
         for aid in old_ids & new_ids:
             old_act = old_activities[aid]
             new_act = new_activities[aid]
@@ -109,7 +95,6 @@ class DiffEngine:
                 ))
                 logger.debug(f"修改活动: {new_act.name} ({aid}), 变化字段: {[fc.field_name for fc in field_changes]}")
 
-        # 获取两个数据库的扫描时间
         old_scan_time = await self._get_db_scan_time(old_db_path)
         new_scan_time = await self._get_db_scan_time(new_db_path)
 
@@ -124,23 +109,12 @@ class DiffEngine:
         return result
 
     def _compare_activity(self, old: SecondClass, new: SecondClass) -> list[FieldChange]:
-        """
-        对比单个活动的字段变化，忽略 scan_timestamp
-        
-        Args:
-            old: 旧活动数据
-            new: 新活动数据
-            
-        Returns:
-            字段变化列表
-        """
+        """对比单个活动的字段变化"""
         changes = []
 
-        # 从原始数据中获取字段值进行比较
         old_data = old.data
         new_data = new.data
 
-        # 比较关键字段
         field_mapping = {
             "name": "itemName",
             "status": "itemStatus",
@@ -165,7 +139,7 @@ class DiffEngine:
                     new_value=new_val
                 ))
 
-        # 比较时间字段（需要特殊处理）
+        # 比较时间字段
         time_fields = [
             ("apply_time", "applySt", "applyEt"),
             ("hold_time", "st", "et"),
@@ -211,15 +185,7 @@ class DiffEngine:
         return changes
 
     async def _load_activities(self, db_path: Path) -> dict[str, SecondClass]:
-        """
-        从数据库加载所有活动
-        
-        Args:
-            db_path: 数据库文件路径
-            
-        Returns:
-            以 activity_id 为键的 SecondClass 字典
-        """
+        """从数据库加载所有活动"""
         activities = {}
 
         if not db_path.exists():
@@ -242,15 +208,7 @@ class DiffEngine:
         return activities
 
     async def get_enrolled_ids(self, db_path: Path) -> set[str]:
-        """
-        获取用户已报名的活动 ID 集合
-        
-        Args:
-            db_path: 数据库文件路径
-            
-        Returns:
-            已报名活动 ID 集合
-        """
+        """获取已报名活动 ID 集合"""
         enrolled_ids = set()
 
         if not db_path.exists():
@@ -269,23 +227,12 @@ class DiffEngine:
         return enrolled_ids
 
     async def _get_db_scan_time(self, db_path: Path) -> Optional[datetime]:
-        """
-        获取数据库的扫描时间
-        
-        从数据库中提取 scan_timestamp 字段，取最小值（最早的扫描时间）
-        
-        Args:
-            db_path: 数据库文件路径
-            
-        Returns:
-            扫描时间，如果无法获取则返回 None
-        """
+        """获取数据库的扫描时间"""
         if not db_path or not db_path.exists():
             return None
 
         try:
             async with aiosqlite.connect(db_path) as db:
-                # 获取所有活动的 scan_timestamp，取最小值
                 async with db.execute(
                         "SELECT MIN(scan_timestamp) as min_ts FROM all_secondclass"
                 ) as cursor:

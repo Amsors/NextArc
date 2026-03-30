@@ -18,7 +18,6 @@ logger = get_logger("feishu.handler.valid")
 class ValidHandler(CommandHandler):
     """查询可报名活动指令"""
 
-    # 类级别的用户偏好管理器
     _user_preference_manager: UserPreferenceManager = None
 
     @classmethod
@@ -43,7 +42,6 @@ class ValidHandler(CommandHandler):
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
-        # 解析参数
         need_rescan = "重新扫描" in args
         show_all = "全部" in args or "所有" in args
         deep_update = "深度" in args or "深度更新" in args
@@ -53,7 +51,6 @@ class ValidHandler(CommandHandler):
 
         scan_info = ""
 
-        # 如果需要重新扫描，先执行扫描
         if need_rescan:
             from src.utils.formatter import format_scan_result
 
@@ -76,13 +73,11 @@ class ValidHandler(CommandHandler):
                 logger.error(f"重新扫描失败: {e}")
                 return Response.error(str(e), context="重新扫描")
 
-        # 获取最新数据库
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update 或 /valid 重新扫描")
 
         try:
-            # 从数据库获取可报名活动（状态为 PUBLISHED 或 APPLYING）
             activities = await self._get_valid_activities(latest_db)
 
             if deep_update:
@@ -101,7 +96,6 @@ class ValidHandler(CommandHandler):
                     lines.insert(1, "")
                 return Response.text("\n".join(lines))
 
-            # 保存原始数量用于后续显示
             original_count = len(activities)
             filter_info = []
             db_filtered = []
@@ -109,9 +103,7 @@ class ValidHandler(CommandHandler):
             ai_filtered = []
             enrolled_filtered = []
 
-            # 如果不显示全部，则应用筛选器
             if not show_all:
-                # 获取已报名活动ID列表并应用已报名筛选
                 enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(latest_db)
                 if enrolled_ids:
                     enrolled_filter = EnrolledFilter(enrolled_ids)
@@ -120,21 +112,18 @@ class ValidHandler(CommandHandler):
                         filter_info.append(f"已报名筛选已过滤 {len(enrolled_filtered)} 个活动")
                         logger.info(f"已报名筛选过滤了 {len(enrolled_filtered)} 个活动")
 
-                # 应用数据库筛选（被用户标记为不感兴趣的活动）
                 if self._user_preference_manager:
                     activities, db_filtered = await self._user_preference_manager.filter_activities(activities)
                     if db_filtered:
                         filter_info.append(f"数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
                         logger.info(f"数据库筛选过滤了 {len(db_filtered)} 个活动")
 
-                # 应用时间筛选（如果启用）
                 if self._scanner.use_time_filter and self._scanner.time_filter:
                     activities, time_filtered = self._scanner.time_filter.filter_activities(activities)
                     if time_filtered:
                         filter_info.append(f"时间筛选已过滤 {len(time_filtered)} 个活动")
                         logger.info(f"时间筛选过滤了 {len(time_filtered)} 个活动")
 
-                # 应用 AI 筛选（如果启用）
                 if self._scanner.use_ai_filter and self._scanner.ai_filter:
                     ai_user_info = self._scanner.ai_user_info
                     activities, ai_filtered = await self._scanner.ai_filter.filter_activities(
@@ -159,14 +148,12 @@ class ValidHandler(CommandHandler):
             if enrolled_filtered:
                 filter_result["enrolled"] = enrolled_filtered
 
-            # 保存显示的活动列表到会话（用于"不感兴趣"功能）
             session.set_displayed_activities(
                 activities=activities,
                 source="valid",
                 filtered_activities=filter_result
             )
 
-            # 如果没有通过筛选的活动
             if not activities:
                 lines = []
                 if need_rescan:
@@ -182,13 +169,11 @@ class ValidHandler(CommandHandler):
                     lines.append("发送「/valid 全部」查看所有活动（不进行筛选）")
                 return Response.text("\n".join(lines))
 
-            # 构建文本提示信息
             lines = []
             if need_rescan:
                 lines.append(scan_info)
                 lines.append("")
 
-            # 标题和筛选信息
             if show_all:
                 lines.append(f"可报名活动（共 {original_count} 条，显示全部）：")
             else:
@@ -203,26 +188,23 @@ class ValidHandler(CommandHandler):
             lines.append(f"已发送 {len(activities)} 个可报名活动的卡片")
             lines.append("（使用折叠面板展示，点击活动名称查看详情）")
 
-            # 提示信息
             if not show_all:
                 has_filter = (
                         self._scanner.use_ai_filter or
                         self._scanner.use_time_filter or
                         self._user_preference_manager or
-                        True  # 已报名筛选始终启用
+                        True
                 )
                 if has_filter:
                     lines.append("发送「/valid 全部」查看所有活动（不进行筛选）")
 
-            # 添加不感兴趣提示
             lines.append("对活动不感兴趣？发送「不感兴趣 序号」或「不感兴趣 全部」")
 
-            # 返回复合响应：先返回文本，metadata 包含活动列表用于发送卡片
             return Response.activity_list(
                 activities=activities,
                 title=f"可报名活动（共 {len(activities)} 个）",
                 filters_applied=filter_info,
-                hint="\n".join(lines)  # 文本提示通过 metadata 传递
+                hint="\n".join(lines)
             )
 
         except Exception as e:
@@ -239,7 +221,6 @@ class ValidHandler(CommandHandler):
 
         async with aiosqlite.connect(db_path) as conn:
             conn.row_factory = aiosqlite.Row
-            # 查询状态为发布中或报名中的活动
             placeholders = ",".join(["?"] * len(valid_status_codes))
             async with conn.execute(
                     f"""

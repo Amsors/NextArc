@@ -29,7 +29,6 @@ class MessageRouter:
 
         CommandHandler.set_dependencies(scanner, auth_manager, db_manager)
 
-        # 同时为取消和报名处理器设置依赖（因为它们有额外的 execute 方法）
         self.cancel_handler._scanner = scanner
         self.cancel_handler._auth_manager = auth_manager
         self.cancel_handler._db_manager = db_manager
@@ -38,28 +37,16 @@ class MessageRouter:
         self.join_handler._auth_manager = auth_manager
         self.join_handler._db_manager = db_manager
 
-        # 设置忽略处理器依赖
         if ignore_manager:
             IgnoreHandler.set_ignore_manager(ignore_manager)
 
     async def handle_message(self, text: str, session: UserSession) -> Response:
-        """
-        处理用户消息
-
-        Args:
-            text: 用户输入的文本
-            session: 用户会话
-
-        Returns:
-            Response 响应对象
-        """
+        """处理用户消息"""
         text = text.strip()
 
-        # 检查是否有待确认操作
         if session.confirm and not session.confirm.is_expired():
             return await self._handle_confirmation(text, session)
 
-        # 去掉开头的 / 并分割
         if text.startswith("/"):
             parts = text[1:].split()
         else:
@@ -71,7 +58,6 @@ class MessageRouter:
         cmd = parts[0].lower()
         args = parts[1:]
 
-        # 查找并执行处理器
         handler = self.handlers.get(cmd)
         if not handler:
             return Response.text(f"未知指令: /{cmd}\n\n发送 /alive 查看可用指令")
@@ -84,16 +70,7 @@ class MessageRouter:
             return Response.error(str(e), context=f"处理指令 /{cmd}")
 
     async def _handle_confirmation(self, text: str, session: UserSession) -> Response:
-        """
-        处理确认操作
-
-        Args:
-            text: 用户响应（确认/取消）
-            session: 用户会话
-
-        Returns:
-            Response 响应对象
-        """
+        """处理确认操作"""
         text = text.strip()
 
         if text == "确认":
@@ -111,7 +88,6 @@ class MessageRouter:
             session.clear_confirm()
             return Response.text("已取消操作")
         else:
-            # 不是确认或取消，提醒用户
             return Response.text(
                 f"{session.confirm.get_confirm_prompt()}\n\n"
                 f"请回复「确认」或「取消」"

@@ -40,8 +40,6 @@ class DiffResult(BaseModel):
     added: list[ActivityChange] = []
     removed: list[ActivityChange] = []
     modified: list[ActivityChange] = []
-
-    # 两次数据采集的时间
     old_scan_time: Optional[datetime] = None
     new_scan_time: Optional[datetime] = None
 
@@ -61,21 +59,18 @@ class DiffResult(BaseModel):
             lines.append("无变化")
             return "\n".join(lines)
 
-        # 新增
         if self.added:
             lines.append(f"新增活动（{len(self.added)}个）：")
             for i, change in enumerate(self.added, 1):
                 lines.append(change.format(i))
             lines.append("")
 
-        # 删除
         if self.removed:
             lines.append(f"删除活动（{len(self.removed)}个）：")
             for i, change in enumerate(self.removed, 1):
                 lines.append(change.format(i))
             lines.append("")
 
-        # 修改
         if self.modified:
             lines.append(f"信息修改（{len(self.modified)}个）：")
             for i, change in enumerate(self.modified, 1):
@@ -93,18 +88,12 @@ class DiffResult(BaseModel):
         return changes
 
     def format_new_activities_notification(self) -> str:
-        """
-        格式化新增活动通知
-        
-        Returns:
-            格式化后的通知文本
-        """
+        """格式化新增活动通知"""
         if not self.added:
             return ""
 
         lines = ["发现新的第二课堂活动！", ""]
 
-        # 显示数据采集时间
         if self.old_scan_time and self.new_scan_time:
             lines.append(f"数据对比：")
             lines.append(f"   上次采集：{self.old_scan_time.strftime('%Y-%m-%d %H:%M:%S')}")

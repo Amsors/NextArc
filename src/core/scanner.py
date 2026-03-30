@@ -11,7 +11,6 @@ from apscheduler.triggers.interval import IntervalTrigger
 from pyustc.young import SecondClass
 
 from src.core.secondclass_db import SecondClassDB
-
 from src.utils.logger import get_logger
 from .ai_filter import AIFilter
 from .auth_manager import AuthManager
@@ -85,17 +84,12 @@ class ActivityScanner:
         Args:
             notify_new_activities: 是否通知新活动
             no_filter: 是否对新活动进行筛选
-            notify_enrolled_change: 是否通知已报名的活动的更新
+            notify_enrolled_change: 是否通知已报名活动的更新
             notify_diff: 是否显示数据库差异
             deep_update: 是否深度更新数据库（包含已报名活动）
 
         Returns:
             扫描结果统计
-            :param notify_new_activities:
-            :param no_filter:
-            :param notify_enrolled_change:
-            :param notify_diff:
-            :param deep_update:
         """
         logger.info("=" * 50)
         logger.info("开始扫描第二课堂活动...")
@@ -110,22 +104,18 @@ class ActivityScanner:
             "error": None,
         }
 
-        # 获取用于对比的旧数据库
         old_db_path = self.db_manager.get_previous_db()
         result["old_db_path"] = old_db_path
 
-        # 创建新数据库文件
         new_db_path = self.db_manager.get_new_db_path()
         result["new_db_path"] = new_db_path
         logger.info(f"新数据库: {new_db_path.name}")
 
         try:
-            # 在单个会话中完成所有数据获取
-            # 重要：YouthService 使用 ContextVar，必须保持同一个上下文
+            # YouthService 使用 ContextVar，必须保持同一个上下文
             async with self.auth_manager.create_session_once() as service:
                 logger.debug("会话已创建，开始获取数据...")
 
-                # 使用 SecondClassDB 获取所有可报名活动
                 db = SecondClassDB(new_db_path)
                 await db.update_all_from_generator(
                     SecondClass.find(apply_ended=False),
@@ -133,7 +123,6 @@ class ActivityScanner:
                     deep_update=deep_update
                 )
 
-                # 更新已报名活动表
                 try:
                     await db.update_enrolled_from_generator(
                         SecondClass.get_participated(),
@@ -142,27 +131,21 @@ class ActivityScanner:
                 except Exception as e:
                     logger.warning(f"获取已报名活动失败: {e}")
 
-                # 会话在此处关闭，但数据库文件已保存
-
-            # 统计活动数量（在会话外执行，不涉及 YouthService）
             result["activity_count"] = await self._count_activities(new_db_path)
             logger.info(f"扫描到 {result['activity_count']} 个可报名活动")
 
-            # 统计已报名数量
             enrolled_count = await self._count_enrolled(new_db_path)
             logger.info(f"已报名 {enrolled_count} 个活动")
 
             if not no_filter and not notify_new_activities and not notify_enrolled_change and not notify_diff:
                 logger.info("仅更新数据库，无需发送详细通知")
 
-            # 对比差异（如果有旧数据库）
             if old_db_path and old_db_path != new_db_path:
                 logger.info(f"开始对比{old_db_path.name}和{new_db_path.name}")
                 diff = await self.diff_engine.diff(old_db_path, new_db_path)
                 result["diff"] = diff
                 logger.info(f"差异对比: {diff.get_summary()}")
 
-                # 获取已报名活动的变更
                 enrolled_ids = await self.diff_engine.get_enrolled_ids(new_db_path)
                 enrolled_changes = diff.get_enrolled_changes(enrolled_ids)
                 result["enrolled_changes"] = enrolled_changes
@@ -170,21 +153,17 @@ class ActivityScanner:
                 if enrolled_changes:
                     logger.info(f"已报名活动有 {len(enrolled_changes)} 处变更")
 
-                    # 发布已报名活动变更事件
                     if notify_enrolled_change and self.event_bus:
                         event = EnrolledActivityChangedEvent(
                             changes=enrolled_changes,
                         )
                         await self.event_bus.publish(event)
 
-                # 发布新活动事件
                 if notify_new_activities and diff.added and self.event_bus:
-                    # 获取已报名活动ID列表，传递给 _publish_new_activities_event
                     enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(new_db_path)
-                    # 使用 create_task 在后台执行，避免阻塞定时扫描和 WebSocket 心跳
+                    # 后台执行，避免阻塞定时扫描和 WebSocket 心跳
                     self._create_background_task(self._publish_new_activities_event(diff, not no_filter, enrolled_ids))
 
-                # 发布扫描完成事件
                 if self.event_bus:
                     completed_event = ScanCompletedEvent(
                         new_db_path=new_db_path,
@@ -195,7 +174,6 @@ class ActivityScanner:
                     )
                     await self.event_bus.publish(completed_event)
 
-            # 清理旧数据库
             deleted_count = self.db_manager.cleanup_old_dbs()
             if deleted_count > 0:
                 logger.info(f"清理了 {deleted_count} 个旧数据库")
@@ -208,7 +186,6 @@ class ActivityScanner:
             logger.error(f"扫描失败: {e}")
             traceback.print_exc()
             result["error"] = str(e)
-            # 清理失败的数据库文件
             if new_db_path.exists():
                 try:
                     new_db_path.unlink()
@@ -234,14 +211,7 @@ class ActivityScanner:
                 return row[0] if row else 0
 
     def _create_background_task(self, coro) -> None:
-        """
-        创建后台任务（带异常处理）
-        
-        用于执行可能耗时的操作（如 AI 筛选），避免阻塞主事件循环。
-        
-        Args:
-            coro: 协程对象
-        """
+        """创建后台任务（带异常处理）"""
 
         async def wrapped_coro():
             try:
@@ -251,7 +221,6 @@ class ActivityScanner:
 
         task = asyncio.create_task(wrapped_coro())
 
-        # 添加回调以捕获任何未处理的异常
         def on_task_done(t):
             try:
                 t.result()
@@ -262,14 +231,7 @@ class ActivityScanner:
 
     async def _publish_new_activities_event(self, diff, enable_filter: bool = True,
                                             enrolled_ids: set[str] = None) -> None:
-        """
-        发布新活动发现事件
-
-        Args:
-            diff: 差异结果，包含新增活动列表
-            enable_filter: 是否启用筛选（数据库筛选、时间筛选、AI 筛选）
-            enrolled_ids: 已报名活动ID集合
-        """
+        """发布新活动发现事件"""
         if not self.event_bus:
             return
 
@@ -277,20 +239,17 @@ class ActivityScanner:
             return
 
         try:
-            # 获取新增活动的详细信息
             new_activity_ids = [change.activity_id for change in diff.added]
             activities = await self.get_activity_list_by_id(new_activity_ids)
-            ai_filtered = []  # AI 过滤掉的活动
-            time_filtered = []  # 时间过滤掉的活动
-            db_filtered = []  # 数据库筛选过滤掉的活动（用户标记为不感兴趣）
-            enrolled_filtered = []  # 已报名筛选过滤掉的活动
+            ai_filtered = []
+            time_filtered = []
+            db_filtered = []
+            enrolled_filtered = []
 
-            # 创建已报名筛选器
             enrolled_ids = enrolled_ids or set()
             enrolled_filter = EnrolledFilter(enrolled_ids)
 
             if enable_filter:
-                # 第0步: 从感兴趣白名单中恢复活动（绕过所有筛选）
                 restored_activities = []
                 if self.user_preference_manager:
                     activities, restored_activities = \
@@ -298,7 +257,7 @@ class ActivityScanner:
                     if restored_activities:
                         logger.info(f"从感兴趣白名单恢复了 {len(restored_activities)} 个活动")
 
-                # 第0.5步: 应用已报名筛选（先筛选掉已报名的活动）
+                # 筛选掉已报名的活动
                 if enrolled_ids:
                     logger.info(f"使用已报名筛选检查 {len(activities)} 个新活动...")
                     activities, enrolled_filtered = enrolled_filter.filter_activities(activities)
@@ -310,7 +269,7 @@ class ActivityScanner:
                         logger.info("已报名筛选后无活动需要通知（全部已报名）")
                         return
 
-                # 第1步: 应用数据库筛选（被用户标记为不感兴趣的活动）
+                # 应用数据库筛选（标记为不感兴趣的活动）
                 db_filtered = []
                 if self.user_preference_manager:
                     logger.info(f"使用数据库筛选检查 {len(activities)} 个新活动...")
@@ -344,16 +303,13 @@ class ActivityScanner:
                     if not activities and not restored_activities:
                         logger.info("AI 筛选后无活动需要通知")
 
-            # 将恢复的活动加回到最终列表（它们绕过所有筛选）
+            # 将恢复的活动加回到最终列表
             if restored_activities:
                 activities = restored_activities + activities
                 logger.info(
                     f"最终活动列表包含 {len(restored_activities)} 个白名单活动"
                     f"和 {len(activities) - len(restored_activities)} 个通过筛选的活动")
 
-            # 注意：已报名的白名单活动不会被恢复，因为已报名意味着用户不需要再报名
-
-            # 发布新活动发现事件
             event = NewActivitiesFoundEvent(
                 activities=activities,
                 total_found=len(new_activity_ids),
@@ -436,7 +392,7 @@ class ActivityScanner:
 
         Args:
             activity_ids: 活动ID列表
-            max_concurrent: 最大并发数，默认为 5
+            max_concurrent: 最大并发数
 
         Returns:
             SecondClass 对象列表（仅包含成功获取的活动）
@@ -446,10 +402,8 @@ class ActivityScanner:
         activities: list[SecondClass] = []
 
         async with self.auth_manager.create_session_once() as service:
-            # 创建所有 SecondClass 实例
             sc_instances = [SecondClass(aid, None) for aid in activity_ids]
 
-            # 使用批量并发更新
             from .batch_updater import SecondClassBatchUpdater
             updater = SecondClassBatchUpdater(max_concurrent)
 

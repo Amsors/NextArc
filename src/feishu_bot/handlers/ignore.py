@@ -1,7 +1,4 @@
-"""不感兴趣指令处理器
-
-处理用户发送的"不感兴趣"指令，将活动加入忽略数据库
-"""
+"""不感兴趣指令处理器"""
 
 from src.core import UserPreferenceManager
 from src.models import UserSession
@@ -15,12 +12,12 @@ logger = get_logger("feishu.handler.ignore")
 class IgnoreHandler(CommandHandler):
     """
     不感兴趣指令处理器
-    
+
     支持指令：
     - /ignore 1,2,3
     - 不感兴趣 1-5
     - 不感兴趣 全部
-    
+
     处理格式：
     - "不感兴趣 1,2,3" - 忽略序号为1,2,3的活动
     - "不感兴趣 1-5" - 忽略序号1到5的活动
@@ -28,7 +25,6 @@ class IgnoreHandler(CommandHandler):
     - "不感兴趣 全部" 或 "不感兴趣 所有" - 忽略所有上次显示的活动
     """
 
-    # 类级别的共享实例
     _ignore_manager: UserPreferenceManager = None
 
     @classmethod
@@ -47,20 +43,10 @@ class IgnoreHandler(CommandHandler):
         )
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """
-        处理 /ignore 或 不感兴趣 指令
-
-        Args:
-            args: 指令参数列表
-            session: 用户会话
-
-        Returns:
-            回复消息
-        """
+        """处理 /ignore 或 不感兴趣 指令"""
         if not self._ignore_manager:
             return Response.text("忽略功能未初始化")
 
-        # 检查参数
         if not args:
             return Response.text(
                 "格式错误\n\n"
@@ -87,13 +73,9 @@ class IgnoreHandler(CommandHandler):
 
             return Response.text(f"已添加AI筛选出的{success_count}个活动到不感兴趣列表")
 
-        # 合并参数（支持 "不感兴趣 1 2 3" 或 "不感兴趣 1,2,3"）
         indices_str = " ".join(args).strip()
 
-        # 检查是否有可操作的最近活动列表
         displayed_activities = session.get_all_displayed_activities()
-
-        # filtered_displayed_activities = session.get_filtered_activities()
 
         if not displayed_activities:
             return Response.text(
@@ -103,7 +85,6 @@ class IgnoreHandler(CommandHandler):
                 "• /search <关键词> - 搜索活动"
             )
 
-        # 解析序号
         indices, errors = session.parse_displayed_indices(indices_str)
 
         if errors:
@@ -116,7 +97,6 @@ class IgnoreHandler(CommandHandler):
                 f"有效范围：1-{len(displayed_activities)}"
             )
 
-        # 获取要忽略的活动ID
         activity_ids = []
         activity_names = []
 
@@ -129,18 +109,15 @@ class IgnoreHandler(CommandHandler):
         if not activity_ids:
             return Response.text("无法获取活动信息，请重试")
 
-        # 添加到忽略数据库
         success_count, failed_count = await self._ignore_manager.add_ignored_activities(activity_ids)
 
         if success_count == 0:
             return Response.text("添加失败，请稍后重试")
 
-        # 构建回复消息
         lines = ["已添加到不感兴趣列表\n"]
 
-        # 显示添加的活动
         lines.append(f"成功添加 {success_count} 个活动：")
-        for name in activity_names[:10]:  # 最多显示10个
+        for name in activity_names[:10]:
             lines.append(f"  • {name}")
 
         if len(activity_names) > 10:
