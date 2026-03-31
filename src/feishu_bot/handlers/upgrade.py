@@ -161,24 +161,35 @@ class UpgradeHandler(CommandHandler):
             session.clear_confirm()
 
             version_info = ""
+            extra_notifications = []
+            
             if version_changed:
                 version_info = f"\n版本号: {old_ver_str} → {new_ver_str}\n"
                 logger.info(f"版本号发生变化: {old_ver_str} -> {new_ver_str}")
+                extra_notifications.append(f"版本号: {old_ver_str} → {new_ver_str}")
+
+            major_version_changed = self._is_major_version_changed(old_version, new_version)
+            if major_version_changed:
+                logger.warning(f"主版本号发生变化: {old_ver_str} -> {new_ver_str}")
+                extra_notifications.extend([
+                    "",
+                    "⚠️ 重要提醒：主版本号发生变更！！！",
+                    "可能引入 breaking change，请于 GitHub 上查看最新版本文档，",
+                    "手动进行配置迁移，否则软件将无法运行，或部分功能将不可用！！！"
+                ])
+
+            extra_msg = "\n".join(extra_notifications) if extra_notifications else ""
+            if extra_msg:
+                extra_msg = "\n" + extra_msg + "\n"
 
             success_msg = (
                 f"更新成功！\n"
                 f"\n"
                 f"已更新至: {latest_sha}\n"
-                f"\n"
+                f"{version_info}"
+                f"{extra_msg}"
                 f"正在重启应用..."
             )
-
-            major_version_changed = self._is_major_version_changed(old_version, new_version)
-            if major_version_changed:
-                logger.warning(f"主版本号发生变化: {old_ver_str} -> {new_ver_str}")
-
-            # 发送版本变更通知（在返回响应后、重启前）
-            await self._send_version_notifications(old_version, new_version, major_version_changed)
 
             # 延迟重启
             asyncio.create_task(self._delayed_restart())
@@ -241,44 +252,7 @@ class UpgradeHandler(CommandHandler):
         await asyncio.sleep(delay)
         self._restart_application()
 
-    async def _send_version_notifications(
-            self,
-            old_version: tuple[int, int, int] | None,
-            new_version: tuple[int, int, int] | None,
-            major_changed: bool
-    ):
-        if not self._message_sender or not (old_version or new_version):
-            return
 
-        old_ver_str = self._version_to_str(old_version)
-        new_ver_str = self._version_to_str(new_version)
-
-        if old_ver_str == new_ver_str:
-            return
-
-        version_msg = (
-            f"当前版本: {old_ver_str}\n"
-            f"新版本: {new_ver_str}"
-        )
-        try:
-            await self._message_sender.send(version_msg)
-            logger.info(f"已发送版本变更通知: {old_ver_str} -> {new_ver_str}")
-        except Exception as e:
-            logger.error(f"发送版本变更通知失败: {e}")
-
-        # 如果主版本号发生变化，发送额外警告
-        if major_changed:
-            warning_msg = (
-                "重要提醒：主版本号发生变更！！！\n"
-                "\n"
-                "可能引入 breaking change，请于 GitHub 上查看最新版本文档，"
-                "手动进行配置迁移，否则软件将无法运行，或部分功能将不可用！！！"
-            )
-            try:
-                await self._message_sender.send(warning_msg)
-                logger.warning("已发送主版本号变更警告")
-            except Exception as e:
-                logger.error(f"发送主版本号变更警告失败: {e}")
 
     def _read_version_file(self) -> tuple[int, int, int] | None:
         try:
