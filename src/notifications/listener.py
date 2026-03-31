@@ -142,9 +142,7 @@ class NotificationListener:
             lines.append("")
 
         # 添加对比链接
-        if event.repo_url:
-            compare_url = f"{event.repo_url}/compare/{event.current_sha[:7]}...{event.latest_sha[:7]}"
-            lines.append(f"查看详情: {compare_url}")
+        lines.append("执行 /upgrade 指令即可进行更新")
 
         try:
             await self._notification_service.send_text("\n".join(lines))

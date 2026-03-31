@@ -386,18 +386,6 @@ class NextArcApp:
                 lines.append(f"  {detail}")
             lines.append("")
 
-        lines.extend([
-            "可用指令：",
-            "/alive - 检查服务状态",
-            "/update - 手动更新数据库",
-            "/check - 更新并显示差异",
-            "/info - 查看已报名活动",
-            "/search <关键词> - 搜索活动",
-            "/join <序号> - 报名活动",
-            "/cancel <序号> - 取消报名",
-            "",
-        ])
-
         return "\n".join(lines)
 
     def _signal_handler(self) -> None:

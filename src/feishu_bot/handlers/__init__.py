@@ -12,6 +12,7 @@ from .info import InfoHandler
 from .interested import InterestedHandler
 from .join import JoinHandler
 from .search import SearchHandler
+from .upgrade import UpgradeHandler
 from .valid import ValidHandler
 
 
@@ -109,6 +110,14 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
     for instruction in interested_instructions:
         ret[instruction] = InterestedHandler()
 
+    upgrade_instructions = [
+        "upgrade",
+        "升级",
+        "更新程序",
+    ]
+    for instruction in upgrade_instructions:
+        ret[instruction] = UpgradeHandler()
+
     return ret
 
 
@@ -125,4 +134,5 @@ __all__ = [
     "ValidHandler",
     "IgnoreHandler",
     "InterestedHandler",
+    "UpgradeHandler",
 ]

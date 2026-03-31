@@ -80,6 +80,14 @@ class MessageRouter:
                 return await self.cancel_handler.execute_cancel(session)
             elif operation == "join":
                 return await self.join_handler.execute_join(session)
+            elif operation == "upgrade":
+                from .handlers.upgrade import UpgradeHandler
+
+                upgrade_handler = UpgradeHandler()
+                upgrade_handler._scanner = self.cancel_handler._scanner
+                upgrade_handler._auth_manager = self.cancel_handler._auth_manager
+                upgrade_handler._db_manager = self.cancel_handler._db_manager
+                return await upgrade_handler.execute_upgrade(session)
             else:
                 session.clear_confirm()
                 return Response.text("未知的操作类型")
