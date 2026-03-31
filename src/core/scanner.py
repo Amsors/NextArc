@@ -72,6 +72,7 @@ class ActivityScanner:
         self.diff_engine = DiffEngine()
         self._last_scan_time: Optional[datetime] = None
         self._is_running = False
+        self._scan_lock = asyncio.Lock()  # 防止并发扫描
 
     async def scan(
             self,
@@ -83,7 +84,7 @@ class ActivityScanner:
     ) -> dict[str, Any]:
         """
         执行一次扫描
-        
+
         Args:
             notify_new_activities: 是否通知新活动
             no_filter: 是否对新活动进行筛选
@@ -94,6 +95,37 @@ class ActivityScanner:
         Returns:
             扫描结果统计
         """
+        # 防止并发扫描
+        if self._scan_lock.locked():
+            logger.warning("扫描正在进行中，跳过本次请求")
+            return {
+                "success": False,
+                "error": "扫描正在进行中，请稍后再试",
+                "new_db_path": None,
+                "old_db_path": None,
+                "activity_count": 0,
+                "diff": None,
+                "enrolled_changes": [],
+            }
+
+        async with self._scan_lock:
+            return await self._do_scan(
+                deep_update=deep_update,
+                notify_diff=notify_diff,
+                notify_enrolled_change=notify_enrolled_change,
+                notify_new_activities=notify_new_activities,
+                no_filter=no_filter,
+            )
+
+    async def _do_scan(
+            self,
+            deep_update: bool,
+            notify_diff: bool,
+            notify_enrolled_change: bool,
+            notify_new_activities: bool,
+            no_filter: bool
+    ) -> dict[str, Any]:
+        """实际执行扫描"""
         logger.info("=" * 50)
         logger.info("开始扫描第二课堂活动...")
 
