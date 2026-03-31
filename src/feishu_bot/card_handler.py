@@ -56,6 +56,8 @@ class CardActionHandler:
             return await self._handle_join(activity_id, activity_name)
         elif action == "view_children":
             return await self._handle_view_children(activity_id, activity_name)
+        elif action == "cancel":
+            return await self._handle_cancel(activity_id, activity_name)
         else:
             return {
                 "toast": {
@@ -269,7 +271,7 @@ class CardActionHandler:
                 for child in children:
                     await child.update()
 
-                from src.utils.formatter import build_activity_card
+                from src.utils.formatter import build_activity_card, CardButtonConfig
                 from src.core import UserPreferenceManager
                 from src.config import get_settings
 
@@ -284,12 +286,16 @@ class CardActionHandler:
                 except Exception:
                     pass
 
+                # 子活动使用默认按钮配置（显示忽略和报名按钮）
+                button_config = CardButtonConfig()
+
                 total = len(children)
                 if total <= max_per_card:
                     card_content = build_activity_card(
                         children,
                         title=f'系列活动「{activity_name}」的子活动',
-                        ignored_ids=ignored_ids
+                        ignored_ids=ignored_ids,
+                        button_config=button_config
                     )
                     await self._bot.send_card(card_content)
                 else:
@@ -306,7 +312,8 @@ class CardActionHandler:
                             batch_children,
                             title=batch_title,
                             ignored_ids=ignored_ids,
-                            start_index=start_index
+                            start_index=start_index,
+                            button_config=button_config
                         )
                         await self._bot.send_card(card_content)
 
@@ -340,5 +347,71 @@ class CardActionHandler:
                 "toast": {
                     "type": "error",
                     "content": f"查看子活动失败: {str(e)[:50]}"
+                }
+            }
+
+    async def _handle_cancel(self, activity_id: str, activity_name: str) -> dict:
+        """处理取消报名操作"""
+        if not self._auth_manager or not self._bot:
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "服务未初始化，请稍后重试"
+                }
+            }
+
+        logger.info(f"执行卡片取消报名: {activity_name} ({activity_id})")
+
+        try:
+            from pyustc.young.second_class import SecondClass
+
+            async with self._auth_manager.create_session_once():
+                sc = SecondClass(activity_id, {})
+                result = await sc.cancel_apply()
+
+                if result:
+                    success_message = (
+                        f"取消报名成功\n\n"
+                        f"活动：{activity_name}\n"
+                    )
+                    await self._bot.send_text(success_message)
+                    logger.info(f"卡片取消报名成功: {activity_name}")
+                    return {
+                        "toast": {
+                            "type": "success",
+                            "content": "取消报名成功"
+                        }
+                    }
+                else:
+                    fail_message = (
+                        f"取消报名失败\n\n"
+                        f"活动：{activity_name}\n"
+                        f"原因：无法取消报名，请检查活动状态"
+                    )
+                    await self._bot.send_text(fail_message)
+                    logger.warning(f"卡片取消报名失败: {activity_name}")
+                    return {
+                        "toast": {
+                            "type": "error",
+                            "content": "取消报名失败，请检查活动状态"
+                        }
+                    }
+
+        except Exception as e:
+            logger.error(f"卡片取消报名失败: {e}")
+            error_message = (
+                f"取消报名失败\n\n"
+                f"活动：{activity_name}\n"
+                f"错误：{str(e)}"
+            )
+            try:
+                await self._bot.send_text(error_message)
+            except Exception as send_err:
+                logger.error(f"发送取消报名失败消息失败: {send_err}")
+
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": f"取消报名失败: {str(e)[:50]}"
                 }
             }

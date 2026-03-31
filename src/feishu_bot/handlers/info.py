@@ -6,7 +6,6 @@ from pyustc.young import SecondClass, Status
 from src.core.filter import SecondClassFilter
 from src.models import UserSession, secondclass_from_db_row
 from src.notifications import Response
-from src.utils.formatter import format_enrolled_list
 from src.utils.logger import get_logger
 from .base import CommandHandler
 
@@ -90,7 +89,18 @@ class InfoHandler(CommandHandler):
             if not activities:
                 return Response.text("已报名活动\n\n您目前没有报名任何活动")
 
-            return Response.text(f"{hint}{format_enrolled_list(activities)}")
+            # 保存活动到会话，用于后续通过序号取消报名
+            session.set_displayed_activities(
+                activities=activities,
+                source="info"
+            )
+
+            # 发送文本提示，然后发送已报名活动卡片
+            return Response.enrolled_list(
+                activities=activities,
+                title="已报名活动",
+                filters_applied=[hint.strip()] if hint else None
+            )
 
         except Exception as e:
             logger.error(f"查询已报名活动失败: {e}")

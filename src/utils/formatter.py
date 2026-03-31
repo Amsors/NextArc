@@ -1,5 +1,6 @@
 """消息格式化工具"""
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -16,6 +17,87 @@ from src.models.activity import (
     get_department_name,
     get_labels_text, get_description_text, get_place_info, get_participation_form,
 )
+
+
+@dataclass
+class CardButtonConfig:
+    """卡片按钮配置类"""
+    # 操作按钮
+    show_ignore_button: bool = True  # 显示"不感兴趣/已忽略"按钮
+    show_join_button: bool = True  # 显示"去报名"按钮
+    show_cancel_button: bool = False  # 显示"取消报名"按钮
+    show_children_button: bool = True  # 显示"查看子活动"按钮
+
+    # 按钮状态
+    is_ignored: bool = False  # 当前是否已标记为不感兴趣
+
+    def get_buttons(self, act: SecondClass) -> list[dict]:
+        """
+        根据配置生成按钮列表
+        
+        Args:
+            act: 活动对象
+            
+        Returns:
+            按钮配置列表
+        """
+        buttons = []
+
+        # 不感兴趣/已忽略按钮
+        if self.show_ignore_button:
+            ignore_button_text = "已忽略" if self.is_ignored else "不感兴趣"
+            ignore_button_type = "default" if self.is_ignored else "danger"
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": ignore_button_text},
+                "type": ignore_button_type,
+                "value": {
+                    "action": "toggle_ignore",
+                    "activity_id": act.id,
+                    "activity_name": act.name
+                }
+            })
+
+        # 取消报名按钮（已报名活动专用）
+        if self.show_cancel_button:
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "取消报名"},
+                "type": "danger",
+                "value": {
+                    "action": "cancel",
+                    "activity_id": act.id,
+                    "activity_name": act.name
+                }
+            })
+
+        # 系列活动显示"查看子活动"，非系列活动显示"去报名"
+        if act.is_series:
+            if self.show_children_button:
+                buttons.append({
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": "查看子活动"},
+                    "type": "primary",
+                    "value": {
+                        "action": "view_children",
+                        "activity_id": act.id,
+                        "activity_name": act.name
+                    }
+                })
+        else:
+            if self.show_join_button:
+                buttons.append({
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": "去报名"},
+                    "type": "primary",
+                    "value": {
+                        "action": "join",
+                        "activity_id": act.id,
+                        "activity_name": act.name
+                    }
+                })
+
+        return buttons
 
 
 def format_activity_list(activities: list[SecondClass], title: str = "活动列表", simple_format: bool = False) -> str:
@@ -264,7 +346,7 @@ def build_activity_card(
         title: str = "活动列表",
         ignored_ids: set[str] | None = None,
         start_index: int = 1,
-        show_ignore_button: bool = True
+        button_config: CardButtonConfig | None = None
 ) -> dict:
     """
     构建活动列表的消息卡片（使用折叠面板）
@@ -274,7 +356,7 @@ def build_activity_card(
         title: 卡片标题
         ignored_ids: 已被忽略的活动ID集合，用于显示正确的按钮状态
         start_index: 起始序号（默认为1，用于分批发送时保持序号连续）
-        show_ignore_button: 是否显示"不感兴趣"按钮（默认为True）
+        button_config: 按钮配置，默认为None（使用默认配置：显示忽略和报名按钮）
 
     Returns:
         飞书消息卡片 JSON 字典
@@ -311,7 +393,13 @@ def build_activity_card(
 
     for i, act in enumerate(activities, start_index):
         is_ignored = act.id in ignored_ids
-        collapsible_panel = _build_activity_collapsible_panel(act, i, is_ignored, show_ignore_button)
+        # 创建该活动的按钮配置
+        if button_config is None:
+            act_button_config = CardButtonConfig()
+        else:
+            from dataclasses import replace
+            act_button_config = replace(button_config, is_ignored=is_ignored)
+        collapsible_panel = _build_activity_collapsible_panel(act, i, act_button_config)
         elements.append(collapsible_panel)
 
     return {
@@ -327,8 +415,7 @@ def build_activity_card(
 def _build_activity_collapsible_panel(
         act: SecondClass,
         index: int,
-        is_ignored: bool = False,
-        show_ignore_button: bool = True
+        button_config: CardButtonConfig | None = None
 ) -> dict:
     """
     为单个活动构建折叠面板
@@ -336,14 +423,15 @@ def _build_activity_collapsible_panel(
     Args:
         act: SecondClass 活动对象
         index: 序号（从1开始）
-        is_ignored: 是否已被忽略（用于显示正确的按钮状态）
-        show_ignore_button: 是否显示"不感兴趣"按钮（默认为True）
+        button_config: 按钮配置，默认为None（使用默认配置）
 
     Returns:
         折叠面板 JSON 字典
     """
-    activity_type = "系列活动" if act.is_series else "单次活动"
+    if button_config is None:
+        button_config = CardButtonConfig()
 
+    activity_type = "系列活动" if act.is_series else "单次活动"
     header_title = f"[{index}] {act.name} ({activity_type})"
 
     detail_elements = []
@@ -427,50 +515,13 @@ def _build_activity_collapsible_panel(
 
     detail_elements.append({"tag": "hr"})
 
-    button_elements = []
-
-    # 根据 show_ignore_button 参数决定是否显示"不感兴趣"按钮
-    if show_ignore_button:
-        ignore_button_text = "已忽略" if is_ignored else "不感兴趣"
-        ignore_button_type = "default" if is_ignored else "danger"
-        button_elements.append({
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": ignore_button_text},
-            "type": ignore_button_type,
-            "value": {
-                "action": "toggle_ignore",
-                "activity_id": act.id,
-                "activity_name": act.name
-            }
+    # 使用 button_config 生成按钮
+    button_elements = button_config.get_buttons(act)
+    if button_elements:
+        detail_elements.append({
+            "tag": "action",
+            "actions": button_elements
         })
-
-    if act.is_series:
-        button_elements.append({
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": "查看子活动"},
-            "type": "primary",
-            "value": {
-                "action": "view_children",
-                "activity_id": act.id,
-                "activity_name": act.name
-            }
-        })
-    else:
-        button_elements.append({
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": "去报名"},
-            "type": "primary",
-            "value": {
-                "action": "join",
-                "activity_id": act.id,
-                "activity_name": act.name
-            }
-        })
-
-    detail_elements.append({
-        "tag": "action",
-        "actions": button_elements
-    })
 
     return {
         "tag": "collapsible_panel",

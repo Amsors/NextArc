@@ -6,6 +6,7 @@ from pyustc.young import SecondClass
 
 from src.models import UserSession, secondclass_from_db_row
 from src.notifications import Response
+from src.utils.formatter import CardButtonConfig
 from src.utils.logger import get_logger
 from .base import CommandHandler
 
@@ -63,10 +64,14 @@ class SearchHandler(CommandHandler):
             title = f'搜索「{keyword}」结果（共{len(activities)}个）'
             if hint:
                 title += f"\n{hint}"
+
+            # 不显示不感兴趣按钮
+            button_config = CardButtonConfig(show_ignore_button=False)
+            
             return Response.activity_list(
                 activities,
                 title=title,
-                show_ignore_button=False
+                button_config=button_config
             )
 
         except Exception as e:

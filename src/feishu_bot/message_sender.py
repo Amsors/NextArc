@@ -1,9 +1,14 @@
 """消息发送器"""
 
+from typing import TYPE_CHECKING
+
 from pyustc.young import SecondClass
 
-from src.utils.formatter import build_activity_card
+from src.utils.formatter import build_activity_card, CardButtonConfig
 from src.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from src.utils.formatter import CardButtonConfig
 
 logger = get_logger("feishu.sender")
 
@@ -59,11 +64,21 @@ class MessageSender:
             self,
             activities: list[SecondClass],
             title: str = "活动列表",
-            show_ignore_button: bool = True
+            button_config: "CardButtonConfig | None" = None
     ) -> bool:
-        """发送活动列表卡片（带折叠面板）"""
+        """
+        发送活动列表卡片（带折叠面板）
+        
+        Args:
+            activities: 活动列表
+            title: 卡片标题
+            button_config: 按钮配置，默认为None（使用默认配置）
+        """
+        if button_config is None:
+            button_config = CardButtonConfig()
+
         if not activities:
-            card_content = build_activity_card(activities, title, show_ignore_button=show_ignore_button)
+            card_content = build_activity_card(activities, title, button_config=button_config)
             return await self.send_card(card_content)
 
         max_per_card = DEFAULT_MAX_ACTIVITIES_PER_CARD
@@ -75,7 +90,7 @@ class MessageSender:
             logger.warning(f"获取配置失败，使用默认值 {DEFAULT_MAX_ACTIVITIES_PER_CARD}: {e}")
 
         if len(activities) <= max_per_card:
-            card_content = build_activity_card(activities, title, show_ignore_button=show_ignore_button)
+            card_content = build_activity_card(activities, title, button_config=button_config)
             return await self.send_card(card_content)
 
         # 分批发送
@@ -99,7 +114,7 @@ class MessageSender:
                 batch_activities,
                 batch_title,
                 start_index=start_index,
-                show_ignore_button=show_ignore_button
+                button_config=button_config
             )
 
             success = await self.send_card(card_content)

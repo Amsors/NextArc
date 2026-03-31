@@ -40,23 +40,70 @@ class Response:
             activities: list,
             title: str = "活动列表",
             filters_applied: list[str] | None = None,
-            show_ignore_button: bool = True,
+            button_config: "CardButtonConfig | None" = None,
             **metadata
     ) -> "Response":
-        """创建活动列表卡片响应"""
-        from src.utils.formatter import build_activity_card
+        """
+        创建活动列表卡片响应
+        
+        Args:
+            activities: 活动列表
+            title: 卡片标题
+            filters_applied: 已应用的筛选器列表
+            button_config: 按钮配置，默认为None（使用默认配置）
+            **metadata: 额外元数据
+        """
+        from src.utils.formatter import build_activity_card, CardButtonConfig
 
-        card_content = build_activity_card(activities, title, show_ignore_button=show_ignore_button)
+        if button_config is None:
+            button_config = CardButtonConfig()
+
+        card_content = build_activity_card(activities, title, button_config=button_config)
 
         meta = {
             "activities": activities,
             "title": title,
             "filters_applied": filters_applied or [],
-            "show_ignore_button": show_ignore_button,
+            "button_config": button_config,
             **metadata
         }
 
         return cls(type=ResponseType.CARD, content=card_content, metadata=meta)
+
+    @classmethod
+    def enrolled_list(
+            cls,
+            activities: list,
+            title: str = "已报名活动",
+            filters_applied: list[str] | None = None,
+            **metadata
+    ) -> "Response":
+        """
+        创建已报名活动列表卡片响应（显示取消报名按钮）
+        
+        Args:
+            activities: 已报名活动列表
+            title: 卡片标题
+            filters_applied: 已应用的筛选器列表
+            **metadata: 额外元数据
+        """
+        from src.utils.formatter import CardButtonConfig
+
+        # 已报名活动的按钮配置：显示取消报名按钮，不显示不感兴趣和去报名按钮
+        button_config = CardButtonConfig(
+            show_ignore_button=False,
+            show_join_button=False,
+            show_cancel_button=True,
+            show_children_button=True
+        )
+
+        return cls.activity_list(
+            activities=activities,
+            title=title,
+            filters_applied=filters_applied,
+            button_config=button_config,
+            **metadata
+        )
 
     @classmethod
     def error(cls, message: str, context: str = "") -> "Response":
