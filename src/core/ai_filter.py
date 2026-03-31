@@ -104,7 +104,7 @@ class AIFilter:
             self,
             api_key: str,
             system_prompt: str,
-            user_prompt_template: str,
+            user_prompt: str,
             model: str,
             temperature: float,
             base_url: Optional[str] = None,
@@ -129,7 +129,7 @@ class AIFilter:
             base_url: API 基础 URL（可选，用于第三方兼容服务）
             model: 模型名称
             system_prompt: 系统提示词
-            user_prompt_template: 用户提示词模板
+            user_prompt: 用户提示词
             temperature: 采样温度
             timeout: 请求超时时间（秒）
             extra_body: 额外的请求体参数
@@ -150,8 +150,8 @@ class AIFilter:
             raise ValueError("AI 筛选器初始化失败：model 不能为空")
         if not system_prompt:
             raise ValueError("AI 筛选器初始化失败：system_prompt 不能为空")
-        if not user_prompt_template:
-            raise ValueError("AI 筛选器初始化失败：user_prompt_template 不能为空")
+        if not user_prompt:
+            raise ValueError("AI 筛选器初始化失败：user_prompt 不能为空")
         if temperature is None:
             raise ValueError("AI 筛选器初始化失败：temperature 不能为空")
 
@@ -159,7 +159,7 @@ class AIFilter:
         self.base_url = base_url
         self.model = model
         self.system_prompt = system_prompt
-        self.user_prompt_template = user_prompt_template
+        self.user_prompt = user_prompt
         self.temperature = temperature
         self.timeout = timeout
         self.extra_body = extra_body or {}
@@ -353,7 +353,7 @@ class AIFilter:
         """判断单个活动是否符合用户兴趣"""
         activity_info = self._format_activity_info(activity)
 
-        user_prompt = self.user_prompt_template.format(
+        user_prompt = self.user_prompt.format(
             user_info=user_info,
             activity_info=activity_info,
         )
@@ -435,10 +435,10 @@ class AIFilterConfig:
         from src.config.settings import load_prompt_file_strict
 
         system_prompt = load_prompt_file_strict(ai_config.system_prompt_file)
-        user_prompt_template = load_prompt_file_strict(ai_config.user_prompt_template_file)
+        user_prompt = load_prompt_file_strict(ai_config.user_prompt_file)
 
         logger.info(f"已加载系统提示词: {ai_config.system_prompt_file}")
-        logger.info(f"已加载用户提示词模板: {ai_config.user_prompt_template_file}")
+        logger.info(f"已加载用户提示词: {ai_config.user_prompt_file}")
 
         rate_limit_kwargs = {}
         if hasattr(ai_config, 'rate_limit') and ai_config.rate_limit:
@@ -463,7 +463,7 @@ class AIFilterConfig:
             base_url=ai_config.base_url if ai_config.base_url else None,
             model=ai_config.model,
             system_prompt=system_prompt,
-            user_prompt_template=user_prompt_template,
+            user_prompt=user_prompt,
             temperature=ai_config.temperature,
             timeout=ai_config.timeout,
             extra_body=ai_config.extra_body,

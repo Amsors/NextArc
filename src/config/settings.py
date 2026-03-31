@@ -187,7 +187,7 @@ class AIConfig(BaseModel):
     """AI 筛选配置
     
     启用 AI 功能时，api_key、model、user_info、system_prompt_file、
-    user_prompt_template_file、temperature 必须配置
+    user_prompt_file、temperature 必须配置
     """
     enabled: bool = Field(default=False, description="是否启用 AI 筛选")
 
@@ -200,12 +200,12 @@ class AIConfig(BaseModel):
     )
 
     system_prompt_file: str = Field(
-        default="config/prompts/system_prompt.txt",
+        default="config/prompts/system_prompt.md",
         description="系统提示词文件路径（enabled: true 时必填）"
     )
-    user_prompt_template_file: str = Field(
-        default="config/prompts/user_prompt_template.txt",
-        description="用户提示词模板文件路径（enabled: true 时必填）"
+    user_prompt_file: str = Field(
+        default="config/prompts/user_prompt.md",
+        description="用户提示词文件路径（enabled: true 时必填）"
     )
     temperature: Optional[float] = Field(
         default=None,
@@ -242,8 +242,8 @@ class AIConfig(BaseModel):
             missing.append("user_info")
         if not self.system_prompt_file:
             missing.append("system_prompt_file")
-        if not self.user_prompt_template_file:
-            missing.append("user_prompt_template_file")
+        if not self.user_prompt_file:
+            missing.append("user_prompt_file")
         if self.temperature is None:
             missing.append("temperature")
 
