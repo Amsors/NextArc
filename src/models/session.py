@@ -120,9 +120,10 @@ class DisplayedActivitiesSession(BaseModel):
 
 class ConfirmSession(BaseModel):
     """待确认操作会话"""
-    operation: Literal["cancel", "join"]
-    activity_id: str
-    activity_name: str
+    operation: Literal["cancel", "join", "upgrade"]
+    activity_id: Optional[str] = None
+    activity_name: Optional[str] = None
+    data: Optional[dict] = None  # 用于存储额外数据（如升级信息）
     created_at: datetime
 
     def is_expired(self) -> bool:
@@ -131,9 +132,12 @@ class ConfirmSession(BaseModel):
 
     def get_confirm_prompt(self) -> str:
         """获取确认提示文本"""
+        if self.operation == "upgrade":
+            return "请回复「确认」或「取消」"
         action = "取消报名" if self.operation == "cancel" else "报名"
+        activity_name = self.activity_name or "未知活动"
         return (
-            f"确定要{action}「{self.activity_name}」吗？\n\n"
+            f"确定要{action}「{activity_name}」吗？\n\n"
             f"回复「确认」执行操作\n"
             f"回复「取消」放弃操作"
         )
@@ -159,13 +163,16 @@ class UserSession:
         """清除搜索上下文"""
         self.search = None
 
-    def set_confirm(self, operation: Literal["cancel", "join"],
-                    activity_id: str, activity_name: str) -> None:
+    def set_confirm(self, operation: Literal["cancel", "join", "upgrade"],
+                    activity_id: Optional[str] = None,
+                    activity_name: Optional[str] = None,
+                    data: Optional[dict] = None) -> None:
         """设置待确认操作"""
         self.confirm = ConfirmSession(
             operation=operation,
             activity_id=activity_id,
             activity_name=activity_name,
+            data=data,
             created_at=datetime.now()
         )
 
