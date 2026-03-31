@@ -2,13 +2,18 @@
 
 import asyncio
 import os
+import re
 import sys
+from pathlib import Path
 
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
 
 logger = get_logger("feishu.handler.upgrade")
+
+VERSION_FILE_NAME = ".next_arc_version"
+VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
 
 class UpgradeHandler(CommandHandler):
@@ -116,6 +121,10 @@ class UpgradeHandler(CommandHandler):
 
         version_checker = self._scanner.version_checker
 
+        # 读取更新前的版本号
+        old_version = self._read_version_file()
+        logger.info(f"更新前版本号: {old_version}")
+
         # 发送正在更新的消息
         progress_msg = (
             "正在执行更新...\n"
@@ -142,9 +151,19 @@ class UpgradeHandler(CommandHandler):
                     f"当前版本保持不变: {current_sha}"
                 )
 
-            logger.info("git pull 成功，准备重启")
+            logger.info("git pull 成功")
+
+            new_version = self._read_version_file()
+            logger.info(f"更新后版本号: {new_version}")
+
+            version_changed, old_ver_str, new_ver_str = self._compare_versions(old_version, new_version)
 
             session.clear_confirm()
+
+            version_info = ""
+            if version_changed:
+                version_info = f"\n版本号: {old_ver_str} → {new_ver_str}\n"
+                logger.info(f"版本号发生变化: {old_ver_str} -> {new_ver_str}")
 
             success_msg = (
                 f"更新成功！\n"
@@ -154,7 +173,14 @@ class UpgradeHandler(CommandHandler):
                 f"正在重启应用..."
             )
 
-            # 异步延迟重启，给消息发送留时间
+            major_version_changed = self._is_major_version_changed(old_version, new_version)
+            if major_version_changed:
+                logger.warning(f"主版本号发生变化: {old_ver_str} -> {new_ver_str}")
+
+            # 发送版本变更通知（在返回响应后、重启前）
+            await self._send_version_notifications(old_version, new_version, major_version_changed)
+
+            # 延迟重启
             asyncio.create_task(self._delayed_restart())
 
             return Response.text(success_msg)
@@ -214,6 +240,92 @@ class UpgradeHandler(CommandHandler):
     async def _delayed_restart(self, delay: float = 5.0):
         await asyncio.sleep(delay)
         self._restart_application()
+
+    async def _send_version_notifications(
+            self,
+            old_version: tuple[int, int, int] | None,
+            new_version: tuple[int, int, int] | None,
+            major_changed: bool
+    ):
+        if not self._message_sender or not (old_version or new_version):
+            return
+
+        old_ver_str = self._version_to_str(old_version)
+        new_ver_str = self._version_to_str(new_version)
+
+        if old_ver_str == new_ver_str:
+            return
+
+        version_msg = (
+            f"当前版本: {old_ver_str}\n"
+            f"新版本: {new_ver_str}"
+        )
+        try:
+            await self._message_sender.send(version_msg)
+            logger.info(f"已发送版本变更通知: {old_ver_str} -> {new_ver_str}")
+        except Exception as e:
+            logger.error(f"发送版本变更通知失败: {e}")
+
+        # 如果主版本号发生变化，发送额外警告
+        if major_changed:
+            warning_msg = (
+                "重要提醒：主版本号发生变更！！！\n"
+                "\n"
+                "可能引入 breaking change，请于 GitHub 上查看最新版本文档，"
+                "手动进行配置迁移，否则软件将无法运行，或部分功能将不可用！！！"
+            )
+            try:
+                await self._message_sender.send(warning_msg)
+                logger.warning("已发送主版本号变更警告")
+            except Exception as e:
+                logger.error(f"发送主版本号变更警告失败: {e}")
+
+    def _read_version_file(self) -> tuple[int, int, int] | None:
+        try:
+            version_checker = self._scanner.version_checker
+            version_file = version_checker.project_root / VERSION_FILE_NAME
+
+            if not version_file.exists():
+                logger.warning(f"版本文件不存在: {version_file}")
+                return None
+
+            content = version_file.read_text().strip()
+            match = VERSION_PATTERN.match(content)
+
+            if not match:
+                logger.warning(f"版本号格式无效: {content}")
+                return None
+
+            x, y, z = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            return (x, y, z)
+
+        except Exception as e:
+            logger.error(f"读取版本文件失败: {e}")
+            return None
+
+    def _compare_versions(
+            self,
+            old: tuple[int, int, int] | None,
+            new: tuple[int, int, int] | None
+    ) -> tuple[bool, str, str]:
+        old_str = self._version_to_str(old)
+        new_str = self._version_to_str(new)
+        changed = old_str != new_str
+        return (changed, old_str, new_str)
+
+    def _is_major_version_changed(
+            self,
+            old: tuple[int, int, int] | None,
+            new: tuple[int, int, int] | None
+    ) -> bool:
+        if old is None or new is None:
+            return False
+        return old[0] != new[0]
+
+    def _version_to_str(self, version: tuple[int, int, int] | None) -> str:
+        if version is None:
+            return "unknown"
+        return f"{version[0]}.{version[1]}.{version[2]}"
 
     def _restart_application(self):
         """使用 os.execv 替换当前进程，保持相同的命令行参数"""
