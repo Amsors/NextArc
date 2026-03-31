@@ -15,7 +15,7 @@ from src.models.activity import (
     get_apply_progress,
     get_module_name,
     get_department_name,
-    get_labels_text, get_description_text, get_place_info, get_participation_form,
+    get_labels_text, get_conceive_text, get_place_info, get_participation_form, get_description_text
 )
 
 
@@ -123,63 +123,6 @@ def format_activity_list(activities: list[SecondClass], title: str = "活动列�
             lines.append("")
 
     return "\n".join(lines)
-
-
-def format_diff_result(diff: DiffResult) -> str:
-    """
-    格式化差异结果
-
-    Args:
-        diff: 差异结果
-
-    Returns:
-        格式化后的文本
-    """
-    return diff.format_full()
-
-
-def format_enrolled_list(activities: list[SecondClass]) -> str:
-    """
-    格式化已报名活动列表
-
-    Args:
-        activities: 已报名活动列表
-
-    Returns:
-        格式化后的文本
-    """
-    lines = format_activity_list(activities, "已报名活动")
-
-    if activities:
-        lines += "\n使用 /cancel 序号 取消报名\n"
-
-    return lines
-
-
-def format_search_results(activities: list[SecondClass], keyword: str, hint: str = "") -> str:
-    """
-    格式化搜索结果
-
-    Args:
-        activities: 搜索结果列表
-        keyword: 搜索关键词
-        hint: 提示信息
-
-    Returns:
-        格式化后的文本
-    """
-    lines = format_activity_list(activities, f'搜索「{keyword}」结果')
-
-    if activities:
-        lines += "\n使用 /join 序号 报名指定活动\n"
-        lines += "搜索结果有效期5分钟\n"
-    else:
-        lines += "未找到匹配的活动，请尝试其他关键词\n"
-
-    if hint:
-        lines += f"\n{hint}"
-
-    return lines
 
 
 def format_ai_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
@@ -502,7 +445,14 @@ def _build_activity_collapsible_panel(
     detail_elements.append(
         {
             "tag": "markdown",
-            "content": f"**活动描述**\n{get_description_text(act)}"
+            "content": f"**✏️ 活动构想**\n{get_conceive_text(act)}"
+        }
+    )
+
+    detail_elements.append(
+        {
+            "tag": "markdown",
+            "content": f"**📚️ 活动描述**\n{get_description_text(act)}"
         }
     )
 

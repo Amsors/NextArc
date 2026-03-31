@@ -234,11 +234,18 @@ def get_labels_text(sc: SecondClass) -> str:
     return ", ".join(label.name for label in labels)
 
 
-def get_description_text(sc: SecondClass) -> str:
+def get_conceive_text(sc: SecondClass) -> str:
     """获取活动描述文本"""
     if sc.conceive:
         return sc.conceive
-    return sc.conceive or "无"
+    return sc.conceive or "未提供"
+
+
+def get_description_text(sc: SecondClass) -> str:
+    """获取活动描述文本"""
+    if sc.description:
+        return sc.description
+    return sc.description or "未提供"
 
 
 def get_place_info(sc: SecondClass) -> str:
