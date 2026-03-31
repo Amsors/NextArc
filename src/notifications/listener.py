@@ -142,7 +142,7 @@ class NotificationListener:
             lines.append("")
 
         # 添加对比链接
-        lines.append("执行 /upgrade 指令即可进行更新")
+        lines.append("向机器人发送 /upgrade 或 升级 即可进行更新")
 
         try:
             await self._notification_service.send_text("\n".join(lines))

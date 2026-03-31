@@ -7,6 +7,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# 更新标记文件名
+UPDATE_MARKER_FILE = ".next_arc_updated"
+
 from src.config import load_settings
 from src.config.preferences import load_preferences
 from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConfig
@@ -340,6 +343,9 @@ class NextArcApp:
             if self.bot:
                 await self.bot.start()
 
+                # 检查是否是更新后重启，如果是则发送更新通知
+                await self._check_and_notify_update()
+
                 # 发送启动问候消息
                 startup_msg = self._get_startup_message()
                 # 尝试发送（如果已知 chat_id）
@@ -418,6 +424,48 @@ class NextArcApp:
             "ignore_count": self.user_preference_manager.get_ignored_count_sync() if self.user_preference_manager else 0,
             "interested_count": self.user_preference_manager.get_interested_count_sync() if self.user_preference_manager else 0,
         }
+
+    def _get_update_marker_path(self) -> Path:
+        """获取更新标记文件路径"""
+        return project_root / UPDATE_MARKER_FILE
+
+    def _has_update_marker(self) -> bool:
+        """检查是否存在更新标记文件"""
+        marker_path = self._get_update_marker_path()
+        return marker_path.exists()
+
+    def _remove_update_marker(self) -> bool:
+        """删除更新标记文件"""
+        try:
+            marker_path = self._get_update_marker_path()
+            if marker_path.exists():
+                marker_path.unlink()
+                logger.info(f"已删除更新标记文件: {marker_path}")
+                return True
+        except Exception as e:
+            logger.error(f"删除更新标记文件失败: {e}")
+        return False
+
+    async def _check_and_notify_update(self):
+        """检查更新标记并发送更新通知"""
+        if not self._has_update_marker():
+            return
+
+        logger.info("检测到更新标记文件，发送更新通知...")
+
+        if self.bot and self.bot.is_connected():
+            try:
+                success = await self.bot.send_text("NextArc 已完成自更新")
+                if success:
+                    logger.info("已发送更新通知消息")
+                else:
+                    logger.warning("发送更新通知消息失败")
+            except Exception as e:
+                logger.error(f"发送更新通知消息异常: {e}")
+        else:
+            logger.warning("飞书机器人未连接，无法发送更新通知")
+
+        self._remove_update_marker()
 
 
 async def main():

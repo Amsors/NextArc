@@ -219,6 +219,9 @@ class UpgradeHandler(CommandHandler):
         """使用 os.execv 替换当前进程，保持相同的命令行参数"""
         logger.info("正在重启应用...")
 
+        # 创建更新标记文件
+        self._create_update_marker()
+
         executable = sys.executable
         args = sys.argv
 
@@ -229,3 +232,12 @@ class UpgradeHandler(CommandHandler):
             os.execv(executable, [executable] + args)
         except Exception as e:
             logger.error(f"重启失败: {e}")
+
+    def _create_update_marker(self):
+        try:
+            project_root = self._scanner.version_checker.project_root
+            marker_file = project_root / ".next_arc_updated"
+            marker_file.touch()
+            logger.info(f"已创建更新标记文件: {marker_file}")
+        except Exception as e:
+            logger.error(f"创建更新标记文件失败: {e}")
