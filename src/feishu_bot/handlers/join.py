@@ -97,7 +97,7 @@ class JoinHandler(CommandHandler):
             logger.info(f"报名成功: {activity_name}")
             return Response.text(
                 f"已成功报名「{activity_name}」\n\n"
-                f"提示：执行 /update 可更新报名状态"
+                # TODO 自动更新已报名活动
             )
 
         except Exception as e:

@@ -72,11 +72,14 @@ class NotificationListener:
                 except Exception as e:
                     logger.warning(f"获取忽略列表失败: {e}")
 
+            from src.utils.formatter import CardButtonConfig
+            button_config = CardButtonConfig(show_ignore_button=True)
+
             await self._notification_service.send_activity_list_card(
                 event.activities,
                 f"有 {event.final_count} 个你可能感兴趣的活动",
                 ignored_ids=ignored_ids,
-                show_ignore_button=True
+                button_config=button_config
             )
             logger.info(f"已发送新活动卡片: {event.final_count} 个活动")
         except Exception as e:
