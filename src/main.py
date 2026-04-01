@@ -61,7 +61,7 @@ class NextArcApp:
             是否初始化成功
         """
         try:
-            # 加载主配置（从项目根目录的 config/ 目录加载）
+            # 加载主配置
             self.settings = load_settings()
 
             # 加载推送偏好配置
@@ -116,13 +116,22 @@ class NextArcApp:
             self.auth_manager = AuthManager(username, password)
             logger.info(f"认证管理器初始化完成，用户名: {username}")
 
-            # 测试登录（使用 create_session_once）
+            # 测试登录
             logger.info("正在测试登录...")
-            async with self.auth_manager.create_session_once() as service:
-                depts = await SecondClass.get_departments()
-                logger.info(f"登录测试成功，获取到 {len(depts)} 个根部门")
+            max_login_retries = 5
+            for attempt in range(1, max_login_retries + 1):
+                try:
+                    async with self.auth_manager.create_session_once() as service:
+                        depts = await SecondClass.get_departments()
+                        logger.info(f"登录测试成功，获取到 {len(depts)} 个根部门")
+                        break
+                except Exception as e:
+                    logger.warning(f"登录测试失败 (尝试 {attempt}/{max_login_retries}): {e}")
+                    if attempt == max_login_retries:
+                        raise
+                    await asyncio.sleep(5)
 
-            # 初始化 AI 筛选器（如果启用）
+            # 初始化 AI 筛选器
             ai_filter = None
             if self.settings.monitor.use_ai_filter and self.settings.ai.enabled:
                 try:
@@ -135,7 +144,7 @@ class NextArcApp:
             else:
                 logger.info("AI 筛选: 已禁用")
 
-            # 初始化版本检查器（如果启用）
+            # 初始化版本检查器
             self.version_checker = None
             logger.info(f"版本检查配置: enabled={self.settings.version_check.enabled}")
             if self.settings.version_check.enabled:
@@ -166,7 +175,7 @@ class NextArcApp:
             else:
                 logger.info("版本检查: 已禁用")
 
-            # 初始化时间筛选器（如果启用）
+            # 初始化时间筛选器
             self.time_filter = None
             use_time_filter = False
             if self.preferences and self.preferences.time_filter.enabled:
@@ -230,7 +239,7 @@ class NextArcApp:
 
             # 初始化飞书机器人
             if self.settings.feishu.app_id and self.settings.feishu.app_secret:
-                # 传入预配置的 chat_id（如果存在）
+                # 传入预配置的 chat_id
                 chat_id = self.settings.feishu.chat_id if self.settings.feishu.chat_id else None
                 self.bot = FeishuBot(
                     app_id=self.settings.feishu.app_id,
@@ -247,7 +256,6 @@ class NextArcApp:
                     bot=self.bot
                 )
 
-                # 初始化通知服务
                 self.notification_service = FeishuNotificationService(self.bot)
                 logger.info("通知服务初始化完成")
 
@@ -279,7 +287,6 @@ class NextArcApp:
             return False
 
     def _check_environment(self) -> None:
-        """检查运行环境"""
         import sys
 
         exe = sys.executable
@@ -328,32 +335,39 @@ class NextArcApp:
             # 执行首次扫描
             if self.settings.behavior.scan_on_start:
                 logger.info("执行首次扫描...")
-                result = await self.scanner.scan(
-                    deep_update=True,
-                    notify_diff=False,
-                    notify_enrolled_change=False,
-                    notify_new_activities=False,
-                    no_filter=False,
-                )
-                logger.info(format_scan_result(result))
+                max_scan_retries = 3
+                for attempt in range(1, max_scan_retries + 1):
+                    try:
+                        result = await self.scanner.scan(
+                            deep_update=True,
+                            notify_diff=False,
+                            notify_enrolled_change=False,
+                            notify_new_activities=False,
+                            no_filter=False,
+                        )
+                        logger.info(format_scan_result(result))
+                        break
+                    except Exception as e:
+                        logger.warning(f"首次扫描失败 (尝试 {attempt}/{max_scan_retries}): {e}")
+                        if attempt == max_scan_retries:
+                            raise
+                        await asyncio.sleep(5)
             else:
                 logger.info("首次扫描已禁用，将在下次定时扫描时执行")
 
-            # 启动飞书机器人（如果已配置）
+            # 启动飞书机器人
             if self.bot:
                 await self.bot.start()
 
                 # 检查是否是更新后重启，如果是则发送更新通知
                 await self._check_and_notify_update()
 
-                # 发送启动问候消息
                 startup_msg = self._get_startup_message()
                 # 尝试发送（如果已知 chat_id）
                 success = await self.bot.send_startup_message(startup_msg)
                 if not success:
                     logger.info("请在飞书中给机器人发送任意消息以激活会话")
 
-            # 等待关闭信号
             logger.info("应用运行中，按 Ctrl+C 停止...")
             await self._shutdown_event.wait()
 
@@ -372,7 +386,6 @@ class NextArcApp:
             "",
         ]
 
-        # 显示当前启用的筛选功能
         filter_details = []
         if self.settings and self.settings.monitor.use_ai_filter and self.settings.ai.enabled:
             filter_details.append("AI筛选")
@@ -383,7 +396,6 @@ class NextArcApp:
             else:
                 mode_desc = "完全包含才过滤"
             filter_details.append(f"时间筛选({mode_desc})")
-        # 数据库筛选始终启用
         filter_details.append("数据库筛选(不感兴趣)")
 
         if filter_details:
@@ -395,12 +407,10 @@ class NextArcApp:
         return "\n".join(lines)
 
     def _signal_handler(self) -> None:
-        """处理关闭信号"""
         logger.info("收到关闭信号...")
         self._shutdown_event.set()
 
     async def shutdown(self) -> None:
-        """关闭应用"""
         logger.info("正在关闭应用...")
 
         if self.scanner:
@@ -412,7 +422,6 @@ class NextArcApp:
         logger.info("应用已关闭")
 
     def get_status(self) -> dict:
-        """获取应用状态"""
         return {
             "is_running": self.scanner.is_running() if self.scanner else False,
             "last_scan": self.scanner.get_last_scan_time() if self.scanner else None,
@@ -426,16 +435,13 @@ class NextArcApp:
         }
 
     def _get_update_marker_path(self) -> Path:
-        """获取更新标记文件路径"""
         return project_root / UPDATE_MARKER_FILE
 
     def _has_update_marker(self) -> bool:
-        """检查是否存在更新标记文件"""
         marker_path = self._get_update_marker_path()
         return marker_path.exists()
 
     def _remove_update_marker(self) -> bool:
-        """删除更新标记文件"""
         try:
             marker_path = self._get_update_marker_path()
             if marker_path.exists():
@@ -447,7 +453,6 @@ class NextArcApp:
         return False
 
     async def _check_and_notify_update(self):
-        """检查更新标记并发送更新通知"""
         if not self._has_update_marker():
             return
 
@@ -469,25 +474,21 @@ class NextArcApp:
 
 
 async def main():
-    """主函数"""
     print("=" * 60)
     print("NextArc - 第二课堂活动监控机器人")
     print("=" * 60)
     print()
 
-    # 检查 Python 版本
     if sys.version_info < (3, 10):
         print("错误：需要 Python 3.10 或更高版本")
         sys.exit(1)
 
     app = NextArcApp()
 
-    # 初始化
     if not await app.initialize():
         print("初始化失败，请检查配置")
         sys.exit(1)
 
-    # 运行应用
     try:
         await app.run()
     except KeyboardInterrupt:
@@ -497,7 +498,7 @@ async def main():
         import traceback
         traceback.print_exc()
 
-    print("\n感谢使用 NextArc!")
+    print("\n程序已退出")
 
 
 if __name__ == "__main__":

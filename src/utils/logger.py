@@ -15,7 +15,7 @@ def setup_logging(
         backup_count: int = 5,
 ) -> logging.Logger:
     """
-    配置根日志输出到命令行和文件（可选），统一整个项目的日志格式
+    配置根日志输出到命令行和文件
 
     Args:
         level: 日志级别，默认为 INFO
