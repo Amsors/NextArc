@@ -1,7 +1,4 @@
-"""/valid 指令处理器
-
-显示当前数据库中可报名的所有第二课堂活动
-"""
+"""/valid 指令处理器"""
 
 import aiosqlite
 from pyustc.young import SecondClass, Status
@@ -16,13 +13,10 @@ logger = get_logger("feishu.handler.valid")
 
 
 class ValidHandler(CommandHandler):
-    """查询可报名活动指令"""
-
     _user_preference_manager: UserPreferenceManager = None
 
     @classmethod
     def set_ignore_manager(cls, user_preference_manager: UserPreferenceManager) -> None:
-        """设置用户偏好管理器"""
         cls._user_preference_manager = user_preference_manager
 
     @property
@@ -38,7 +32,6 @@ class ValidHandler(CommandHandler):
         )
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """处理 /valid 指令"""
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
@@ -214,7 +207,6 @@ class ValidHandler(CommandHandler):
             return Response.error(str(e), context="查询可报名活动")
 
     async def _get_valid_activities(self, db_path) -> list[SecondClass]:
-        """从数据库获取可报名的活动（状态为 PUBLISHED 或 APPLYING）"""
         activities = []
 
         valid_status_codes = [Status.APPLYING.code, Status.PUBLISHED.code]

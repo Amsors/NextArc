@@ -13,8 +13,6 @@ logger = get_logger("feishu.handler.info")
 
 
 class InfoHandler(CommandHandler):
-    """查询已报名活动指令"""
-
     @property
     def command(self) -> str:
         return "info"
@@ -23,13 +21,11 @@ class InfoHandler(CommandHandler):
         return "/info - 显示已报名的所有活动"
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """处理 /info 指令"""
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
         logger.info("执行 /info 指令")
 
-        # 获取最新数据库
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
@@ -89,13 +85,11 @@ class InfoHandler(CommandHandler):
             if not activities:
                 return Response.text("已报名活动\n\n您目前没有报名任何活动")
 
-            # 保存活动到会话，用于后续通过序号取消报名
             session.set_displayed_activities(
                 activities=activities,
                 source="info"
             )
 
-            # 发送文本提示，然后发送已报名活动卡片
             return Response.enrolled_list(
                 activities=activities,
                 title="已报名活动",
@@ -107,7 +101,6 @@ class InfoHandler(CommandHandler):
             return Response.error(str(e), context="查询已报名活动")
 
     async def _get_enrolled_activities(self, db_path, filter: SecondClassFilter | None = None) -> list[SecondClass]:
-        """从数据库获取已报名活动"""
         activities = []
 
         async with aiosqlite.connect(db_path) as conn:

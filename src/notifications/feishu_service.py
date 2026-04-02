@@ -15,14 +15,9 @@ class FeishuNotificationService(NotificationService):
     """通过 FeishuBot 发送文本和卡片消息"""
 
     def __init__(self, bot: "FeishuBot"):
-        """
-        Args:
-            bot: FeishuBot 实例
-        """
         self._bot = bot
 
     async def send_text(self, message: str) -> bool:
-        """发送文本消息"""
         if not self._bot or not self._bot.is_connected():
             logger.warning("飞书机器人未连接，无法发送文本消息")
             return False
@@ -34,7 +29,6 @@ class FeishuNotificationService(NotificationService):
             return False
 
     async def send_card(self, card_content: dict) -> bool:
-        """发送消息卡片"""
         if not self._bot or not self._bot.is_connected():
             logger.warning("飞书机器人未连接，无法发送卡片消息")
             return False

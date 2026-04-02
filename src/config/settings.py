@@ -10,7 +10,6 @@ from pydantic_settings import BaseSettings
 
 
 class USTCConfig(BaseModel):
-    """USTC 认证配置"""
     auth_mode: Literal["file", "env"] = "file"
     username: Optional[str] = None
     password: Optional[str] = None
@@ -19,24 +18,20 @@ class USTCConfig(BaseModel):
 
 
 class BehaviorConfig(BaseModel):
-    """应用行为配置"""
     scan_on_start: bool = False
 
 
 class FilterConfig(BaseModel):
-    """过滤配置"""
     ignore_participated_but_ended_activity: bool = True
 
 
 class MonitorConfig(BaseModel):
-    """监控配置"""
     interval_minutes: int = Field(default=15, ge=1, le=1440)
     notify_new_activities: bool = Field(default=True, description="发现新活动时发送飞书通知")
     use_ai_filter: bool = Field(default=False, description="是否使用 AI 筛选新活动")
 
 
 class VersionCheckConfig(BaseModel):
-    """新版本检查配置"""
     enabled: bool = Field(default=True, description="是否启用新版本检查")
     day_of_week: int = Field(default=6, ge=0, le=6, description="周几检查 (0=周一, 6=周日)")
     hour: int = Field(default=18, ge=0, le=23, description="检查时间 - 小时")
@@ -47,7 +42,6 @@ class VersionCheckConfig(BaseModel):
 
 
 class FeishuConfig(BaseModel):
-    """飞书配置"""
     app_id: str = ""
     app_secret: str = ""
     chat_id: str = Field(default="",
@@ -61,15 +55,10 @@ class FeishuConfig(BaseModel):
 
 
 def get_project_root() -> Path:
-    """获取项目根目录"""
     return Path(__file__).parent.parent.parent
 
 
 class DatabaseConfig(BaseModel):
-    """数据库配置
-    
-    所有路径都相对于项目根目录解析
-    """
     data_dir: Path = Path("./data")
     max_history: int = Field(default=10, ge=1, le=100)
     preference_db_path: Optional[Path] = Field(
@@ -80,7 +69,6 @@ class DatabaseConfig(BaseModel):
     @field_validator("data_dir")
     @classmethod
     def resolve_data_dir(cls, v: Path) -> Path:
-        """将相对路径转换为相对于项目根目录的绝对路径"""
         path = Path(v)
         if not path.is_absolute():
             path = get_project_root() / path
@@ -89,7 +77,6 @@ class DatabaseConfig(BaseModel):
     @field_validator("preference_db_path")
     @classmethod
     def resolve_preference_db_path(cls, v: Optional[Path]) -> Optional[Path]:
-        """将相对路径转换为相对于项目根目录的绝对路径"""
         if v is None:
             return None
         path = Path(v)
@@ -98,14 +85,12 @@ class DatabaseConfig(BaseModel):
         return path.resolve()
 
     def get_preference_db_path(self) -> Path:
-        """获取用户偏好数据库的完整路径"""
         if self.preference_db_path is not None:
             return self.preference_db_path
         return self.data_dir / "user_preference.db"
 
 
 class LogFileConfig(BaseModel):
-    """日志文件配置"""
     enabled: bool = Field(default=False, description="是否启用文件日志")
     path: Path = Field(default=Path("./logs/nextarc.log"), description="日志文件路径")
     max_size_mb: int = Field(default=10, ge=1, le=1000, description="单个日志文件最大大小（MB）")
@@ -121,13 +106,11 @@ class LogFileConfig(BaseModel):
 
 
 class LogConfig(BaseModel):
-    """日志配置"""
     level: str = "INFO"
     file: LogFileConfig = Field(default_factory=LogFileConfig, description="文件日志配置")
 
 
 class AIRateLimitConfig(BaseModel):
-    """AI API 速率限制配置"""
     requests_per_minute: int = Field(
         default=0,
         ge=0,
@@ -151,7 +134,6 @@ class AIRateLimitConfig(BaseModel):
 
 
 class AIRetryConfig(BaseModel):
-    """AI API 重试配置"""
     max_retries: int = Field(
         default=3,
         ge=0,
@@ -184,11 +166,6 @@ class AIRetryConfig(BaseModel):
 
 
 class AIConfig(BaseModel):
-    """AI 筛选配置
-    
-    启用 AI 功能时，api_key、model、user_info、system_prompt_file、
-    user_prompt_file、temperature 必须配置
-    """
     enabled: bool = Field(default=False, description="是否启用 AI 筛选")
 
     api_key: str = Field(default="", description="API 密钥（enabled: true 时必填）")
@@ -222,14 +199,12 @@ class AIConfig(BaseModel):
         default_factory=AIRateLimitConfig,
         description="速率限制配置"
     )
-    # 重试配置（可选）
     retry: AIRetryConfig = Field(
         default_factory=AIRetryConfig,
         description="重试配置"
     )
 
     def validate_required_fields(self) -> None:
-        """验证必填字段（当 enabled: true 时调用）"""
         if not self.enabled:
             return
 
@@ -254,7 +229,6 @@ class AIConfig(BaseModel):
 
 
 class Settings(BaseSettings):
-    """全局配置"""
     ustc: USTCConfig = USTCConfig()
     filter: FilterConfig = FilterConfig()
     behavior: BehaviorConfig = BehaviorConfig()
@@ -267,7 +241,6 @@ class Settings(BaseSettings):
 
     @classmethod
     def from_yaml(cls, yaml_path: Path) -> Self:
-        """从 YAML 文件加载配置"""
         if not yaml_path.exists():
             raise FileNotFoundError(f"配置文件不存在: {yaml_path}")
 
@@ -277,7 +250,6 @@ class Settings(BaseSettings):
         return cls(**config_dict)
 
     def get_credentials(self) -> Tuple[str, str]:
-        """根据 auth_mode 获取用户名密码"""
         if self.ustc.auth_mode == "env":
             username = os.getenv(self.ustc.env_username)
             password = os.getenv(self.ustc.env_password)
@@ -293,7 +265,6 @@ class Settings(BaseSettings):
             return self.ustc.username, self.ustc.password
 
     def ensure_directories(self) -> None:
-        """确保必要的目录存在"""
         self.database.data_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -301,7 +272,6 @@ _settings: Optional[Settings] = None
 
 
 def load_settings(config_path: Optional[Path] = None) -> Settings:
-    """加载配置，如果已加载则返回缓存"""
     global _settings
     if _settings is None:
         if config_path is None:
@@ -313,17 +283,12 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
 
 
 def get_settings() -> Settings:
-    """获取已加载的配置"""
     if _settings is None:
         raise RuntimeError("配置尚未加载，请先调用 load_settings()")
     return _settings
 
 
 def load_prompt_file(file_path: str, default_content: str = "") -> str:
-    """加载提示词文件
-    
-    支持相对路径（相对于项目根目录）和绝对路径
-    """
     project_root = Path(__file__).parent.parent.parent
     path = Path(file_path)
     if not path.is_absolute():
@@ -343,14 +308,6 @@ def load_prompt_file(file_path: str, default_content: str = "") -> str:
 
 
 def load_prompt_file_strict(file_path: str) -> str:
-    """严格加载提示词文件（文件必须存在且不为空）
-    
-    支持相对路径（相对于项目根目录）和绝对路径
-    
-    Raises:
-        FileNotFoundError: 如果文件不存在
-        ValueError: 如果文件内容为空
-    """
     project_root = Path(__file__).parent.parent.parent
     path = Path(file_path)
     if not path.is_absolute():

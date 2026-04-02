@@ -11,8 +11,6 @@ logger = get_logger("feishu.handler.join")
 
 
 class JoinHandler(CommandHandler):
-    """报名活动指令"""
-
     @property
     def command(self) -> str:
         return "join"
@@ -21,7 +19,6 @@ class JoinHandler(CommandHandler):
         return "/join <序号> - 报名搜索结果的指定活动"
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """处理 /join 指令"""
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
@@ -57,7 +54,6 @@ class JoinHandler(CommandHandler):
         return Response.text(session.confirm.get_confirm_prompt())
 
     async def execute_join(self, session: UserSession) -> Response:
-        """执行报名操作"""
         if not session.confirm or session.confirm.operation != "join":
             return Response.text("无效的操作")
 

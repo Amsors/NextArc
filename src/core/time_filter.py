@@ -15,13 +15,10 @@ logger = get_logger("time_filter")
 
 @dataclass
 class TimeFilterDetail:
-    """时间筛选的详细信息"""
     conflicting_ranges: list[TimeRange]
 
 
 class TimeFilter:
-    """根据用户配置的时间偏好筛选活动"""
-
     def __init__(self, preferences: Optional[PushPreferences] = None):
         if preferences is None:
             from src.config.preferences import load_preferences
@@ -31,14 +28,12 @@ class TimeFilter:
         self.time_config = preferences.time_filter
 
     def is_enabled(self) -> bool:
-        """检查时间筛选是否启用"""
         return self.time_config.is_enabled_and_configured()
 
     def filter_activities(
             self,
             activities: list[SecondClass]
     ) -> tuple[list[SecondClass], list[FilteredActivity]]:
-        """筛选活动，返回不冲突和被过滤的活动列表"""
         if not self.is_enabled():
             logger.debug("时间筛选未启用，返回所有活动")
             return activities, []
@@ -63,7 +58,6 @@ class TimeFilter:
         return passed, filtered
 
     def _check_time_conflict(self, activity: SecondClass) -> Optional[FilteredActivity]:
-        """检查活动是否与用户没空时间冲突"""
         hold_time = activity.hold_time
         if hold_time is None:
             logger.debug(f"活动 '{activity.name}' 无法获取举办时间，保留")
@@ -154,7 +148,6 @@ class TimeFilter:
             act_end: time,
             busy_ranges: list[TimeRange]
     ) -> float:
-        """计算活动时间与忙碌时间段的重叠比例"""
         today = datetime.today()
         act_start_dt = datetime.combine(today, act_start)
         act_end_dt = datetime.combine(today, act_end)
@@ -185,7 +178,6 @@ class TimeFilter:
         return min(overlap_ratio, 1.0)
 
     def get_filter_summary(self, filtered: list[FilteredActivity]) -> str:
-        """生成被过滤活动的汇总信息"""
         if not filtered:
             return ""
 
@@ -207,7 +199,6 @@ class TimeFilter:
         return "\n".join(lines)
 
     def get_preferences_summary(self) -> str:
-        """获取当前时间偏好配置的摘要"""
         if not self.is_enabled():
             return "时间筛选：未启用"
 
@@ -218,7 +209,6 @@ class TimeFilter:
 
 
 def create_time_filter_from_config() -> TimeFilter:
-    """从配置创建时间筛选器实例"""
     from src.config.preferences import load_preferences
 
     preferences = load_preferences()

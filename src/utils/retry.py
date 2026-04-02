@@ -23,18 +23,7 @@ class RetryConfig:
             retry_on_network_error: bool = True,
             on_retry: Optional[Callable[[Exception, int, float], None]] = None,
     ):
-        """
-        初始化重试配置
-
-        Args:
-            max_retries: 最大重试次数
-            base_delay: 基础重试延迟（秒）
-            max_delay: 最大重试延迟（秒）
-            backoff_factor: 退避倍数（指数退避）
-            retry_on_status: 触发重试的HTTP状态码列表
-            retry_on_network_error: 网络错误是否重试
-            on_retry: 重试回调函数(exception, attempt, delay)
-        """
+        """初始化重试配置"""
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.max_delay = max_delay
@@ -70,8 +59,6 @@ class RetryConfig:
     def calculate_delay(self, attempt: int) -> float:
         """计算重试延迟（指数退避 + 抖动）"""
         delay = self.base_delay * (self.backoff_factor ** attempt)
-
-        # 随机抖动
         jitter = random.uniform(0.75, 1.25)
         delay *= jitter
         return min(delay, self.max_delay)
@@ -83,20 +70,7 @@ async def with_retry(
         config: RetryConfig,
         **kwargs
 ) -> T:
-    """
-    带重试的异步函数执行
-
-    Args:
-        func: 要执行的异步函数
-        config: 重试配置
-        *args, **kwargs: 函数参数
-
-    Returns:
-        函数执行结果
-
-    Raises:
-        最后一次重试的异常
-    """
+    """带重试的异步函数执行"""
     last_exception: Optional[Exception] = None
 
     for attempt in range(config.max_retries + 1):
@@ -132,22 +106,7 @@ def retryable(
         retry_on_status: Optional[list[int]] = None,
         retry_on_network_error: bool = True,
 ):
-    """
-    重试装饰器工厂
-
-    用法：
-        @retryable(max_retries=3, base_delay=2.0)
-        async def my_function():
-            ...
-
-    Args:
-        max_retries: 最大重试次数
-        base_delay: 基础重试延迟（秒）
-        max_delay: 最大重试延迟（秒）
-        backoff_factor: 退避倍数
-        retry_on_status: 触发重试的HTTP状态码列表
-        retry_on_network_error: 网络错误是否重试
-    """
+    """重试装饰器工厂"""
     config = RetryConfig(
         max_retries=max_retries,
         base_delay=base_delay,

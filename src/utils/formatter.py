@@ -22,28 +22,16 @@ from src.models.activity import (
 @dataclass
 class CardButtonConfig:
     """卡片按钮配置类"""
-    # 操作按钮
-    show_ignore_button: bool = True  # 显示"不感兴趣/已忽略"按钮
-    show_join_button: bool = True  # 显示"去报名"按钮
-    show_cancel_button: bool = False  # 显示"取消报名"按钮
-    show_children_button: bool = True  # 显示"查看子活动"按钮
-
-    # 按钮状态
-    is_ignored: bool = False  # 当前是否已标记为不感兴趣
+    show_ignore_button: bool = True
+    show_join_button: bool = True
+    show_cancel_button: bool = False
+    show_children_button: bool = True
+    is_ignored: bool = False
 
     def get_buttons(self, act: SecondClass) -> list[dict]:
-        """
-        根据配置生成按钮列表
-        
-        Args:
-            act: 活动对象
-            
-        Returns:
-            按钮配置列表
-        """
+        """根据配置生成按钮列表"""
         buttons = []
 
-        # 不感兴趣/已忽略按钮
         if self.show_ignore_button:
             ignore_button_text = "已忽略" if self.is_ignored else "不感兴趣"
             ignore_button_type = "default" if self.is_ignored else "danger"
@@ -58,7 +46,6 @@ class CardButtonConfig:
                 }
             })
 
-        # 取消报名按钮（已报名活动专用）
         if self.show_cancel_button:
             buttons.append({
                 "tag": "button",
@@ -71,7 +58,6 @@ class CardButtonConfig:
                 }
             })
 
-        # 系列活动显示"查看子活动"，非系列活动显示"去报名"
         if act.is_series:
             if self.show_children_button:
                 buttons.append({
@@ -101,17 +87,7 @@ class CardButtonConfig:
 
 
 def format_activity_list(activities: list[SecondClass], title: str = "活动列表", simple_format: bool = False) -> str:
-    """
-    格式化活动列表
-
-    Args:
-        activities: 活动列表
-        title: 列表标题
-        simple_format: 是否使用简单格式
-
-    Returns:
-        格式化后的文本
-    """
+    """格式化活动列表为文本"""
     if not activities:
         return f"{title}\n\n暂无活动"
 
@@ -166,20 +142,7 @@ def format_status_message(
         ignore_count: int = 0,
         interested_count: int = 0,
 ) -> str:
-    """
-    格式化状态消息
-
-    Args:
-        is_running: 是否运行中
-        last_scan: 上次扫描时间
-        next_scan: 下次扫描时间
-        is_logged_in: 是否已登录
-        db_count: 数据库数量
-        ignore_count: 被忽略的活动数量
-
-    Returns:
-        格式化后的文本
-    """
+    """格式化状态消息"""
     lines = ["服务状态", ""]
 
     if is_running:
@@ -210,15 +173,7 @@ def format_status_message(
 
 
 def format_scan_result(result: dict) -> str:
-    """
-    格式化扫描结果
-
-    Args:
-        result: scan() 方法返回的结果字典
-
-    Returns:
-        格式化后的文本
-    """
+    """格式化扫描结果"""
     if not result.get("success"):
         error = result.get("error", "未知错误")
         return f"扫描失败：{error}"
@@ -238,16 +193,7 @@ def format_scan_result(result: dict) -> str:
 
 
 def format_error_message(error: str, context: str = "") -> str:
-    """
-    格式化错误消息
-
-    Args:
-        error: 错误信息
-        context: 错误上下文
-
-    Returns:
-        格式化后的文本
-    """
+    """格式化错误消息"""
     lines = ["操作失败"]
 
     if context:
@@ -259,12 +205,7 @@ def format_error_message(error: str, context: str = "") -> str:
 
 
 def format_help_message() -> str:
-    """
-    格式化帮助消息
-
-    Returns:
-        格式化后的文本
-    """
+    """格式化帮助消息"""
     return """NextArc - 第二课堂活动监控机器人
 
 可用指令：
@@ -289,21 +230,9 @@ def build_activity_card(
         title: str = "活动列表",
         ignored_ids: set[str] | None = None,
         start_index: int = 1,
-        button_config: CardButtonConfig | None = None
+        button_config: CardButtonConfig | None = None  # None表示使用默认配置（显示忽略和报名按钮）
 ) -> dict:
-    """
-    构建活动列表的消息卡片（使用折叠面板）
-
-    Args:
-        activities: 活动列表
-        title: 卡片标题
-        ignored_ids: 已被忽略的活动ID集合，用于显示正确的按钮状态
-        start_index: 起始序号（默认为1，用于分批发送时保持序号连续）
-        button_config: 按钮配置，默认为None（使用默认配置：显示忽略和报名按钮）
-
-    Returns:
-        飞书消息卡片 JSON 字典
-    """
+    """构建活动列表的消息卡片（使用折叠面板）"""
     if ignored_ids is None:
         ignored_ids = set()
 
@@ -336,7 +265,6 @@ def build_activity_card(
 
     for i, act in enumerate(activities, start_index):
         is_ignored = act.id in ignored_ids
-        # 创建该活动的按钮配置
         if button_config is None:
             act_button_config = CardButtonConfig()
         else:
@@ -360,17 +288,7 @@ def _build_activity_collapsible_panel(
         index: int,
         button_config: CardButtonConfig | None = None
 ) -> dict:
-    """
-    为单个活动构建折叠面板
-
-    Args:
-        act: SecondClass 活动对象
-        index: 序号（从1开始）
-        button_config: 按钮配置，默认为None（使用默认配置）
-
-    Returns:
-        折叠面板 JSON 字典
-    """
+    """为单个活动构建折叠面板"""
     if button_config is None:
         button_config = CardButtonConfig()
 
@@ -465,7 +383,6 @@ def _build_activity_collapsible_panel(
 
     detail_elements.append({"tag": "hr"})
 
-    # 使用 button_config 生成按钮
     button_elements = button_config.get_buttons(act)
     if button_elements:
         detail_elements.append({

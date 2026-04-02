@@ -13,7 +13,6 @@ logger = get_logger("session")
 
 
 class SearchSession(BaseModel):
-    """搜索会话上下文"""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     keyword: str
@@ -21,11 +20,9 @@ class SearchSession(BaseModel):
     created_at: datetime
 
     def is_expired(self) -> bool:
-        """是否已过期（5分钟）"""
         return datetime.now() - self.created_at > timedelta(minutes=5)
 
     def get_result_by_index(self, index: int) -> Optional[SecondClass]:
-        """根据序号获取搜索结果（序号从1开始）"""
         if self.is_expired():
             return None
         if index < 1 or index > len(self.results):
@@ -34,20 +31,17 @@ class SearchSession(BaseModel):
 
 
 class DisplayedActivitiesSession(BaseModel):
-    """最近显示的活动列表会话"""
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     activities: list[SecondClass]
     filtered_activities: dict[str, list[FilteredActivity]] | None = None
-    source: str  # "valid", "new_activities", "search" 等
+    source: str  # "valid", "new_activities", "search"
     created_at: datetime
 
     def is_expired(self) -> bool:
-        """是否已过期（10分钟）"""
         return datetime.now() - self.created_at > timedelta(minutes=10)
 
     def get_activity_by_index(self, index: int) -> Optional[SecondClass]:
-        """根据序号获取活动（序号从1开始）"""
         if self.is_expired():
             return None
         if index < 1 or index > len(self.activities):
@@ -55,16 +49,12 @@ class DisplayedActivitiesSession(BaseModel):
         return self.activities[index - 1]
 
     def get_all_activities(self) -> list[SecondClass]:
-        """获取所有活动（如果未过期）"""
         if self.is_expired():
             return []
         return self.activities
 
     def parse_indices(self, indices_str: str) -> tuple[list[int], list[str]]:
-        """解析序号字符串
-
-        支持格式："1,2,3"、"1-5"、"1,3-5,10"、"全部"
-        """
+        """解析序号字符串，支持格式："1,2,3"、"1-5"、"1,3-5,10"、"全部" """
         indices_str = indices_str.strip()
 
         if indices_str in ["全部", "所有"]:
@@ -119,19 +109,16 @@ class DisplayedActivitiesSession(BaseModel):
 
 
 class ConfirmSession(BaseModel):
-    """待确认操作会话"""
     operation: Literal["cancel", "join", "upgrade"]
     activity_id: Optional[str] = None
     activity_name: Optional[str] = None
-    data: Optional[dict] = None  # 用于存储额外数据（如升级信息）
+    data: Optional[dict] = None  # 存储额外数据，如升级信息
     created_at: datetime
 
     def is_expired(self) -> bool:
-        """是否已过期（2分钟）"""
         return datetime.now() - self.created_at > timedelta(minutes=2)
 
     def get_confirm_prompt(self) -> str:
-        """获取确认提示文本"""
         if self.operation == "upgrade":
             return "请回复「确认」或「取消」"
         action = "取消报名" if self.operation == "cancel" else "报名"
@@ -144,15 +131,12 @@ class ConfirmSession(BaseModel):
 
 
 class UserSession:
-    """用户会话管理（单用户简化版）"""
-
     def __init__(self) -> None:
         self.search: Optional[SearchSession] = None
         self.confirm: Optional[ConfirmSession] = None
         self.displayed_activities: Optional[DisplayedActivitiesSession] = None
 
     def set_search(self, keyword: str, results: list[SecondClass]) -> None:
-        """设置搜索上下文"""
         self.search = SearchSession(
             keyword=keyword,
             results=results,
@@ -160,14 +144,12 @@ class UserSession:
         )
 
     def clear_search(self) -> None:
-        """清除搜索上下文"""
         self.search = None
 
     def set_confirm(self, operation: Literal["cancel", "join", "upgrade"],
                     activity_id: Optional[str] = None,
                     activity_name: Optional[str] = None,
                     data: Optional[dict] = None) -> None:
-        """设置待确认操作"""
         self.confirm = ConfirmSession(
             operation=operation,
             activity_id=activity_id,
@@ -177,11 +159,9 @@ class UserSession:
         )
 
     def clear_confirm(self) -> None:
-        """清除待确认操作"""
         self.confirm = None
 
     def get_search_result(self, index: int) -> Optional[SecondClass]:
-        """获取搜索结果（带过期检查）"""
         if not self.search:
             return None
         return self.search.get_result_by_index(index)
@@ -191,7 +171,6 @@ class UserSession:
             activities: list[SecondClass],
             filtered_activities: dict[str, list[FilteredActivity]] | None = None,
             source: str = "unknown") -> None:
-        """设置最近显示的活动列表"""
         self.displayed_activities = DisplayedActivitiesSession(
             activities=activities,
             source=source,
@@ -201,29 +180,24 @@ class UserSession:
         logger.debug(f"保存显示的活动列表: {len(activities)} 个，来源: {source}")
 
     def clear_displayed_activities(self) -> None:
-        """清除显示的活动列表"""
         self.displayed_activities = None
 
     def get_displayed_activity_by_index(self, index: int) -> Optional[SecondClass]:
-        """根据序号获取显示的活动（带过期检查）"""
         if not self.displayed_activities:
             return None
         return self.displayed_activities.get_activity_by_index(index)
 
     def get_all_displayed_activities(self) -> list[SecondClass]:
-        """获取所有显示的活动（带过期检查）"""
         if not self.displayed_activities:
             return []
         return self.displayed_activities.get_all_activities()
 
     def get_filtered_activities(self) -> Optional[dict[str, list[FilteredActivity]]]:
-        """获取所有过滤后的活动（带过期检查）"""
         if not self.displayed_activities.filtered_activities:
             return None
         return self.displayed_activities.filtered_activities
 
     def get_filtered_activities_by_type(self, filter_type: str) -> list[FilteredActivity]:
-        """获取特定类型的被筛选活动（带过期检查）"""
         if not self.displayed_activities:
             return []
 
@@ -251,18 +225,12 @@ class UserSession:
         return result
 
     def parse_displayed_indices(self, indices_str: str) -> tuple[list[int], list[str]]:
-        """解析显示活动的序号字符串"""
         if not self.displayed_activities:
             return [], ["没有可操作的最近活动列表"]
         return self.displayed_activities.parse_indices(indices_str)
 
     def check_confirm(self, response: str) -> Optional[tuple[str, str]]:
-        """检查确认响应
-
-        Returns:
-            (operation, activity_id) 如果确认执行
-            None 如果取消或无效响应
-        """
+        """检查确认响应，返回 (operation, activity_id) 如果确认执行，None 如果取消或无效 """
         if not self.confirm or self.confirm.is_expired():
             return None
 

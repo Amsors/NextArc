@@ -10,8 +10,6 @@ logger = get_logger("feishu.handler.check")
 
 
 class CheckHandler(CommandHandler):
-    """检查差异指令"""
-
     @property
     def command(self) -> str:
         return "check"
@@ -20,7 +18,6 @@ class CheckHandler(CommandHandler):
         return "/check - 更新数据库并显示差异"
 
     async def handle(self, args: list[str], session) -> Response:
-        """处理 /check 指令"""
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 

@@ -17,10 +17,8 @@ from src.utils.logger import get_logger
 
 logger = get_logger("diff")
 
-# 忽略字段（不参与差异比较）
 IGNORE_FIELDS = {"scan_timestamp", "deep_scaned", "deep_scaned_time"}
 
-# 比较的字段列表
 COMPARABLE_FIELDS = {
     "id",
     "name",
@@ -45,10 +43,7 @@ COMPARABLE_FIELDS = {
 
 
 class DiffEngine:
-    """对比两个数据库状态的差异"""
-
     async def diff(self, old_db_path: Path, new_db_path: Path) -> DiffResult:
-        """对比两个数据库，返回差异结果"""
         logger.info(f"开始对比数据库: {old_db_path.name} -> {new_db_path.name}")
 
         old_activities = await self._load_activities(old_db_path)
@@ -61,7 +56,6 @@ class DiffEngine:
         removed = []
         modified = []
 
-        # 新增
         for aid in new_ids - old_ids:
             act = new_activities[aid]
             added.append(ActivityChange(
@@ -71,7 +65,6 @@ class DiffEngine:
             ))
             logger.debug(f"新增活动: {act.name} ({aid})")
 
-        # 删除
         for aid in old_ids - new_ids:
             act = old_activities[aid]
             removed.append(ActivityChange(
@@ -81,7 +74,6 @@ class DiffEngine:
             ))
             logger.debug(f"删除活动: {act.name} ({aid})")
 
-        # 修改
         for aid in old_ids & new_ids:
             old_act = old_activities[aid]
             new_act = new_activities[aid]
@@ -109,7 +101,6 @@ class DiffEngine:
         return result
 
     def _compare_activity(self, old: SecondClass, new: SecondClass) -> list[FieldChange]:
-        """对比单个活动的字段变化"""
         changes = []
 
         old_data = old.data
@@ -139,7 +130,6 @@ class DiffEngine:
                     new_value=new_val
                 ))
 
-        # 比较时间字段
         time_fields = [
             ("apply_time", "applySt", "applyEt"),
             ("hold_time", "st", "et"),
@@ -160,7 +150,6 @@ class DiffEngine:
                     new_value=new_val
                 ))
 
-        # 比较 module
         old_module = old.module
         new_module = new.module
         if (old_module is None) != (new_module is None) or \
@@ -171,7 +160,6 @@ class DiffEngine:
                 new_value=new_module.text if new_module else None
             ))
 
-        # 比较 department
         old_dept = old.department
         new_dept = new.department
         if (old_dept is None) != (new_dept is None) or \
@@ -185,7 +173,6 @@ class DiffEngine:
         return changes
 
     async def _load_activities(self, db_path: Path) -> dict[str, SecondClass]:
-        """从数据库加载所有活动"""
         activities = {}
 
         if not db_path.exists():
@@ -208,7 +195,6 @@ class DiffEngine:
         return activities
 
     async def get_enrolled_ids(self, db_path: Path) -> set[str]:
-        """获取已报名活动 ID 集合"""
         enrolled_ids = set()
 
         if not db_path.exists():
@@ -227,7 +213,6 @@ class DiffEngine:
         return enrolled_ids
 
     async def _get_db_scan_time(self, db_path: Path) -> Optional[datetime]:
-        """获取数据库的扫描时间"""
         if not db_path or not db_path.exists():
             return None
 

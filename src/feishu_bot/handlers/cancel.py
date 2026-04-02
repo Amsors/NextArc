@@ -12,8 +12,6 @@ logger = get_logger("feishu.handler.cancel")
 
 
 class CancelHandler(CommandHandler):
-    """取消报名指令"""
-
     @property
     def command(self) -> str:
         return "cancel"
@@ -22,7 +20,6 @@ class CancelHandler(CommandHandler):
         return "/cancel <序号> - 取消指定序号的报名"
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """处理 /cancel 指令"""
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
@@ -74,7 +71,6 @@ class CancelHandler(CommandHandler):
         return Response.text(session.confirm.get_confirm_prompt())
 
     async def execute_cancel(self, session: UserSession) -> Response:
-        """执行取消报名操作"""
         if not session.confirm or session.confirm.operation != "cancel":
             return Response.text("无效的操作")
 

@@ -25,8 +25,6 @@ logger = get_logger("feishu")
 
 
 class FeishuBot:
-    """飞书机器人客户端，使用 WebSocket 长连接接收和发送消息"""
-
     def __init__(
             self,
             app_id: str,
@@ -51,11 +49,9 @@ class FeishuBot:
         self._executor = ThreadPoolExecutor(max_workers=2)
 
     def set_main_loop(self, loop: asyncio.AbstractEventLoop):
-        """设置主事件循环，用于在 WebSocket 线程中回调"""
         self._main_loop = loop
 
     def _create_event_handler(self) -> EventDispatcherHandler:
-        """创建事件处理器"""
         builder = EventDispatcherHandler.builder("", "")
 
         builder.register_p2_im_message_receive_v1(self._on_message_receive)
@@ -73,11 +69,9 @@ class FeishuBot:
         return builder.build()
 
     def _on_message_read(self, event: P2ImMessageMessageReadV1) -> None:
-        """处理用户已读消息事件"""
         logger.debug(f"用户已读消息")
 
     def _on_card_action_trigger(self, event: P2CardActionTrigger) -> dict:
-        """处理卡片交互事件（在 WebSocket 线程中同步执行）"""
         logger.info("=" * 50)
         logger.info("【卡片回调】收到卡片交互事件")
 
@@ -131,7 +125,6 @@ class FeishuBot:
             return {"toast": {"type": "error", "content": "处理失败"}}
 
     async def _async_handle_card_action(self, action_value: dict, open_message_id: str) -> dict:
-        """在主事件循环中异步处理卡片交互"""
         try:
             if self.card_handler:
                 return await self.card_handler.handle(action_value, open_message_id)
@@ -141,7 +134,6 @@ class FeishuBot:
             return {"toast": {"type": "error", "content": f"处理失败: {str(e)[:50]}"}}
 
     def _on_bot_p2p_chat_entered(self, event: P2ImChatAccessEventBotP2pChatEnteredV1) -> None:
-        """处理用户进入私聊事件"""
         try:
             logger.info("用户进入私聊")
 
@@ -158,7 +150,6 @@ class FeishuBot:
             logger.error(f"处理进入私聊事件失败: {e}")
 
     def _on_message_receive(self, event: P2ImMessageReceiveV1) -> None:
-        """处理收到的消息事件（在 WebSocket 线程中同步执行）"""
         try:
             if event.event and event.event.message:
                 chat_id = event.event.message.chat_id
@@ -185,7 +176,6 @@ class FeishuBot:
             logger.error(f"处理消息事件失败: {e}")
 
     async def _async_handle_message(self, text: str):
-        """在主事件循环中异步处理消息"""
         try:
             if self.message_handler:
                 reply = await self.message_handler(text, self.user_session)
@@ -195,7 +185,6 @@ class FeishuBot:
             logger.error(f"异步处理消息失败: {e}")
 
     def _create_ws_client(self) -> WSClient:
-        """创建 WebSocket 客户端"""
         event_handler = self._create_event_handler()
 
         return WSClient(
@@ -205,7 +194,6 @@ class FeishuBot:
         )
 
     def _run_client(self):
-        """在单独线程中运行客户端"""
         try:
             logger.debug("WebSocket 线程启动")
             self._client.start()
@@ -214,7 +202,6 @@ class FeishuBot:
                 logger.error(f"WebSocket 运行错误: {e}")
 
     async def send_text(self, content: str) -> bool:
-        """发送文本消息"""
         if not self._chat_id:
             logger.error("无法发送消息：未获取到 chat_id")
             return False
@@ -255,7 +242,6 @@ class FeishuBot:
             return False
 
     async def send_card(self, card_content: dict) -> bool:
-        """发送消息卡片"""
         if not self._chat_id:
             logger.error("无法发送卡片：未获取到 chat_id")
             return False
@@ -296,7 +282,6 @@ class FeishuBot:
             return False
 
     async def start(self) -> None:
-        """启动 WebSocket 连接"""
         logger.info("正在启动飞书机器人...")
 
         self._main_loop = asyncio.get_event_loop()
@@ -318,7 +303,6 @@ class FeishuBot:
             raise
 
     async def send_startup_message(self, message: str) -> bool:
-        """发送启动问候消息"""
         if not self._chat_id:
             logger.warning("无法发送启动问候：未获取到 chat_id，等待用户先发送消息")
             return False
@@ -327,7 +311,6 @@ class FeishuBot:
         return await self.send_text(message)
 
     async def stop(self) -> None:
-        """停止 WebSocket 连接"""
         if self._thread and self._thread.is_alive():
             logger.info("正在关闭飞书机器人...")
 
@@ -339,9 +322,7 @@ class FeishuBot:
             logger.info("飞书机器人已关闭")
 
     def is_connected(self) -> bool:
-        """检查是否已连接"""
         return self._connected and self._thread and self._thread.is_alive()
 
     def get_chat_id(self) -> Optional[str]:
-        """获取当前 chat_id"""
         return self._chat_id

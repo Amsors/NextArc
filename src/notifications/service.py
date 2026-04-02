@@ -16,12 +16,10 @@ class NotificationService(ABC):
 
     @abstractmethod
     async def send_text(self, message: str) -> bool:
-        """发送文本消息"""
         pass
 
     @abstractmethod
     async def send_card(self, card_content: dict) -> bool:
-        """发送消息卡片"""
         pass
 
     async def send_response(self, response: Response) -> bool:
@@ -43,7 +41,6 @@ class NotificationService(ABC):
         return True
 
     async def send_error(self, error: str, context: str = "") -> bool:
-        """发送错误消息"""
         lines = ["操作失败"]
         if context:
             lines.append(f"上下文：{context}")
@@ -51,11 +48,9 @@ class NotificationService(ABC):
         return await self.send_text("\n".join(lines))
 
     async def send_success(self, message: str) -> bool:
-        """发送成功消息"""
         return await self.send_text(f"成功 {message}")
 
     async def send_info(self, message: str) -> bool:
-        """发送信息消息"""
         return await self.send_text(f"信息 {message}")
 
     async def send_activity_list_card(
@@ -65,11 +60,7 @@ class NotificationService(ABC):
             ignored_ids: set[str] | None = None,
             button_config: "CardButtonConfig | None" = None
     ) -> bool:
-        """
-        发送活动列表卡片
-
-        当活动数量超过限制时自动分批发送，保持序号连续。
-        """
+        """发送活动列表卡片，当活动数量超过限制时自动分批发送"""
         from src.utils.formatter import build_activity_card
 
         if not activities:
@@ -88,7 +79,6 @@ class NotificationService(ABC):
             card_content = build_activity_card(activities, title, ignored_ids, button_config=button_config)
             return await self.send_card(card_content)
 
-        # 分批发送
         total = len(activities)
         batches = (total + max_per_card - 1) // max_per_card
 

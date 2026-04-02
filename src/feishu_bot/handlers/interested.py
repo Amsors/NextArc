@@ -1,8 +1,4 @@
-"""感兴趣指令处理器
-
-处理用户发送的"感兴趣"指令，将已筛选掉的活动标记为感兴趣，
-这些活动将绕过所有筛选（数据库/AI/时间筛选）。
-"""
+"""感兴趣指令处理器"""
 
 from src.core import UserPreferenceManager
 from src.models import UserSession
@@ -14,26 +10,10 @@ logger = get_logger("feishu.handler.interested")
 
 
 class InterestedHandler(CommandHandler):
-    """
-    感兴趣指令处理器
-
-    支持指令：
-    - /interested ai 1,2,3
-    - 感兴趣 时间 1-5
-    - /interested 忽略 全部
-    - /interested db 1,3-5,10
-
-    处理格式：
-    - "/interested <筛选类型> <序号>"
-    - 筛选类型：ai, db/ignore/忽略, time/时间
-    - 序号格式：1,2,3 或 1-5 或 1,3-5,10 或 全部
-    """
-
     _user_preference_manager: UserPreferenceManager = None
 
     @classmethod
     def set_user_preference_manager(cls, manager: UserPreferenceManager) -> None:
-        """设置用户偏好管理器"""
         cls._user_preference_manager = manager
 
     @property
@@ -48,7 +28,6 @@ class InterestedHandler(CommandHandler):
         )
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """处理 /interested 或 感兴趣 指令"""
         if not self._user_preference_manager:
             return Response.text("感兴趣功能未初始化")
 
@@ -138,7 +117,6 @@ class InterestedHandler(CommandHandler):
         return Response.text("\n".join(lines))
 
     def _parse_filter_type(self, arg: str) -> str | None:
-        """解析筛选类型参数，返回标准化的筛选类型（ai, db, time）或 None"""
         ai_aliases = ["ai", "人工智能", "智能"]
         db_aliases = ["db", "ignore", "数据库", "忽略", "不感兴趣"]
         time_aliases = ["time", "时间", "时间筛选"]
@@ -153,7 +131,6 @@ class InterestedHandler(CommandHandler):
         return None
 
     def _get_filter_type_name(self, filter_type: str) -> str:
-        """获取筛选类型的中文名称"""
         names = {
             "ai": "AI",
             "db": "数据库",
@@ -162,7 +139,6 @@ class InterestedHandler(CommandHandler):
         return names.get(filter_type, filter_type)
 
     def _parse_indices(self, indices_str: str, max_index: int) -> tuple[list[int], list[str]]:
-        """解析序号字符串（如 "1,2,3" 或 "1-5" 或 "全部"）"""
         indices_str = indices_str.strip()
 
         if indices_str in ["全部", "所有"]:

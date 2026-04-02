@@ -13,7 +13,6 @@ logger = get_logger("version_checker")
 
 @dataclass
 class CommitInfo:
-    """Commit 信息"""
     sha: str
     message: str
     author: str
@@ -23,7 +22,6 @@ class CommitInfo:
 
 @dataclass
 class VersionUpdateResult:
-    """版本更新结果"""
     current_sha: str
     latest_sha: str
     commits_behind: int
@@ -32,7 +30,6 @@ class VersionUpdateResult:
 
 
 class VersionCheckConfig:
-    """版本检查配置（用于类型提示，实际定义在 settings.py）"""
     enabled: bool
     day_of_week: int
     hour: int
@@ -43,8 +40,6 @@ class VersionCheckConfig:
 
 
 class VersionChecker:
-    """通过本地 git 命令检查当前代码版本与远程版本的差异"""
-
     def __init__(self, config: VersionCheckConfig, project_root: Path):
         self.config = config
         self.project_root = project_root
@@ -58,14 +53,6 @@ class VersionChecker:
         return git_dir.exists() and git_dir.is_dir()
 
     async def _run_git_command(self, args: list[str]) -> tuple[int, str, str]:
-        """异步执行 git 命令
-        
-        Args:
-            args: git 命令参数
-            
-        Returns:
-            tuple: (returncode, stdout, stderr)
-        """
         try:
             proc = await asyncio.create_subprocess_exec(
                 "git",
@@ -95,7 +82,6 @@ class VersionChecker:
         return stdout
 
     async def get_remote_version(self) -> Optional[str]:
-        """获取远程最新 commit SHA（本地缓存的）"""
         remote_ref = f"{self.config.remote_name}/{self.config.branch_name}"
         logger.debug(f"【VersionChecker】获取远程版本: {remote_ref}")
         returncode, stdout, stderr = await self._run_git_command(["rev-parse", remote_ref])
@@ -116,17 +102,7 @@ class VersionChecker:
         return True
 
     async def get_commits_between(self, from_sha: str, to_sha: str) -> list[CommitInfo]:
-        """获取两个 commit 之间的所有 commit 列表
-        
-        Args:
-            from_sha: 起始 commit SHA
-            to_sha: 结束 commit SHA
-            
-        Returns:
-            CommitInfo 列表（按时间倒序，最新的在前）
-        """
         logger.debug(f"【VersionChecker】获取 commit 列表: {from_sha[:7]}..{to_sha[:7]}")
-        # 格式: SHA|作者|日期|消息
         format_str = "%H|%an|%ad|%s"
         returncode, stdout, stderr = await self._run_git_command([
             "log",
@@ -153,12 +129,10 @@ class VersionChecker:
             sha, author, date_str, message = parts
 
             try:
-                # 解析 ISO 格式日期
                 date = datetime.fromisoformat(date_str.replace(" ", "T").replace("Z", "+00:00"))
             except ValueError:
                 date = datetime.now()
 
-            # 构建 commit URL
             if remote_url:
                 url = f"{remote_url}/commit/{sha}"
             else:
@@ -176,15 +150,6 @@ class VersionChecker:
         return commits
 
     async def get_commits_behind_count(self, local_sha: str, remote_sha: str) -> int:
-        """获取本地落后于远程的 commit 数量
-        
-        Args:
-            local_sha: 本地 commit SHA
-            remote_sha: 远程 commit SHA
-            
-        Returns:
-            落后的 commit 数量
-        """
         logger.debug(f"【VersionChecker】计算落后数量...")
         returncode, stdout, stderr = await self._run_git_command([
             "rev-list",
@@ -214,14 +179,11 @@ class VersionChecker:
 
         url = stdout.strip()
 
-        # 转换 git@github.com:user/repo.git 为 https://github.com/user/repo
         if url.startswith("git@github.com:"):
             url = url.replace("git@github.com:", "https://github.com/")
         elif url.startswith("git@"):
-            # 处理其他 git@ 格式
             url = url.replace(":", "/").replace("git@", "https://")
 
-        # 移除 .git 后缀
         if url.endswith(".git"):
             url = url[:-4]
 
@@ -229,12 +191,6 @@ class VersionChecker:
         return url
 
     async def check_for_updates(self) -> Optional[VersionUpdateResult]:
-        """检查是否有新版本
-
-        Returns:
-            VersionUpdateResult: 如果有新版本，返回更新信息
-            None: 如果没有新版本、已经是最新、或检查失败
-        """
         logger.info("【VersionChecker】开始检查版本更新...")
         logger.info(f"【VersionChecker】项目目录: {self.project_root}")
 
@@ -244,7 +200,6 @@ class VersionChecker:
 
         logger.info("【VersionChecker】确认是 git 仓库")
 
-        # 获取当前本地版本
         current_sha = await self.get_current_version()
         if not current_sha:
             logger.warning("【VersionChecker】无法获取当前本地版本")
@@ -252,17 +207,14 @@ class VersionChecker:
 
         logger.info(f"【VersionChecker】当前本地版本: {current_sha[:7]}")
 
-        # 如果需要，先 fetch 远程
         if self.config.auto_fetch:
             logger.info(f"【VersionChecker】auto_fetch 启用，正在 fetch {self.config.remote_name}...")
             fetch_success = await self.fetch_remote()
             if not fetch_success:
-                # fetch 失败但继续尝试使用本地缓存的远程引用
                 logger.warning("【VersionChecker】fetch 失败，使用本地缓存的远程引用继续检查")
         else:
             logger.info("【VersionChecker】auto_fetch 禁用，使用本地缓存的远程引用")
 
-        # 获取远程最新版本
         remote_sha = await self.get_remote_version()
         if not remote_sha:
             logger.warning("【VersionChecker】无法获取远程版本信息")

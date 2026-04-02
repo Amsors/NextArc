@@ -14,8 +14,6 @@ logger = get_logger("feishu.handler.search")
 
 
 class SearchHandler(CommandHandler):
-    """搜索活动指令"""
-
     @property
     def command(self) -> str:
         return "search"
@@ -24,7 +22,6 @@ class SearchHandler(CommandHandler):
         return "/search <关键词> - 搜索标题含关键词的活动"
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """处理 /search 指令"""
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
@@ -60,12 +57,10 @@ class SearchHandler(CommandHandler):
 
             session.set_search(keyword, activities)
 
-            # 不显示"不感兴趣"按钮
             title = f'搜索「{keyword}」结果（共{len(activities)}个）'
             if hint:
                 title += f"\n{hint}"
 
-            # 不显示不感兴趣按钮
             button_config = CardButtonConfig(show_ignore_button=False)
             
             return Response.activity_list(
@@ -80,7 +75,6 @@ class SearchHandler(CommandHandler):
             return Response.error(str(e), context="搜索活动")
 
     async def _search_activities(self, db_path, keyword: str) -> list[SecondClass]:
-        """从数据库搜索活动"""
         activities = []
         keyword_lower = keyword.lower()
 

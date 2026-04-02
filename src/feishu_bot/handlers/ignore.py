@@ -10,26 +10,10 @@ logger = get_logger("feishu.handler.ignore")
 
 
 class IgnoreHandler(CommandHandler):
-    """
-    不感兴趣指令处理器
-
-    支持指令：
-    - /ignore 1,2,3
-    - 不感兴趣 1-5
-    - 不感兴趣 全部
-
-    处理格式：
-    - "不感兴趣 1,2,3" - 忽略序号为1,2,3的活动
-    - "不感兴趣 1-5" - 忽略序号1到5的活动
-    - "不感兴趣 1,3-5,10" - 组合格式
-    - "不感兴趣 全部" 或 "不感兴趣 所有" - 忽略所有上次显示的活动
-    """
-
     _ignore_manager: UserPreferenceManager = None
 
     @classmethod
     def set_ignore_manager(cls, ignore_manager: UserPreferenceManager) -> None:
-        """设置忽略管理器"""
         cls._ignore_manager = ignore_manager
 
     @property
@@ -43,7 +27,6 @@ class IgnoreHandler(CommandHandler):
         )
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        """处理 /ignore 或 不感兴趣 指令"""
         if not self._ignore_manager:
             return Response.text("忽略功能未初始化")
 

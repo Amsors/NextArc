@@ -3,11 +3,9 @@ import signal
 import sys
 from pathlib import Path
 
-# 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# 更新标记文件名
 UPDATE_MARKER_FILE = ".next_arc_updated"
 
 from src.config import load_settings
@@ -34,8 +32,6 @@ logger = get_logger("main")
 
 
 class NextArcApp:
-    """NextArc 应用主类"""
-
     def __init__(self):
         self.settings = None
         self.preferences = None
@@ -54,21 +50,12 @@ class NextArcApp:
         self._shutdown_event = asyncio.Event()
 
     async def initialize(self) -> bool:
-        """
-        初始化应用
-        
-        Returns:
-            是否初始化成功
-        """
         try:
-            # 加载主配置
             self.settings = load_settings()
 
-            # 加载推送偏好配置
             preferences_path = project_root / "config" / "preferences.yaml"
             self.preferences = load_preferences(preferences_path)
 
-            # 初始化日志
             setup_logging(
                 level=self.settings.logging.level,
                 file_enabled=self.settings.logging.file.enabled,
@@ -85,17 +72,14 @@ class NextArcApp:
                 logger.info(f"   最大大小: {self.settings.logging.file.max_size_mb}MB")
                 logger.info(f"   历史文件数: {self.settings.logging.file.backup_count}")
 
-            # 检查当前 Python 环境
             self._check_environment()
 
-            # 初始化数据库管理器
             self.db_manager = DatabaseManager(
                 data_dir=self.settings.database.data_dir,
                 max_history=self.settings.database.max_history,
             )
             logger.info(f"数据库管理器初始化完成，数据目录: {self.settings.database.data_dir}")
 
-            # 初始化用户偏好管理器
             preference_db_path = self.settings.database.get_preference_db_path()
             self.user_preference_manager = UserPreferenceManager(
                 db_path=preference_db_path
@@ -107,16 +91,13 @@ class NextArcApp:
             logger.info(f"   不感兴趣活动: {ignored_count} 个")
             logger.info(f"   感兴趣活动: {interested_count} 个")
 
-            # 初始化事件总线
             self.event_bus = EventBus()
             logger.info("事件总线初始化完成")
 
-            # 获取凭据并初始化认证管理器
             username, password = self.settings.get_credentials()
             self.auth_manager = AuthManager(username, password)
             logger.info(f"认证管理器初始化完成，用户名: {username}")
 
-            # 测试登录
             logger.info("正在测试登录...")
             max_login_retries = 5
             for attempt in range(1, max_login_retries + 1):
@@ -131,7 +112,6 @@ class NextArcApp:
                         raise
                     await asyncio.sleep(5)
 
-            # 初始化 AI 筛选器
             ai_filter = None
             if self.settings.monitor.use_ai_filter and self.settings.ai.enabled:
                 try:
@@ -144,7 +124,6 @@ class NextArcApp:
             else:
                 logger.info("AI 筛选: 已禁用")
 
-            # 初始化版本检查器
             self.version_checker = None
             logger.info(f"版本检查配置: enabled={self.settings.version_check.enabled}")
             if self.settings.version_check.enabled:
@@ -161,7 +140,6 @@ class NextArcApp:
                     config=self.settings.version_check,
                     project_root=project_root,
                 )
-                # 验证 git 仓库
                 if not self.version_checker.is_git_repo():
                     logger.warning("版本检查已启用，但当前目录不是 git 仓库")
                     self.version_checker = None
@@ -175,7 +153,6 @@ class NextArcApp:
             else:
                 logger.info("版本检查: 已禁用")
 
-            # 初始化时间筛选器
             self.time_filter = None
             use_time_filter = False
             if self.preferences and self.preferences.time_filter.enabled:
@@ -186,14 +163,13 @@ class NextArcApp:
                     logger.info(f"   重叠模式: {self.preferences.time_filter.get_overlap_mode_display()}")
                     logger.info("时间筛选配置:")
                     for line in self.preferences.time_filter.weekly_preferences.format_preferences().split("\n"):
-                        if line.strip():  # 只显示非空行
+                        if line.strip():
                             logger.info(f"   {line}")
                 else:
                     logger.warning("时间筛选已启用但未配置任何时间段，请在 config/preferences.yaml 中配置")
             else:
                 logger.info("时间筛选: 已禁用")
 
-            # 初始化扫描器
             self.scanner = ActivityScanner(
                 auth_manager=self.auth_manager,
                 db_manager=self.db_manager,
@@ -216,19 +192,16 @@ class NextArcApp:
                 logger.info("时间筛选: 开启")
             logger.info("数据库筛选: 已启用")
 
-            # 初始化消息路由器
             self.router = MessageRouter()
             self.router.set_dependencies(self.scanner, self.auth_manager, self.db_manager, self.user_preference_manager)
             logger.info("消息路由器初始化完成")
 
-            # 为 ValidHandler、AliveHandler、IgnoreHandler 和 InterestedHandler 设置偏好管理器
             from src.feishu_bot.handlers.interested import InterestedHandler
             ValidHandler.set_ignore_manager(self.user_preference_manager)
             AliveHandler.set_ignore_manager(self.user_preference_manager)
             IgnoreHandler.set_ignore_manager(self.user_preference_manager)
             InterestedHandler.set_user_preference_manager(self.user_preference_manager)
 
-            # 初始化卡片交互处理器
             self.card_handler = CardActionHandler()
             self.card_handler.set_dependencies(
                 user_preference_manager=self.user_preference_manager,
@@ -237,9 +210,7 @@ class NextArcApp:
             )
             logger.info("卡片交互处理器初始化完成")
 
-            # 初始化飞书机器人
             if self.settings.feishu.app_id and self.settings.feishu.app_secret:
-                # 传入预配置的 chat_id
                 chat_id = self.settings.feishu.chat_id if self.settings.feishu.chat_id else None
                 self.bot = FeishuBot(
                     app_id=self.settings.feishu.app_id,
@@ -249,7 +220,6 @@ class NextArcApp:
                     card_handler=self.card_handler,
                 )
 
-                # 更新 card_handler 中的 bot 引用
                 self.card_handler.set_dependencies(
                     user_preference_manager=self.user_preference_manager,
                     auth_manager=self.auth_manager,
@@ -259,7 +229,6 @@ class NextArcApp:
                 self.notification_service = FeishuNotificationService(self.bot)
                 logger.info("通知服务初始化完成")
 
-                # 初始化通知监听器并订阅事件
                 self.notification_listener = NotificationListener(
                     self.notification_service,
                     user_preference_manager=self.user_preference_manager
@@ -267,7 +236,6 @@ class NextArcApp:
                 self.notification_listener.subscribe(self.event_bus)
                 logger.info("通知监听器已订阅事件")
 
-                # 设置 UserSession 引用，使定时扫描的新活动也能被 /ignore 忽略
                 self.notification_listener.set_user_session(self.bot.user_session)
                 logger.info("已设置 UserSession 引用到通知监听器")
 
@@ -292,29 +260,18 @@ class NextArcApp:
         exe = sys.executable
         logger.info(f"Python 解释器: {exe}")
 
-        # 检查是否在 conda 环境中
         if "conda" not in exe.lower() and "envs" not in exe:
             logger.warning("未检测到 conda 环境，建议激活 'pyustc' 环境运行")
         else:
             logger.info("检测到 conda 环境")
 
     async def _handle_message(self, text: str, session) -> str | None:
-        """
-        处理飞书消息
-
-        Args:
-            text: 消息文本
-            session: 用户会话
-
-        Returns:
-            如果返回字符串，则会发送该文本；如果返回 None，则表示消息已通过通知服务发送
-        """
         response = await self.router.handle_message(text, session)
 
-        # 通过通知服务发送响应
         if self.notification_service:
             await self.notification_service.send_response(response)
             return None  # 已通过通知服务发送，不需要再返回文本
+        # TODO 重新检查此处逻辑
 
         # 如果没有通知服务，返回文本内容（后适兼）
         if response.type.value == "text":
@@ -322,17 +279,13 @@ class NextArcApp:
         return None
 
     async def run(self) -> None:
-        """运行应用"""
-        # 注册信号处理
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self._signal_handler)
 
         try:
-            # 启动定时扫描
             self.scanner.start()
 
-            # 执行首次扫描
             if self.settings.behavior.scan_on_start:
                 logger.info("执行首次扫描...")
                 max_scan_retries = 3
@@ -355,15 +308,12 @@ class NextArcApp:
             else:
                 logger.info("首次扫描已禁用，将在下次定时扫描时执行")
 
-            # 启动飞书机器人
             if self.bot:
                 await self.bot.start()
 
-                # 检查是否是更新后重启，如果是则发送更新通知
                 await self._check_and_notify_update()
 
                 startup_msg = self._get_startup_message()
-                # 尝试发送（如果已知 chat_id）
                 success = await self.bot.send_startup_message(startup_msg)
                 if not success:
                     logger.info("请在飞书中给机器人发送任意消息以激活会话")
@@ -380,7 +330,6 @@ class NextArcApp:
             await self.shutdown()
 
     def _get_startup_message(self) -> str:
-        """获取启动问候消息"""
         lines = [
             "NextArc 已启动！",
             "",

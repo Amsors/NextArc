@@ -28,23 +28,19 @@ class NotificationListener:
         self._user_preference_manager = user_preference_manager
 
     def set_user_session(self, session: "UserSession") -> None:
-        """设置用户会话引用（单用户场景）"""
         self._user_session = session
         logger.debug("已设置 UserSession 引用")
 
     async def on_scan_completed(self, event: ScanCompletedEvent) -> None:
-        """处理扫描完成事件（通常不需要发送通知）"""
         logger.debug(f"收到扫描完成事件: {event.new_db_path.name}")
 
     async def on_new_activities_found(self, event: NewActivitiesFoundEvent) -> None:
-        """处理发现新活动事件，发送筛选信息和活动卡片"""
         if not event.activities:
             logger.debug("没有新活动需要通知")
             return
 
         logger.info(f"收到新活动事件: {event.final_count} 个活动")
 
-        # 构建筛选信息消息
         message_parts = []
 
         if event.enrolled_filtered_count > 0:
@@ -63,7 +59,6 @@ class NotificationListener:
             filter_message = "\n".join(message_parts)
             await self._notification_service.send_text(filter_message)
 
-        # 发送活动卡片
         try:
             ignored_ids = set()
             if self._user_preference_manager:
@@ -85,7 +80,6 @@ class NotificationListener:
         except Exception as e:
             logger.error(f"发送新活动卡片失败: {e}")
 
-        # 更新 UserSession，使用户可以通过 /ignore 忽略这些活动
         if self._user_session:
             try:
                 self._user_session.set_displayed_activities(
@@ -98,7 +92,6 @@ class NotificationListener:
                 logger.error(f"更新 UserSession 失败: {e}")
 
     async def on_enrolled_activity_changed(self, event: EnrolledActivityChangedEvent) -> None:
-        """处理已报名活动变更事件"""
         if not event.changes:
             return
 
@@ -117,13 +110,11 @@ class NotificationListener:
                 logger.error(f"发送变更通知失败: {e}")
 
     async def on_version_update(self, event: VersionUpdateEvent) -> None:
-        """处理版本更新事件"""
         if not event.new_commits:
             return
 
         logger.info(f"收到版本更新事件: 落后 {event.commits_behind} 个 commit")
 
-        # 构建通知消息
         lines = [
             "NextArc 有新版本更新",
             "",
@@ -133,9 +124,8 @@ class NotificationListener:
             "",
         ]
 
-        # 列出前 5 个 commit（避免消息过长）
+        # 只列出前 5 个 commit
         for i, commit in enumerate(event.new_commits[:5], 1):
-            # 只取 commit message 的第一行
             message_first_line = commit.message.split("\n")[0][:50]
             lines.append(f"{i}. {message_first_line} {commit.date}")
             lines.append("")
@@ -144,7 +134,6 @@ class NotificationListener:
             lines.append(f"... 还有 {len(event.new_commits) - 5} 个提交")
             lines.append("")
 
-        # 添加对比链接
         lines.append("向机器人发送 /upgrade 或 升级 即可进行更新")
 
         try:
@@ -154,7 +143,6 @@ class NotificationListener:
             logger.error(f"发送版本更新通知失败: {e}")
 
     def subscribe(self, event_bus) -> None:
-        """订阅事件到 EventBus"""
         event_bus.subscribe(ScanCompletedEvent, self.on_scan_completed)
         event_bus.subscribe(NewActivitiesFoundEvent, self.on_new_activities_found)
         event_bus.subscribe(EnrolledActivityChangedEvent, self.on_enrolled_activity_changed)

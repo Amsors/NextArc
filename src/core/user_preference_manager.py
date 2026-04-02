@@ -1,7 +1,4 @@
-"""用户偏好数据库管理器
-
-管理用户的活动偏好设置：不感兴趣、感兴趣、AI筛选结果
-"""
+"""用户偏好数据库管理器"""
 
 import time
 from pathlib import Path
@@ -16,8 +13,6 @@ logger = get_logger("user_preference_manager")
 
 
 class UserPreferenceManager:
-    """管理用户活动偏好，支持从旧数据库迁移"""
-
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
             project_root = Path(__file__).parent.parent.parent
@@ -32,7 +27,6 @@ class UserPreferenceManager:
         self._initialized = False
 
     async def initialize(self) -> None:
-        """初始化数据库，创建表结构，执行数据迁移"""
         if self._initialized:
             return
 
@@ -81,7 +75,6 @@ class UserPreferenceManager:
         logger.info(f"用户偏好数据库初始化完成: {self.db_path}")
 
     async def _migrate_from_old_db(self) -> None:
-        """从旧的 ignore.db 迁移数据"""
         old_db_path = self.db_path.parent / "ignore.db"
 
         if not old_db_path.exists():
@@ -147,7 +140,6 @@ class UserPreferenceManager:
             raise
 
     async def add_ignored_activity(self, activity_id: str) -> bool:
-        """添加活动到忽略列表"""
         await self.initialize()
 
         try:
@@ -169,7 +161,6 @@ class UserPreferenceManager:
             return False
 
     async def add_ignored_activities(self, activity_ids: list[str]) -> tuple[int, int]:
-        """批量添加活动到忽略列表"""
         await self.initialize()
 
         if not activity_ids:
@@ -205,7 +196,6 @@ class UserPreferenceManager:
             return 0, len(activity_ids)
 
     async def is_ignored(self, activity_id: str) -> bool:
-        """检查活动是否被忽略"""
         await self.initialize()
 
         try:
@@ -222,7 +212,6 @@ class UserPreferenceManager:
             return False
 
     async def get_all_ignored_ids(self) -> set[str]:
-        """获取所有被忽略的活动ID"""
         await self.initialize()
 
         try:
@@ -238,7 +227,6 @@ class UserPreferenceManager:
             return set()
 
     async def remove_ignored_activity(self, activity_id: str) -> bool:
-        """从忽略列表中移除活动"""
         await self.initialize()
 
         try:
@@ -257,7 +245,6 @@ class UserPreferenceManager:
             return False
 
     async def toggle_ignored_activity(self, activity_id: str) -> tuple[bool, bool]:
-        """切换活动的不感兴趣状态"""
         await self.initialize()
 
         try:
@@ -279,7 +266,6 @@ class UserPreferenceManager:
                 return False, False
 
     async def get_ignored_count(self) -> int:
-        """获取被忽略的活动数量（异步）"""
         await self.initialize()
 
         try:
@@ -295,7 +281,6 @@ class UserPreferenceManager:
             return 0
 
     def get_ignored_count_sync(self) -> int:
-        """获取被忽略的活动数量（同步）"""
         if not self._initialized:
             return 0
 
@@ -311,7 +296,6 @@ class UserPreferenceManager:
             return 0
 
     async def add_interested_activity(self, activity_id: str) -> bool:
-        """添加活动到感兴趣列表"""
         await self.initialize()
 
         try:
@@ -333,7 +317,6 @@ class UserPreferenceManager:
             return False
 
     async def add_interested_activities(self, activity_ids: list[str]) -> tuple[int, int]:
-        """批量添加活动到感兴趣列表"""
         await self.initialize()
 
         if not activity_ids:
@@ -369,7 +352,6 @@ class UserPreferenceManager:
             return 0, len(activity_ids)
 
     async def is_interested(self, activity_id: str) -> bool:
-        """检查活动是否被标记为感兴趣"""
         await self.initialize()
 
         try:
@@ -386,7 +368,6 @@ class UserPreferenceManager:
             return False
 
     async def get_all_interested_ids(self) -> set[str]:
-        """获取所有被标记为感兴趣的活动ID"""
         await self.initialize()
 
         try:
@@ -402,7 +383,6 @@ class UserPreferenceManager:
             return set()
 
     async def remove_interested_activity(self, activity_id: str) -> bool:
-        """从感兴趣列表中移除活动"""
         await self.initialize()
 
         try:
@@ -421,7 +401,6 @@ class UserPreferenceManager:
             return False
 
     async def get_interested_count(self) -> int:
-        """获取感兴趣的活动数量（异步）"""
         await self.initialize()
 
         try:
@@ -437,7 +416,6 @@ class UserPreferenceManager:
             return 0
 
     def get_interested_count_sync(self) -> int:
-        """获取感兴趣的活动数量（同步）"""
         if not self._initialized:
             return 0
 
@@ -453,7 +431,6 @@ class UserPreferenceManager:
             return 0
 
     async def filter_activities(self, activities: list) -> tuple[list, list[FilteredActivity]]:
-        """过滤被忽略的活动，感兴趣白名单优先"""
         if not activities:
             return [], []
 
@@ -489,7 +466,6 @@ class UserPreferenceManager:
 
     def filter_activities_sync(self, activities: list, ignored_ids: set[str], interested_ids: set[str] = None) -> tuple[
         list, list[FilteredActivity]]:
-        """同步方式过滤活动"""
         if not activities:
             return [], []
 
@@ -519,7 +495,6 @@ class UserPreferenceManager:
         return kept, filtered
 
     async def restore_interested_activities(self, activities: list) -> tuple[list, list]:
-        """从活动列表中识别感兴趣的活动（白名单恢复）"""
         if not activities:
             return [], []
 
@@ -548,7 +523,6 @@ class UserPreferenceManager:
         return to_filter, restored
 
     async def get_ai_filter_result(self, activity_id: str) -> Optional[dict]:
-        """获取单个活动的 AI 筛选结果"""
         await self.initialize()
 
         try:
@@ -570,7 +544,6 @@ class UserPreferenceManager:
             return None
 
     async def get_ai_filter_results(self, activity_ids: list[str]) -> dict[str, dict]:
-        """批量获取 AI 筛选结果"""
         await self.initialize()
 
         if not activity_ids:
@@ -603,7 +576,6 @@ class UserPreferenceManager:
             reason: str,
             reviewed_at: Optional[int] = None
     ) -> bool:
-        """保存单个 AI 筛选结果"""
         await self.initialize()
 
         if reviewed_at is None:
@@ -629,7 +601,6 @@ class UserPreferenceManager:
             self,
             results: list[tuple[str, bool, str, Optional[int]]]
     ) -> tuple[int, int]:
-        """批量保存 AI 筛选结果"""
         await self.initialize()
 
         if not results:
@@ -668,7 +639,6 @@ class UserPreferenceManager:
             return 0, len(results)
 
     async def delete_ai_filter_result(self, activity_id: str) -> bool:
-        """删除单个 AI 筛选结果"""
         await self.initialize()
 
         try:
@@ -685,7 +655,6 @@ class UserPreferenceManager:
             return False
 
     async def get_all_ai_filter_results(self) -> dict[str, dict]:
-        """获取所有 AI 筛选结果"""
         await self.initialize()
 
         try:
@@ -707,7 +676,6 @@ class UserPreferenceManager:
             return {}
 
     async def clear_ai_filter_results(self) -> bool:
-        """清空所有 AI 筛选结果"""
         await self.initialize()
 
         try:
@@ -721,7 +689,6 @@ class UserPreferenceManager:
             return False
 
     async def get_ai_filter_count(self) -> int:
-        """获取 AI 筛选结果数量"""
         await self.initialize()
 
         try:

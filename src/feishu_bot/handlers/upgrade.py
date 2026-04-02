@@ -26,7 +26,6 @@ class UpgradeHandler(CommandHandler):
         return "/upgrade - 检查并安装程序更新"
 
     async def handle(self, args: list[str], session) -> Response:
-        """处理 /upgrade 指令"""
         if not self.check_dependencies():
             return Response.text("服务未初始化")
 
@@ -121,11 +120,9 @@ class UpgradeHandler(CommandHandler):
 
         version_checker = self._scanner.version_checker
 
-        # 读取更新前的版本号
         old_version = self._read_version_file()
         logger.info(f"更新前版本号: {old_version}")
 
-        # 发送正在更新的消息
         progress_msg = (
             "正在执行更新...\n"
             f"  当前: {current_sha}\n"
@@ -137,7 +134,6 @@ class UpgradeHandler(CommandHandler):
             returncode, stdout, stderr = await self._run_git_pull(version_checker)
 
             if returncode != 0:
-                # git pull 失败
                 session.clear_confirm()
                 error_detail = self._parse_git_error(stderr, stdout)
                 logger.error(f"git pull 失败: {error_detail}")
@@ -191,7 +187,6 @@ class UpgradeHandler(CommandHandler):
                 f"正在重启应用..."
             )
 
-            # 延迟重启
             asyncio.create_task(self._delayed_restart())
 
             return Response.text(success_msg)
@@ -202,11 +197,6 @@ class UpgradeHandler(CommandHandler):
             return Response.error(str(e), context="执行升级")
 
     async def _run_git_pull(self, version_checker) -> tuple[int, str, str]:
-        """执行 git pull 命令
-
-        Returns:
-            tuple: (returncode, stdout, stderr)
-        """
         project_root = version_checker.project_root
 
         try:
@@ -251,8 +241,6 @@ class UpgradeHandler(CommandHandler):
     async def _delayed_restart(self, delay: float = 5.0):
         await asyncio.sleep(delay)
         self._restart_application()
-
-
 
     def _read_version_file(self) -> tuple[int, int, int] | None:
         try:
@@ -302,10 +290,8 @@ class UpgradeHandler(CommandHandler):
         return f"{version[0]}.{version[1]}.{version[2]}"
 
     def _restart_application(self):
-        """使用 os.execv 替换当前进程，保持相同的命令行参数"""
         logger.info("正在重启应用...")
 
-        # 创建更新标记文件
         self._create_update_marker()
 
         executable = sys.executable
@@ -313,7 +299,6 @@ class UpgradeHandler(CommandHandler):
 
         logger.info(f"重启命令: {executable} {' '.join(args)}")
 
-        # 使用 os.execv 替换当前进程
         try:
             os.execv(executable, [executable] + args)
         except Exception as e:

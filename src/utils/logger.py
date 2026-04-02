@@ -14,19 +14,7 @@ def setup_logging(
         max_size_mb: int = 10,
         backup_count: int = 5,
 ) -> logging.Logger:
-    """
-    配置根日志输出到命令行和文件
-
-    Args:
-        level: 日志级别，默认为 INFO
-        file_enabled: 是否启用文件日志
-        file_path: 日志文件路径
-        max_size_mb: 单个日志文件最大大小（MB）
-        backup_count: 保留的历史日志文件数量
-
-    Returns:
-        配置好的 logger 实例
-    """
+    """配置根日志输出到命令行和文件"""
     if level is None:
         level = "INFO"
 

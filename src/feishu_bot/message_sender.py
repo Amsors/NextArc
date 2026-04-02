@@ -16,17 +16,13 @@ DEFAULT_MAX_ACTIVITIES_PER_CARD = 20
 
 
 class MessageSender:
-    """飞书消息发送器"""
-
     def __init__(self, bot=None):
         self._bot = bot
 
     def set_bot(self, bot):
-        """设置机器人实例"""
         self._bot = bot
 
     async def send(self, content: str) -> bool:
-        """发送文本消息"""
         if not self._bot:
             logger.error("未设置机器人实例，无法发送消息")
             return False
@@ -34,7 +30,6 @@ class MessageSender:
         return await self._bot.send_text(content)
 
     async def send_error(self, error: str, context: str = "") -> bool:
-        """发送错误消息"""
         lines = ["操作失败"]
 
         if context:
@@ -45,15 +40,12 @@ class MessageSender:
         return await self.send("\n".join(lines))
 
     async def send_success(self, message: str) -> bool:
-        """发送成功消息"""
         return await self.send(f"成功 {message}")
 
     async def send_info(self, message: str) -> bool:
-        """发送信息消息"""
         return await self.send(f"信息 {message}")
 
     async def send_card(self, card_content: dict) -> bool:
-        """发送消息卡片"""
         if not self._bot:
             logger.error("未设置机器人实例，无法发送卡片")
             return False
@@ -66,14 +58,6 @@ class MessageSender:
             title: str = "活动列表",
             button_config: "CardButtonConfig | None" = None
     ) -> bool:
-        """
-        发送活动列表卡片（带折叠面板）
-        
-        Args:
-            activities: 活动列表
-            title: 卡片标题
-            button_config: 按钮配置，默认为None（使用默认配置）
-        """
         if button_config is None:
             button_config = CardButtonConfig()
 
@@ -122,7 +106,6 @@ class MessageSender:
                 logger.error(f"第{batch_idx + 1}/{batches}批卡片发送失败")
                 all_success = False
 
-            # 分批发送之间添加短暂延迟，避免触发限流
             if batch_idx < batches - 1:
                 import asyncio
                 await asyncio.sleep(0.5)

@@ -16,8 +16,6 @@ logger = get_logger("feishu.card_handler")
 
 
 class CardActionHandler:
-    """处理飞书消息卡片中的按钮点击事件"""
-
     def __init__(self):
         self._user_preference_manager: Optional["UserPreferenceManager"] = None
         self._auth_manager: Optional["AuthManager"] = None
@@ -29,13 +27,11 @@ class CardActionHandler:
             auth_manager: "AuthManager",
             bot: "FeishuBot"
     ) -> None:
-        """设置依赖组件"""
         self._user_preference_manager = user_preference_manager
         self._auth_manager = auth_manager
         self._bot = bot
 
     async def handle(self, action_value: dict, open_message_id: str) -> dict:
-        """处理卡片交互事件"""
         action = action_value.get("action")
         activity_id = action_value.get("activity_id")
         activity_name = action_value.get("activity_name", "未知活动")
@@ -72,7 +68,6 @@ class CardActionHandler:
             activity_name: str,
             open_message_id: str
     ) -> dict:
-        """处理切换不感兴趣状态"""
         if not self._user_preference_manager:
             return {
                 "toast": {
@@ -118,7 +113,6 @@ class CardActionHandler:
             }
 
     async def _handle_join(self, activity_id: str, activity_name: str) -> dict:
-        """处理报名操作"""
         if not self._auth_manager or not self._bot:
             return {
                 "toast": {
@@ -217,7 +211,6 @@ class CardActionHandler:
             }
 
     async def _handle_view_children(self, activity_id: str, activity_name: str) -> dict:
-        """处理查看子活动"""
         if not self._auth_manager or not self._bot:
             return {
                 "toast": {
@@ -286,7 +279,6 @@ class CardActionHandler:
                 except Exception:
                     pass
 
-                # 子活动使用默认按钮配置（显示忽略和报名按钮）
                 button_config = CardButtonConfig()
 
                 total = len(children)
@@ -351,7 +343,6 @@ class CardActionHandler:
             }
 
     async def _handle_cancel(self, activity_id: str, activity_name: str) -> dict:
-        """处理取消报名操作"""
         if not self._auth_manager or not self._bot:
             return {
                 "toast": {

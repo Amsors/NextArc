@@ -17,7 +17,6 @@ from .valid import ValidHandler
 
 
 def get_all_handlers() -> Dict[str, CommandHandler]:
-    """获取所有指令处理器的字典"""
     ret = {}
 
     check_instructions = [

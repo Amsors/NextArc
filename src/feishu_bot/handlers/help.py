@@ -9,8 +9,6 @@ logger = get_logger("feishu.handler.help")
 
 
 class HelpHandler(CommandHandler):
-    """帮助指令"""
-
     @property
     def command(self) -> str:
         return "help"
@@ -19,7 +17,6 @@ class HelpHandler(CommandHandler):
         return "/help - 显示帮助信息"
 
     async def handle(self, args: list[str], session) -> Response:
-        """处理 /help 指令"""
         logger.info("执行 /help 指令")
 
         help_text = (

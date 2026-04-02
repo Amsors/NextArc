@@ -1,7 +1,4 @@
-"""已报名活动筛选器
-
-筛选掉用户已经报名过的活动，避免重复推荐。
-"""
+"""已报名活动筛选器"""
 
 from typing import Optional
 
@@ -14,38 +11,16 @@ logger = get_logger("enrolled_filter")
 
 
 class EnrolledFilter:
-    """
-    已报名活动筛选器
-
-    根据活动ID列表，筛选掉用户已经报名过的活动。
-    """
-
     def __init__(self, enrolled_ids: Optional[set[str]] = None):
-        """
-        初始化已报名筛选器
-
-        Args:
-            enrolled_ids: 已报名活动ID集合
-        """
         self.enrolled_ids = enrolled_ids or set()
 
     def set_enrolled_ids(self, enrolled_ids: set[str]) -> None:
-        """设置已报名活动ID集合"""
         self.enrolled_ids = enrolled_ids
 
     def filter_activities(
             self,
             activities: list[SecondClass]
     ) -> tuple[list[SecondClass], list[FilteredActivity]]:
-        """
-        筛选掉已报名的活动
-
-        Args:
-            activities: 待筛选的活动列表
-
-        Returns:
-            (通过筛选的活动列表, 被过滤掉的 FilteredActivity 列表)
-        """
         if not activities:
             return [], []
 
@@ -79,15 +54,6 @@ class EnrolledFilter:
 
     @staticmethod
     async def get_enrolled_ids_from_db(db_path) -> set[str]:
-        """
-        从数据库获取已报名活动ID集合
-
-        Args:
-            db_path: 数据库文件路径
-
-        Returns:
-            已报名活动ID集合
-        """
         import aiosqlite
 
         enrolled_ids = set()

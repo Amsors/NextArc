@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TimeRange(BaseModel):
-    """时间段配置"""
     start: str = Field(..., description="开始时间，格式 HH:MM")
     end: str = Field(..., description="结束时间，格式 HH:MM")
 
@@ -40,7 +39,6 @@ class TimeRange(BaseModel):
 
 
 class WeeklyTimePreference(BaseModel):
-    """每周时间偏好配置"""
     monday: list[TimeRange] = Field(default=[], description="周一没空的时间段")
     tuesday: list[TimeRange] = Field(default=[], description="周二没空的时间段")
     wednesday: list[TimeRange] = Field(default=[], description="周三没空的时间段")
@@ -50,7 +48,6 @@ class WeeklyTimePreference(BaseModel):
     sunday: list[TimeRange] = Field(default=[], description="周日没空的时间段")
 
     def get_day_preference(self, weekday: int) -> list[TimeRange]:
-        """获取指定星期几的时间偏好（0=周一，6=周日）"""
         days = [self.monday, self.tuesday, self.wednesday,
                 self.thursday, self.friday, self.saturday, self.sunday]
         if 0 <= weekday <= 6:
@@ -58,13 +55,11 @@ class WeeklyTimePreference(BaseModel):
         return []
 
     def has_any_preference(self) -> bool:
-        """检查是否有任何时间偏好配置"""
         days = [self.monday, self.tuesday, self.wednesday,
                 self.thursday, self.friday, self.saturday, self.sunday]
         return any(day for day in days)
 
     def format_preferences(self) -> str:
-        """格式化显示所有时间偏好"""
         day_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
         days = [self.monday, self.tuesday, self.wednesday,
                 self.thursday, self.friday, self.saturday, self.sunday]
@@ -79,7 +74,6 @@ class WeeklyTimePreference(BaseModel):
 
 
 class TimeFilterConfig(BaseModel):
-    """时间筛选器配置"""
     enabled: bool = Field(default=False, description="是否启用时间筛选")
 
     overlap_mode: str = Field(
@@ -112,11 +106,9 @@ class TimeFilterConfig(BaseModel):
         return v
 
     def is_enabled_and_configured(self) -> bool:
-        """检查是否启用且有配置"""
         return self.enabled and self.weekly_preferences.has_any_preference()
 
     def get_overlap_mode_display(self) -> str:
-        """获取重叠模式的显示文本"""
         return {
             "partial": "有重叠即过滤",
             "full": "完全包含才过滤",
@@ -125,7 +117,6 @@ class TimeFilterConfig(BaseModel):
 
 
 class PushPreferences(BaseModel):
-    """推送偏好配置"""
     version: str = Field(default="1.0", description="配置版本")
     time_filter: TimeFilterConfig = Field(
         default_factory=TimeFilterConfig,
@@ -134,7 +125,6 @@ class PushPreferences(BaseModel):
 
     @classmethod
     def from_yaml(cls, yaml_path: Path) -> Self:
-        """从 YAML 文件加载配置"""
         if not yaml_path.exists():
             return cls()
 
@@ -144,7 +134,6 @@ class PushPreferences(BaseModel):
         return cls(**config_dict)
 
     def to_yaml(self, yaml_path: Path) -> None:
-        """保存配置到 YAML 文件"""
         yaml_path.parent.mkdir(parents=True, exist_ok=True)
         with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(
@@ -160,7 +149,6 @@ _preferences: Optional[PushPreferences] = None
 
 
 def load_preferences(config_path: Optional[Path] = None) -> PushPreferences:
-    """加载推送偏好配置"""
     global _preferences
     if _preferences is None:
         if config_path is None:
@@ -170,14 +158,12 @@ def load_preferences(config_path: Optional[Path] = None) -> PushPreferences:
 
 
 def get_preferences() -> PushPreferences:
-    """获取已加载的推送偏好配置"""
     if _preferences is None:
         return load_preferences()
     return _preferences
 
 
 def reload_preferences(config_path: Optional[Path] = None) -> PushPreferences:
-    """重新加载推送偏好配置"""
     global _preferences
     _preferences = None
     return load_preferences(config_path)

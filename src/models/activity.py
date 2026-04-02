@@ -27,7 +27,6 @@ class SecondClassStatus:
 
     @staticmethod
     def is_status_code(code: int) -> bool:
-        """检查是否为有效的状态码"""
         try:
             Status.from_code(code)
             return True
@@ -36,7 +35,6 @@ class SecondClassStatus:
 
     @classmethod
     def from_code(cls, code: int) -> Optional[Status]:
-        """根据状态码获取 Status 枚举"""
         try:
             return Status.from_code(code)
         except ValueError:
@@ -44,7 +42,6 @@ class SecondClassStatus:
 
 
 def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
-    """从数据库行创建 SecondClass 对象"""
     data = {
         "id": row["id"],
         "itemName": row["name"],
@@ -138,7 +135,6 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
 
 
 def get_display_time(sc: SecondClass, field: str) -> str:
-    """获取格式化的时间显示"""
     day_of_week_chinese = {
         0: "周一",
         1: "周二",
@@ -195,7 +191,6 @@ def get_display_time(sc: SecondClass, field: str) -> str:
 
 
 def get_status_text(sc: SecondClass) -> str:
-    """获取状态文本"""
     try:
         return sc.status.text
     except (AttributeError, ValueError):
@@ -203,7 +198,6 @@ def get_status_text(sc: SecondClass) -> str:
 
 
 def get_apply_progress(sc: SecondClass) -> str:
-    """获取报名进度"""
     if sc.apply_num is None:
         return "未知"
     limit = sc.apply_limit if sc.apply_limit else "∞"
@@ -211,7 +205,6 @@ def get_apply_progress(sc: SecondClass) -> str:
 
 
 def get_module_name(sc: SecondClass) -> str:
-    """获取模块名称"""
     module = sc.module
     if module is None:
         return "未知"
@@ -219,7 +212,6 @@ def get_module_name(sc: SecondClass) -> str:
 
 
 def get_department_name(sc: SecondClass) -> str:
-    """获取组织单位名称"""
     dept = sc.department
     if dept is None:
         return "未知"
@@ -227,7 +219,6 @@ def get_department_name(sc: SecondClass) -> str:
 
 
 def get_labels_text(sc: SecondClass) -> str:
-    """获取标签文本"""
     labels = sc.labels
     if not labels:
         return "无"
@@ -235,35 +226,24 @@ def get_labels_text(sc: SecondClass) -> str:
 
 
 def get_conceive_text(sc: SecondClass) -> str:
-    """获取活动描述文本"""
-    if sc.conceive:
-        return sc.conceive
     return sc.conceive or "未提供"
 
 
 def get_description_text(sc: SecondClass) -> str:
-    """获取活动描述文本"""
-    if sc.description:
-        return sc.description
     return sc.description or "未提供"
 
 
 def get_place_info(sc: SecondClass) -> str:
-    """获取活动地点信息"""
-    if sc.place_info:
-        return sc.place_info
     return sc.place_info or "未提供"
 
 
 def get_participation_form(sc: SecondClass) -> str | None:
-    """获取活动参与形式"""
     if sc.participation_form:
         return sc.participation_form.text
     return None
 
 
 def format_secondclass_for_list(sc: SecondClass, index: int, simple_format: bool = False) -> str:
-    """格式化为列表显示"""
     if simple_format:
         return f"[{index}] {sc.name}({'系列活动' if sc.is_series else '单次活动'})"
 
@@ -292,7 +272,6 @@ def format_secondclass_for_list(sc: SecondClass, index: int, simple_format: bool
 
 
 def secondclass_to_display_dict(sc: SecondClass) -> dict[str, str]:
-    """转换为显示用的字典"""
     return {
         "id": sc.id,
         "name": sc.name,

@@ -13,8 +13,6 @@ logger = get_logger("ignore_manager")
 
 
 class IgnoreManager:
-    """管理用户不感兴趣的活动，持久化存储"""
-
     def __init__(self, db_path: Optional[Path] = None):
         if db_path is None:
             project_root = Path(__file__).parent.parent.parent
@@ -24,7 +22,6 @@ class IgnoreManager:
         self._initialized = False
 
     async def initialize(self) -> None:
-        """初始化数据库"""
         if self._initialized:
             return
 
@@ -47,7 +44,6 @@ class IgnoreManager:
         logger.info(f"忽略数据库初始化完成: {self.db_path}")
 
     async def add_activity(self, activity_id: str) -> bool:
-        """添加活动到忽略列表"""
         await self.initialize()
 
         try:
@@ -69,7 +65,6 @@ class IgnoreManager:
             return False
 
     async def add_activities(self, activity_ids: list[str]) -> tuple[int, int]:
-        """批量添加活动到忽略列表"""
         await self.initialize()
 
         if not activity_ids:
@@ -105,7 +100,6 @@ class IgnoreManager:
             return 0, len(activity_ids)
 
     async def is_ignored(self, activity_id: str) -> bool:
-        """检查活动是否被忽略"""
         await self.initialize()
 
         try:
@@ -122,7 +116,6 @@ class IgnoreManager:
             return False
 
     async def get_all_ignored_ids(self) -> set[str]:
-        """获取所有被忽略的活动ID"""
         await self.initialize()
 
         try:
@@ -138,7 +131,6 @@ class IgnoreManager:
             return set()
 
     async def remove_activity(self, activity_id: str) -> bool:
-        """从忽略列表中移除活动"""
         await self.initialize()
 
         try:
@@ -157,7 +149,6 @@ class IgnoreManager:
             return False
 
     async def get_ignored_count(self) -> int:
-        """获取被忽略的活动数量（异步）"""
         await self.initialize()
 
         try:
@@ -173,7 +164,6 @@ class IgnoreManager:
             return 0
 
     def get_ignored_count_sync(self) -> int:
-        """获取被忽略的活动数量（同步）"""
         if not self._initialized:
             return 0
 
@@ -189,7 +179,6 @@ class IgnoreManager:
             return 0
 
     async def filter_activities(self, activities: list) -> tuple[list, list[FilteredActivity]]:
-        """过滤掉被忽略的活动"""
         if not activities:
             return [], []
 
@@ -219,7 +208,6 @@ class IgnoreManager:
         return kept, filtered
 
     def filter_activities_sync(self, activities: list, ignored_ids: set[str]) -> tuple[list, list[FilteredActivity]]:
-        """同步方式过滤被忽略的活动"""
         if not activities or not ignored_ids:
             return activities, []
 

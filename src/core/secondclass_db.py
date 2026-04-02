@@ -18,8 +18,6 @@ logger = get_logger("secondclass_db")
 
 
 class DepartmentDB:
-    """部门/组织数据数据库管理"""
-
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
         self._lock = threading.RLock()
@@ -31,7 +29,6 @@ class DepartmentDB:
         return conn
 
     def _ensure_table(self):
-        """创建部门表"""
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -49,14 +46,12 @@ class DepartmentDB:
                 conn.commit()
 
     def _create_backup(self) -> Path:
-        """创建数据库备份"""
         backup_path = self.db_path.with_suffix(".db.bak")
         if self.db_path.exists():
             shutil.copy2(str(self.db_path), str(backup_path))
         return backup_path
 
     def _restore_backup(self, backup_path: Path):
-        """从备份恢复数据库"""
         if not backup_path.exists():
             return
 
@@ -68,7 +63,6 @@ class DepartmentDB:
             raise RuntimeError(f"恢复数据库备份失败: {e}") from e
 
     def _remove_backup(self, backup_path: Path):
-        """删除备份文件"""
         if backup_path.exists():
             try:
                 backup_path.unlink()
@@ -76,7 +70,6 @@ class DepartmentDB:
                 pass
 
     def _validate_node(self, node: dict, parent_id: str | None = None) -> list[dict]:
-        """验证部门节点"""
         issues = []
         node_id = node.get("id", "unknown")
         node_title = node.get("title", "unknown")
@@ -128,7 +121,6 @@ class DepartmentDB:
         return issues
 
     def _collect_nodes(self, node: dict) -> list[dict]:
-        """递归收集所有节点"""
         nodes = [node]
 
         if not node.get("isLeaf", True):
@@ -139,7 +131,6 @@ class DepartmentDB:
         return nodes
 
     def import_from_json(self, data: list[dict]):
-        """从 JSON 导入部门数据"""
         if not data:
             raise ValueError("Input data is empty list")
 
@@ -221,8 +212,6 @@ class DepartmentDB:
 
 
 class SecondClassDB:
-    """SecondClass 数据库管理"""
-
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
         self._lock = threading.RLock()
@@ -234,7 +223,6 @@ class SecondClassDB:
         return conn
 
     def _ensure_tables(self):
-        """创建表结构"""
         with self._lock:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
@@ -376,7 +364,6 @@ class SecondClassDB:
         }
 
     def _create_backup(self) -> Path | None:
-        """创建数据库备份"""
         if not self.db_path.exists():
             return None
 
@@ -385,7 +372,6 @@ class SecondClassDB:
         return backup_path
 
     def _restore_backup(self, backup_path: Path | None):
-        """从备份恢复数据库"""
         if backup_path is None or not backup_path.exists():
             return
 
@@ -397,7 +383,6 @@ class SecondClassDB:
             raise RuntimeError(f"恢复数据库备份失败: {e}") from e
 
     def _remove_backup(self, backup_path: Path | None):
-        """删除备份文件"""
         if backup_path is not None and backup_path.exists():
             try:
                 backup_path.unlink()
@@ -411,7 +396,6 @@ class SecondClassDB:
             expand_series: bool = False,
             max_concurrent: int = 5,
     ):
-        """更新 all_secondclass 表"""
         scan_timestamp = int(time.time())
         rows_to_insert: list[dict[str, Any]] = []
         all_ids: set[str] = set()
@@ -528,7 +512,6 @@ class SecondClassDB:
             deep_update: bool,
             max_concurrent: int = 5,
     ):
-        """更新 enrolled_secondclass 表"""
         scan_timestamp = int(time.time())
         rows_to_insert: list[dict[str, Any]] = []
         all_ids: set[str] = set()
@@ -606,7 +589,6 @@ class SecondClassDB:
             raise RuntimeError(f"Failed to update enrolled_secondclass: {e}") from e
 
     def get_scan_timestamp(self, table: str = "all_secondclass") -> int | None:
-        """获取最新扫描时间戳"""
         if table not in ("all_secondclass", "enrolled_secondclass"):
             raise ValueError(f"Invalid table name: {table}")
 
@@ -624,7 +606,6 @@ class SecondClassDB:
             expand_series: bool,
             max_concurrent: int = 5,
     ):
-        """从异步生成器更新 all_secondclass 表"""
         secondclasses = []
         async for sc in sc_generator:
             secondclasses.append(sc)
@@ -641,7 +622,6 @@ class SecondClassDB:
             deep_update: bool,
             max_concurrent: int = 5,
     ):
-        """从异步生成器更新 enrolled_secondclass 表"""
         secondclasses = []
         async for sc in sc_generator:
             secondclasses.append(sc)

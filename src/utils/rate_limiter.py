@@ -5,7 +5,7 @@ import time
 
 
 class TokenBucketRateLimiter:
-    """Token Bucket 速率限制器，支持突发流量平滑处理"""
+    """Token Bucket 速率限制器"""
 
     def __init__(
             self,
@@ -14,15 +14,7 @@ class TokenBucketRateLimiter:
             enable_queue: bool = True,
             queue_timeout: float = 300.0,
     ):
-        """
-        初始化速率限制器
-
-        Args:
-            requests_per_minute: 每分钟最大请求数（0表示不限制）
-            max_concurrency: 最大并发数
-            enable_queue: 达到速率限制时是否排队等待
-            queue_timeout: 队列最大等待时间（秒）
-        """
+        """初始化速率限制器。requests_per_minute=0 表示不限制。"""
         self.requests_per_minute = requests_per_minute
         self.max_concurrency = max_concurrency
         self.enable_queue = enable_queue
@@ -38,12 +30,7 @@ class TokenBucketRateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> bool:
-        """
-        获取执行许可
-
-        Returns:
-            是否成功获取（False表示超时）
-        """
+        """获取执行许可，失败表示超时"""
         async with self._semaphore:
             if self.requests_per_minute <= 0:
                 return True
@@ -106,15 +93,6 @@ class RateLimiterWrapper:
             enable_queue: bool = True,
             queue_timeout: float = 300.0,
     ):
-        """
-        初始化速率限制器包装器
-
-        Args:
-            requests_per_minute: 每分钟最大请求数（0表示不限制）
-            max_concurrency: 最大并发数
-            enable_queue: 达到速率限制时是否排队等待
-            queue_timeout: 队列最大等待时间（秒）
-        """
         self.requests_per_minute = requests_per_minute
         self.max_concurrency = max_concurrency
 

@@ -34,13 +34,6 @@ logger = get_logger("scanner")
 
 
 class ActivityScanner:
-    """
-    定时扫描第二课堂活动
-    - 使用 apscheduler 调度定时任务
-    - 创建新的时间戳数据库
-    - 对比差异并推送通知
-    """
-
     def __init__(
             self,
             auth_manager: AuthManager,
@@ -82,20 +75,6 @@ class ActivityScanner:
             notify_new_activities: bool,
             no_filter: bool
     ) -> dict[str, Any]:
-        """
-        执行一次扫描
-
-        Args:
-            notify_new_activities: 是否通知新活动
-            no_filter: 是否对新活动进行筛选
-            notify_enrolled_change: 是否通知已报名活动的更新
-            notify_diff: 是否显示数据库差异
-            deep_update: 是否深度更新数据库（包含已报名活动）
-
-        Returns:
-            扫描结果统计
-        """
-        # 防止并发扫描
         if self._scan_lock.locked():
             logger.warning("扫描正在进行中，跳过本次请求")
             return {
@@ -125,7 +104,6 @@ class ActivityScanner:
             notify_new_activities: bool,
             no_filter: bool
     ) -> dict[str, Any]:
-        """实际执行扫描"""
         logger.info("=" * 50)
         logger.info("开始扫描第二课堂活动...")
 
@@ -147,7 +125,6 @@ class ActivityScanner:
         logger.info(f"新数据库: {new_db_path.name}")
 
         try:
-            # YouthService 使用 ContextVar，必须保持同一个上下文
             async with self.auth_manager.create_session_once() as service:
                 logger.debug("会话已创建，开始获取数据...")
 
@@ -196,7 +173,6 @@ class ActivityScanner:
 
                 if notify_new_activities and diff.added and self.event_bus:
                     enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(new_db_path)
-                    # 后台执行，避免阻塞定时扫描和 WebSocket 心跳
                     self._create_background_task(self._publish_new_activities_event(diff, not no_filter, enrolled_ids))
 
                 if self.event_bus:
@@ -232,22 +208,18 @@ class ActivityScanner:
         return result
 
     async def _count_activities(self, db_path: Path) -> int:
-        """统计数据库中的活动数量"""
         async with aiosqlite.connect(db_path) as db:
             async with db.execute("SELECT COUNT(*) FROM all_secondclass") as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
 
     async def _count_enrolled(self, db_path: Path) -> int:
-        """统计已报名活动数量"""
         async with aiosqlite.connect(db_path) as db:
             async with db.execute("SELECT COUNT(*) FROM enrolled_secondclass") as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
 
     def _create_background_task(self, coro) -> None:
-        """创建后台任务（带异常处理）"""
-
         async def wrapped_coro():
             try:
                 await coro
@@ -266,7 +238,6 @@ class ActivityScanner:
 
     async def _publish_new_activities_event(self, diff, enable_filter: bool = True,
                                             enrolled_ids: set[str] = None) -> None:
-        """发布新活动发现事件"""
         if not self.event_bus:
             return
 
@@ -292,7 +263,6 @@ class ActivityScanner:
                     if restored_activities:
                         logger.info(f"从感兴趣白名单恢复了 {len(restored_activities)} 个活动")
 
-                # 筛选掉已报名的活动
                 if enrolled_ids:
                     logger.info(f"使用已报名筛选检查 {len(activities)} 个新活动...")
                     activities, enrolled_filtered = enrolled_filter.filter_activities(activities)
@@ -304,7 +274,6 @@ class ActivityScanner:
                         logger.info("已报名筛选后无活动需要通知（全部已报名）")
                         return
 
-                # 应用数据库筛选（标记为不感兴趣的活动）
                 db_filtered = []
                 if self.user_preference_manager:
                     logger.info(f"使用数据库筛选检查 {len(activities)} 个新活动...")
@@ -314,7 +283,6 @@ class ActivityScanner:
                         logger.info("数据库筛选后无活动需要通知（全部被用户标记为不感兴趣）")
                         return
 
-                # 如果启用时间筛选，则进行筛选
                 if self.use_time_filter and self.time_filter:
                     logger.info(f"使用时间筛选检查 {len(activities)} 个新活动...")
                     activities, time_filtered = self.time_filter.filter_activities(activities)
@@ -323,7 +291,6 @@ class ActivityScanner:
                         logger.info("时间筛选后无活动需要通知")
                         return
 
-                # 如果启用 AI 筛选，则进行筛选
                 if self.use_ai_filter and self.ai_filter and self.ai_user_info:
                     logger.info(f"使用 AI 筛选 {len(activities)} 个新活动...")
                     activities, ai_filtered_result = await self.ai_filter.filter_activities(
@@ -338,7 +305,6 @@ class ActivityScanner:
                     if not activities and not restored_activities:
                         logger.info("AI 筛选后无活动需要通知")
 
-            # 将恢复的活动加回到最终列表
             if restored_activities:
                 activities = restored_activities + activities
                 logger.info(
@@ -367,7 +333,6 @@ class ActivityScanner:
             logger.error(f"发布新活动事件失败: {e}")
 
     def start(self) -> None:
-        """启动定时任务"""
         if self._is_running:
             logger.warning("定时扫描已在运行")
             return
@@ -377,7 +342,7 @@ class ActivityScanner:
             trigger=IntervalTrigger(minutes=self.interval),
             id="activity_scan",
             replace_existing=True,
-            max_instances=1,  # 防止任务重叠
+            max_instances=1,
             kwargs={
                 "deep_update": True,
                 "notify_diff": False,
@@ -387,7 +352,6 @@ class ActivityScanner:
             }
         )
 
-        # 添加版本检查任务（如果启用）
         logger.info(f"【Scanner】检查版本检查器: version_checker={self.version_checker is not None}")
         if self.version_checker:
             logger.info(f"【Scanner】版本检查器 enabled={self.version_checker.enabled}")
@@ -424,14 +388,12 @@ class ActivityScanner:
         self._is_running = True
         logger.info(f"定时扫描已启动，间隔: {self.interval}分钟")
 
-        # scheduler 启动后才能获取下次运行时间
         if version_check_added:
             job = self.scheduler.get_job("version_check")
             if job and hasattr(job, 'next_run_time') and job.next_run_time:
                 logger.info(f"版本检查下次运行时间: {job.next_run_time}")
 
     async def _check_version(self) -> None:
-        """执行版本检查"""
         logger.info("【版本检查】定时任务触发，开始检查版本更新...")
 
         if not self.version_checker:
@@ -471,7 +433,6 @@ class ActivityScanner:
         logger.info("【版本检查】检查完成")
 
     def stop(self) -> None:
-        """停止定时任务"""
         if not self._is_running:
             return
 
@@ -480,15 +441,12 @@ class ActivityScanner:
         logger.info("定时扫描已停止")
 
     def is_running(self) -> bool:
-        """检查是否在运行"""
         return self._is_running
 
     def get_last_scan_time(self) -> Optional[datetime]:
-        """获取上次扫描时间"""
         return self._last_scan_time
 
     def get_next_scan_time(self) -> Optional[datetime]:
-        """获取下次扫描时间"""
         if not self._is_running:
             return None
 
@@ -498,7 +456,6 @@ class ActivityScanner:
         return None
 
     def get_next_version_check_time(self) -> Optional[datetime]:
-        """获取下次版本检查时间"""
         if not self._is_running:
             return None
 
@@ -512,16 +469,6 @@ class ActivityScanner:
             activity_ids: list[str],
             max_concurrent: int = 5
     ) -> list[SecondClass]:
-        """
-        根据活动ID列表获取活动详情（支持并发）
-
-        Args:
-            activity_ids: 活动ID列表
-            max_concurrent: 最大并发数
-
-        Returns:
-            SecondClass 对象列表（仅包含成功获取的活动）
-        """
         logger.info(f"开始获取 {len(activity_ids)} 个活动的详情，并发数: {max_concurrent}...")
 
         activities: list[SecondClass] = []

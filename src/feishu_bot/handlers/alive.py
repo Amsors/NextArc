@@ -12,13 +12,10 @@ logger = get_logger("feishu.handler.alive")
 
 
 class AliveHandler(CommandHandler):
-    """检查服务状态指令"""
-
     _ignore_manager: UserPreferenceManager = None
 
     @classmethod
     def set_ignore_manager(cls, ignore_manager: IgnoreManager) -> None:
-        """设置忽略管理器"""
         cls._ignore_manager = ignore_manager
 
     @property
@@ -29,7 +26,6 @@ class AliveHandler(CommandHandler):
         return "/alive - 检查服务器是否正常运行"
 
     async def handle(self, args: list[str], session) -> Response:
-        """处理 /alive 指令"""
         logger.info("执行 /alive 指令")
 
         if not self.check_dependencies():
