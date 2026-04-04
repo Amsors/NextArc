@@ -165,13 +165,11 @@ class AIFilter:
             models = await self.client.models.list()
             model_ids = [m.id for m in models.data]
 
-            if self.model in model_ids:
-                return True, f"API 连接成功，模型 '{self.model}' 可用"
-            else:
+            if self.model not in model_ids:
                 available = ", ".join(model_ids[:5])
                 if len(model_ids) > 5:
                     available += f" 等共 {len(model_ids)} 个模型"
-                return True, f"API 连接成功，但模型 '{self.model}' 不在可用列表中。可用模型: {available}"
+                return False, f"API 连接成功，但模型 '{self.model}' 不在可用列表中。可用模型: {available}"
 
         except Exception as e:
             error_msg = str(e)
@@ -180,7 +178,53 @@ class AIFilter:
             elif "connection" in error_msg.lower() or "timeout" in error_msg.lower():
                 return False, f"API 连接失败，请检查网络或 base_url 是否正确: {error_msg}"
             else:
-                return False, f"API 测试失败: {error_msg}"
+                return False, f"API 连接测试失败: {error_msg}"
+
+        try:
+            mock_activity_info = """活动名称：AI 测试活动
+活动状态：报名中
+举办时间：2024-01-01 14:00
+模块：创新创业
+组织单位：测试部门
+学时：2
+已报名/名额：10/100
+活动简介：这是一个用于测试 AI 响应格式的模拟活动，请正常返回 JSON 格式。"""
+
+            test_user_prompt = self.user_prompt.format(
+                user_info="用户对所有类型的活动都感兴趣",
+                activity_info=mock_activity_info,
+            )
+
+            request_params = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": test_user_prompt},
+                ],
+                "timeout": self.timeout,
+            }
+
+            if self.extra_body:
+                request_params["extra_body"] = self.extra_body
+
+            response = await self.client.chat.completions.create(**request_params)
+            content = response.choices[0].message.content.strip()
+
+            result = self._parse_response(content)
+
+            if "interested" not in result:
+                return False, f"API 连接成功，但 AI 响应缺少 'interested' 字段。响应: {content[:200]}"
+            if "reason" not in result:
+                return False, f"API 连接成功，但 AI 响应缺少 'reason' 字段。响应: {content[:200]}"
+            if not isinstance(result["interested"], bool):
+                return False, f"API 连接成功，但 'interested' 字段不是布尔类型。响应: {content[:200]}"
+            if not isinstance(result["reason"], str):
+                return False, f"API 连接成功，但 'reason' 字段不是字符串类型。响应: {content[:200]}"
+
+            return True, f"API 连接成功，模型 '{self.model}' 可用，AI 响应格式正确 (interested={result['interested']})"
+
+        except Exception as e:
+            return False, f"API 连接成功，但 AI 响应测试失败: {str(e)}"
 
     def _format_activity_info(self, activity: SecondClass) -> str:
         lines = [
