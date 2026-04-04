@@ -117,6 +117,17 @@ class NextArcApp:
                 try:
                     ai_filter = AIFilterConfig.create_from_settings(self.settings)
                     logger.info(f"AI 筛选器初始化完成，模型: {self.settings.ai.model}")
+
+                    logger.info("正在测试 AI API 连接...")
+                    try:
+                        success, message = await ai_filter.test_connection()
+                        if success:
+                            logger.info(f"AI API 测试: {message}")
+                        else:
+                            logger.error(f"AI API 测试: {message}")
+                    except Exception as e:
+                        logger.error(f"AI API 测试失败: {e}")
+
                 except (ValueError, FileNotFoundError) as e:
                     logger.error(f"AI 功能初始化失败: {e}")
                     logger.error("请检查 config.yaml 中的 AI 配置和提示词文件")

@@ -159,6 +159,29 @@ class AIFilter:
         if self.extra_body:
             logger.info(f"已配置额外请求参数: {self.extra_body}")
 
+    async def test_connection(self) -> tuple[bool, str]:
+        """测试 API 连接是否可用，返回tuple[bool, str]: (是否成功, 详细信息)"""
+        try:
+            models = await self.client.models.list()
+            model_ids = [m.id for m in models.data]
+
+            if self.model in model_ids:
+                return True, f"API 连接成功，模型 '{self.model}' 可用"
+            else:
+                available = ", ".join(model_ids[:5])
+                if len(model_ids) > 5:
+                    available += f" 等共 {len(model_ids)} 个模型"
+                return True, f"API 连接成功，但模型 '{self.model}' 不在可用列表中。可用模型: {available}"
+
+        except Exception as e:
+            error_msg = str(e)
+            if "authentication" in error_msg.lower() or "api key" in error_msg.lower():
+                return False, f"API 认证失败，请检查 api_key 是否正确: {error_msg}"
+            elif "connection" in error_msg.lower() or "timeout" in error_msg.lower():
+                return False, f"API 连接失败，请检查网络或 base_url 是否正确: {error_msg}"
+            else:
+                return False, f"API 测试失败: {error_msg}"
+
     def _format_activity_info(self, activity: SecondClass) -> str:
         lines = [
             f"活动名称：{activity.name}",

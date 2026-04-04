@@ -73,53 +73,53 @@ class FeishuBot:
 
     def _on_card_action_trigger(self, event: P2CardActionTrigger) -> dict:
         logger.info("=" * 50)
-        logger.info("【卡片回调】收到卡片交互事件")
+        logger.info("收到卡片交互事件")
 
         try:
-            logger.info(f"【卡片回调】card_handler 是否存在: {self.card_handler is not None}")
-            logger.info(f"【卡片回调】_main_loop 是否存在: {self._main_loop is not None}")
+            logger.info(f"card_handler 是否存在: {self.card_handler is not None}")
+            logger.info(f"_main_loop 是否存在: {self._main_loop is not None}")
 
             if not self.card_handler:
-                logger.error("【卡片回调】卡片处理器未设置")
+                logger.error("卡片处理器未设置")
                 return {"toast": {"type": "error", "content": "服务未就绪"}}
 
             if not event.event:
-                logger.error("【卡片回调】事件数据为空")
+                logger.error("事件数据为空")
                 return {"toast": {"type": "error", "content": "无效的事件数据"}}
 
             open_message_id = ""
             if event.event.context:
                 open_message_id = event.event.context.open_message_id or ""
-                logger.info(f"【卡片回调】消息ID: {open_message_id}")
+                logger.info(f"消息ID: {open_message_id}")
 
             action = event.event.action
             if not action or not action.value:
-                logger.error("【卡片回调】操作数据为空")
+                logger.error("操作数据为空")
                 return {"toast": {"type": "error", "content": "无效的操作数据"}}
 
             action_value = action.value
-            logger.info(f"【卡片回调】操作数据: {action_value}")
+            logger.info(f"操作数据: {action_value}")
 
             import asyncio
             if self._main_loop:
-                logger.info("【卡片回调】正在调度异步处理...")
+                logger.info("正在调度异步处理...")
                 future = asyncio.run_coroutine_threadsafe(
                     self._async_handle_card_action(action_value, open_message_id),
                     self._main_loop
                 )
                 try:
                     result = future.result(timeout=2.0)
-                    logger.info(f"【卡片回调】处理完成，返回结果: {result}")
+                    logger.info(f"处理完成，返回结果: {result}")
                     return result
                 except Exception as e:
-                    logger.error(f"【卡片回调】处理超时或失败: {e}")
+                    logger.error(f"处理超时或失败: {e}")
                     return {"toast": {"type": "info", "content": "处理中，请稍后..."}}
             else:
-                logger.error("【卡片回调】主事件循环未设置")
+                logger.error("主事件循环未设置")
                 return {"toast": {"type": "error", "content": "服务未就绪"}}
 
         except Exception as e:
-            logger.error(f"【卡片回调】处理卡片交互事件异常: {e}")
+            logger.error(f"处理卡片交互事件异常: {e}")
             import traceback
             traceback.print_exc()
             return {"toast": {"type": "error", "content": "处理失败"}}
