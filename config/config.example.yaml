@@ -54,6 +54,7 @@ version_check:
 # 否则程序启动时会报错。如果不使用 AI 功能，请保持 enabled: false
 ai:
   # 是否启用 AI 筛选，默认关闭
+  # 注意：如果希望启用 AI 筛选，需要修改上面 monitor: use_ai_filter 的值为 true
   enabled: false
   
   # API 密钥 [必填]（如果 enabled: true）
