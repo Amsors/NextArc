@@ -15,6 +15,8 @@ from src.models.activity import (
     get_apply_progress,
     get_module_name,
     get_department_name,
+    get_description_text,
+    get_conceive_text,
 )
 from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
@@ -238,9 +240,11 @@ class AIFilter:
             lines.append(f"学时：{activity.valid_hour or '未知'}")
             lines.append(f"已报名/名额：{get_apply_progress(activity)}")
 
-        if activity.conceive and len(activity.conceive) > 10:
-            conceive = activity.conceive[:500]
-            lines.append(f"活动简介：{conceive}")
+        if activity.conceive:
+            lines.append(f"活动构想：{activity.conceive}")
+
+        if activity.description:
+            lines.append(f"活动简介: {activity.description}")
 
         return "\n".join(lines)
 
