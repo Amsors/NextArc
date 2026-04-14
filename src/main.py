@@ -531,25 +531,29 @@ class NextArcApp:
             return
 
         previous_version = self._read_update_marker_version()
-        if not previous_version:
-            logger.info("更新标记文件中未记录旧版本，跳过区间更新说明发送")
-            return
-
-        current_semver = self._parse_semantic_version(current_version)
-        previous_semver = self._parse_semantic_version(previous_version)
-        if not current_semver or not previous_semver:
-            logger.warning("无法解析更新区间版本号，跳过更新说明发送")
-            return
-
         sections = self._get_change_log_sections()
         if not sections:
             return
 
-        pending_sections = [
-            (version, section)
-            for version, section in sections
-            if previous_semver < self._parse_semantic_version(version) <= current_semver
-        ]
+        current_semver = self._parse_semantic_version(current_version)
+        if not current_semver:
+            logger.warning("无法解析当前版本号，跳过更新说明发送")
+            return
+
+        if not previous_version:
+            logger.warning("更新标记文件中未记录有效旧版本，按老版本升级处理，发送全部更新说明")
+            pending_sections = sections
+        else:
+            previous_semver = self._parse_semantic_version(previous_version)
+            if not previous_semver:
+                logger.warning("无法解析旧版本号，按老版本升级处理，发送全部更新说明")
+                pending_sections = sections
+            else:
+                pending_sections = [
+                    (version, section)
+                    for version, section in sections
+                    if previous_semver < self._parse_semantic_version(version) <= current_semver
+                ]
 
         if not pending_sections:
             logger.info(f"未找到从 v{previous_version} 到 v{current_version} 之间的更新说明")
@@ -558,7 +562,9 @@ class NextArcApp:
         pending_sections.sort(key=lambda item: self._parse_semantic_version(item[0]))
 
         for version, section in pending_sections:
-            message = f"更新说明（v{version}）：\n\n{section}"
+            message = (f"更新说明（v{version}）\n"
+                       f"提示：建议前往 Github 查看渲染好 Markdown 的更新日志\n"
+                       f"\n{section}")
 
             try:
                 success = await self.bot.send_text(message)
