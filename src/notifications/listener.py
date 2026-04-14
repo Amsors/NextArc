@@ -35,10 +35,6 @@ class NotificationListener:
         logger.debug(f"收到扫描完成事件: {event.new_db_path.name}")
 
     async def on_new_activities_found(self, event: NewActivitiesFoundEvent) -> None:
-        if not event.activities:
-            logger.debug("没有新活动需要通知")
-            return
-
         logger.info(f"收到新活动事件: {event.final_count} 个活动")
 
         from src.config import get_settings
@@ -67,38 +63,41 @@ class NotificationListener:
             filter_message = "\n".join(message_parts)
             await self._notification_service.send_text(filter_message)
 
-        try:
-            ignored_ids = set()
-            if self._user_preference_manager:
-                try:
-                    ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
-                except Exception as e:
-                    logger.warning(f"获取忽略列表失败: {e}")
-
-            from src.utils.formatter import CardButtonConfig
-            button_config = CardButtonConfig(show_ignore_button=True)
-
-            await self._notification_service.send_activity_list_card(
-                event.activities,
-                f"有 {event.final_count} 个你可能感兴趣的活动",
-                ignored_ids=ignored_ids,
-                button_config=button_config,
-                ai_reasons=event.ai_keep_reasons if ai_detail_config.kept else None,
-            )
-            logger.info(f"已发送新活动卡片: {event.final_count} 个活动")
-        except Exception as e:
-            logger.error(f"发送新活动卡片失败: {e}")
-
-        if self._user_session:
+        if event.activities:
             try:
-                self._user_session.set_displayed_activities(
-                    activities=event.activities,
-                    filtered_activities=event.filters_applied,
-                    source="new_activities"
+                ignored_ids = set()
+                if self._user_preference_manager:
+                    try:
+                        ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
+                    except Exception as e:
+                        logger.warning(f"获取忽略列表失败: {e}")
+
+                from src.utils.formatter import CardButtonConfig
+                button_config = CardButtonConfig(show_ignore_button=True)
+
+                await self._notification_service.send_activity_list_card(
+                    event.activities,
+                    f"有 {event.final_count} 个你可能感兴趣的活动",
+                    ignored_ids=ignored_ids,
+                    button_config=button_config,
+                    ai_reasons=event.ai_keep_reasons if ai_detail_config.kept else None,
                 )
-                logger.debug(f"已更新 UserSession，保存了 {len(event.activities)} 个新活动")
+                logger.info(f"已发送新活动卡片: {event.final_count} 个活动")
             except Exception as e:
-                logger.error(f"更新 UserSession 失败: {e}")
+                logger.error(f"发送新活动卡片失败: {e}")
+
+            if self._user_session:
+                try:
+                    self._user_session.set_displayed_activities(
+                        activities=event.activities,
+                        filtered_activities=event.filters_applied,
+                        source="new_activities"
+                    )
+                    logger.debug(f"已更新 UserSession，保存了 {len(event.activities)} 个新活动")
+                except Exception as e:
+                    logger.error(f"更新 UserSession 失败: {e}")
+        else:
+            logger.debug("没有新活动需要通知，仅发送过滤详情")
 
     async def on_enrolled_activity_changed(self, event: EnrolledActivityChangedEvent) -> None:
         if not event.changes:

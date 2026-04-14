@@ -165,6 +165,9 @@ class AIFilter:
 
     async def test_connection(self) -> tuple[bool, str]:
         """测试 API 连接是否可用，返回tuple[bool, str]: (是否成功, 详细信息)"""
+        if not self.client:
+            return False, "未配置 API 密钥，无法测试连接"
+
         try:
             models = await self.client.models.list()
             model_ids = [m.id for m in models.data]
