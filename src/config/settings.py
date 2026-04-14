@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings
 
 
 class USTCConfig(BaseModel):
-    auth_mode: Literal["file", "env"] = "file"
+    auth_mode: Literal["file", "env"] = "env"
     username: Optional[str] = None
     password: Optional[str] = None
     env_username: str = "USTC_USERNAME"
@@ -272,6 +272,9 @@ class Settings(BaseSettings):
             if not self.ustc.username or not self.ustc.password:
                 raise ValueError("配置文件中未设置 USTC 凭据（username 和 password）")
             return self.ustc.username, self.ustc.password
+
+    def is_using_file_credentials(self) -> bool:
+        return self.ustc.auth_mode == "file"
 
     def ensure_directories(self) -> None:
         self.database.data_dir.mkdir(parents=True, exist_ok=True)

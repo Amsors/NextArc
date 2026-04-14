@@ -1,4 +1,5 @@
 import asyncio
+import re
 import signal
 import sys
 from pathlib import Path
@@ -7,6 +8,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 UPDATE_MARKER_FILE = ".next_arc_updated"
+VERSION_FILE_NAME = ".next_arc_version"
+CHANGE_LOG_FILE = "docs/change_log.md"
 
 from src.config import load_settings
 from src.config.preferences import load_preferences
@@ -47,11 +50,13 @@ class NextArcApp:
         self.time_filter: TimeFilter = None
         self.card_handler: CardActionHandler = None
         self.version_checker = None
+        self._should_notify_file_auth_deprecation = False
         self._shutdown_event = asyncio.Event()
 
     async def initialize(self) -> bool:
         try:
             self.settings = load_settings()
+            self._should_notify_file_auth_deprecation = self.settings.is_using_file_credentials()
 
             preferences_path = project_root / "config" / "preferences.yaml"
             self.preferences = load_preferences(preferences_path)
@@ -96,7 +101,7 @@ class NextArcApp:
 
             username, password = self.settings.get_credentials()
             self.auth_manager = AuthManager(username, password)
-            logger.info(f"认证管理器初始化完成，用户名: {username}")
+            logger.info(f"认证管理器初始化完成，认证方式: {self.settings.ustc.auth_mode}")
 
             logger.info("正在测试登录...")
             max_login_retries = 5
@@ -323,6 +328,7 @@ class NextArcApp:
                 await self.bot.start()
 
                 await self._check_and_notify_update()
+                await self._notify_file_auth_deprecation()
 
                 startup_msg = self._get_startup_message()
                 success = await self.bot.send_startup_message(startup_msg)
@@ -401,6 +407,26 @@ class NextArcApp:
         marker_path = self._get_update_marker_path()
         return marker_path.exists()
 
+    def _read_update_marker_version(self) -> str | None:
+        marker_path = self._get_update_marker_path()
+
+        try:
+            if not marker_path.exists():
+                return None
+
+            content = marker_path.read_text(encoding="utf-8").strip()
+            if not content:
+                return None
+
+            if not re.fullmatch(r"\d+\.\d+\.\d+", content):
+                logger.warning(f"更新标记文件中的版本号格式无效: {content}")
+                return None
+
+            return content
+        except Exception as e:
+            logger.error(f"读取更新标记文件失败: {e}")
+            return None
+
     def _remove_update_marker(self) -> bool:
         try:
             marker_path = self._get_update_marker_path()
@@ -430,7 +456,146 @@ class NextArcApp:
         else:
             logger.warning("飞书机器人未连接，无法发送更新通知")
 
+        await self._notify_change_logs_since_last_version()
         self._remove_update_marker()
+
+    def _get_current_semantic_version(self) -> str | None:
+        version_file = project_root / VERSION_FILE_NAME
+
+        try:
+            if not version_file.exists():
+                logger.warning(f"版本文件不存在: {version_file}")
+                return None
+
+            version = version_file.read_text(encoding="utf-8").strip()
+            if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+                logger.warning(f"版本号格式无效: {version}")
+                return None
+
+            return version
+        except Exception as e:
+            logger.error(f"读取版本文件失败: {e}")
+            return None
+
+    def _parse_semantic_version(self, version: str) -> tuple[int, int, int] | None:
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            return None
+
+        major, minor, patch = version.split(".")
+        return int(major), int(minor), int(patch)
+
+    def _get_change_log_sections(self) -> list[tuple[str, str]]:
+        change_log_path = project_root / CHANGE_LOG_FILE
+
+        try:
+            if not change_log_path.exists():
+                logger.warning(f"更新日志文件不存在: {change_log_path}")
+                return []
+
+            content = change_log_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.error(f"读取更新日志失败: {e}")
+            return []
+
+        lines = content.splitlines()
+        sections: list[tuple[str, str]] = []
+        current_version: str | None = None
+        current_start_index: int | None = None
+
+        def flush_section(end_index: int) -> None:
+            nonlocal current_version, current_start_index
+            if current_version is None or current_start_index is None:
+                return
+
+            section = "\n".join(lines[current_start_index:end_index]).strip()
+            if section:
+                sections.append((current_version, section))
+
+        for index, line in enumerate(lines):
+            match = re.fullmatch(r"## v(\d+\.\d+\.\d+)\s*", line.strip())
+            if match:
+                flush_section(index)
+                current_version = match.group(1)
+                current_start_index = index
+
+        flush_section(len(lines))
+        return sections
+
+    async def _notify_change_logs_since_last_version(self):
+        if not self.bot or not self.bot.is_connected():
+            logger.warning("飞书机器人未连接，无法发送更新说明")
+            return
+
+        current_version = self._get_current_semantic_version()
+        if not current_version:
+            return
+
+        previous_version = self._read_update_marker_version()
+        if not previous_version:
+            logger.info("更新标记文件中未记录旧版本，跳过区间更新说明发送")
+            return
+
+        current_semver = self._parse_semantic_version(current_version)
+        previous_semver = self._parse_semantic_version(previous_version)
+        if not current_semver or not previous_semver:
+            logger.warning("无法解析更新区间版本号，跳过更新说明发送")
+            return
+
+        sections = self._get_change_log_sections()
+        if not sections:
+            return
+
+        pending_sections = [
+            (version, section)
+            for version, section in sections
+            if previous_semver < self._parse_semantic_version(version) <= current_semver
+        ]
+
+        if not pending_sections:
+            logger.info(f"未找到从 v{previous_version} 到 v{current_version} 之间的更新说明")
+            return
+
+        pending_sections.sort(key=lambda item: self._parse_semantic_version(item[0]))
+
+        for version, section in pending_sections:
+            message = f"更新说明（v{version}）：\n\n{section}"
+
+            try:
+                success = await self.bot.send_text(message)
+                if success:
+                    logger.info(f"已发送版本 v{version} 的更新说明")
+                else:
+                    logger.warning(f"发送版本 v{version} 的更新说明失败")
+            except Exception as e:
+                logger.error(f"发送版本 v{version} 的更新说明异常: {e}")
+
+    async def _notify_file_auth_deprecation(self):
+        if not self._should_notify_file_auth_deprecation:
+            return
+
+        logger.warning("检测到 USTC 账号密码仍通过 config.yaml 明文读取，建议迁移到环境变量")
+
+        if not self.bot or not self.bot.is_connected():
+            logger.warning("飞书机器人未连接，无法发送文件凭据安全提醒")
+            return
+
+        message = (
+            "❗❗❗❗❗\n"
+            "安全提醒：当前账号密码仍通过 config.yaml 明文读取。\n"
+            "这会增加凭据被其他软件或误操作读取的风险，建议尽快迁移到环境变量模式。\n"
+            "推荐配置：ustc.auth_mode: \"env\"\n"
+            "环境变量：USTC_USERNAME、USTC_PASSWORD\n\n"
+            "为了安全性，后续版本将强制要求从环境变量中读取账号密码！"
+        )
+
+        try:
+            success = await self.bot.send_text(message)
+            if success:
+                logger.info("已发送文件凭据安全提醒")
+            else:
+                logger.warning("发送文件凭据安全提醒失败")
+        except Exception as e:
+            logger.error(f"发送文件凭据安全提醒异常: {e}")
 
 
 async def main():

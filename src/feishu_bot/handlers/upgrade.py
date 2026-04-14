@@ -291,7 +291,8 @@ class UpgradeHandler(CommandHandler):
     def _restart_application(self):
         logger.info("正在重启应用...")
 
-        self._create_update_marker()
+        old_version = self._read_version_file()
+        self._create_update_marker(old_version)
 
         executable = sys.executable
         args = sys.argv
@@ -303,11 +304,12 @@ class UpgradeHandler(CommandHandler):
         except Exception as e:
             logger.error(f"重启失败: {e}")
 
-    def _create_update_marker(self):
+    def _create_update_marker(self, old_version: tuple[int, int, int] | None):
         try:
             project_root = self._scanner.version_checker.project_root
             marker_file = project_root / ".next_arc_updated"
-            marker_file.touch()
+            marker_content = self._version_to_str(old_version) if old_version is not None else ""
+            marker_file.write_text(marker_content, encoding="utf-8")
             logger.info(f"已创建更新标记文件: {marker_file}")
         except Exception as e:
             logger.error(f"创建更新标记文件失败: {e}")
