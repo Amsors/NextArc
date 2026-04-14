@@ -166,7 +166,7 @@ class CardActionHandler:
                         f"报名成功\n\n"
                         f"活动：{activity_name}\n"
                         f"时间：{sc.hold_time.start.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'} ~ "
-                        f"{sc.hold_time.end.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'}\n\n"
+                        f"{sc.hold_time.end.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'}\n"
                     )
                     await self._bot.send_text(success_message)
                     logger.info(f"卡片报名成功: {activity_name}")

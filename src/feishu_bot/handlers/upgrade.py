@@ -162,7 +162,6 @@ class UpgradeHandler(CommandHandler):
             if version_changed:
                 version_info = f"\n版本号: {old_ver_str} → {new_ver_str}\n"
                 logger.info(f"版本号发生变化: {old_ver_str} -> {new_ver_str}")
-                extra_notifications.append(f"版本号: {old_ver_str} → {new_ver_str}")
 
             major_version_changed = self._is_major_version_changed(old_version, new_version)
             if major_version_changed:
