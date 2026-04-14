@@ -95,6 +95,7 @@ class ValidHandler(CommandHandler):
             time_filtered = []
             ai_filtered = []
             enrolled_filtered = []
+            ai_keep_reasons = {}
 
             if not show_all:
                 enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(latest_db)
@@ -117,9 +118,9 @@ class ValidHandler(CommandHandler):
                         filter_info.append(f"时间筛选已过滤 {len(time_filtered)} 个活动")
                         logger.info(f"时间筛选过滤了 {len(time_filtered)} 个活动")
 
-                if self._scanner.use_ai_filter and self._scanner.ai_filter:
+                if self._scanner.use_ai_filter and self._scanner.ai_filter and self._scanner.ai_user_info:
                     ai_user_info = self._scanner.ai_user_info
-                    activities, ai_filtered = await self._scanner.ai_filter.filter_activities(
+                    activities, ai_filtered, ai_keep_reasons = await self._scanner.ai_filter.filter_activities(
                         activities,
                         ai_user_info,
                         write_to_db=True,
@@ -130,6 +131,11 @@ class ValidHandler(CommandHandler):
                     if ai_filtered_count > 0:
                         filter_info.append(f"AI 筛选已过滤 {ai_filtered_count} 个活动")
                         logger.info(f"AI 筛选过滤了 {ai_filtered_count} 个活动")
+                    logger.debug(f"/valid AI筛选保留原因: {ai_keep_reasons}")
+                else:
+                    logger.debug(f"/valid 跳过AI筛选: use_ai_filter={self._scanner.use_ai_filter}, "
+                                f"has_ai_filter={self._scanner.ai_filter is not None}, "
+                                f"has_user_info={bool(self._scanner.ai_user_info)}")
 
             filter_result = dict()
             if ai_filtered:
@@ -193,11 +199,18 @@ class ValidHandler(CommandHandler):
 
             lines.append("对活动不感兴趣？发送「不感兴趣 序号」或「不感兴趣 全部」")
 
+            from src.config import get_settings
+            feishu_config = get_settings().feishu
+            card_ai_reasons = ai_keep_reasons if feishu_config.send_ai_filter_detail.kept else None
+            logger.info(f"/valid 卡片配置: kept={feishu_config.send_ai_filter_detail.kept}, "
+                       f"ai_keep_reasons_keys={list(card_ai_reasons.keys()) if card_ai_reasons else []}")
+
             return Response.activity_list(
                 activities=activities,
                 title=f"可报名活动（共 {len(activities)} 个）",
                 filters_applied=filter_info,
-                hint="\n".join(lines)
+                hint="\n".join(lines),
+                ai_reasons=card_ai_reasons,
             )
 
         except Exception as e:

@@ -41,6 +41,11 @@ class VersionCheckConfig(BaseModel):
     auto_fetch: bool = Field(default=True, description="检查前是否自动执行 git fetch")
 
 
+class SendAIFilterDetailConfig(BaseModel):
+    filtered: bool = Field(default=False, description="被AI筛选掉的活动是否显示具体原因")
+    kept: bool = Field(default=False, description="被AI保留的活动是否显示具体原因")
+
+
 class FeishuConfig(BaseModel):
     app_id: str = ""
     app_secret: str = ""
@@ -51,6 +56,10 @@ class FeishuConfig(BaseModel):
         ge=1,
         le=100,
         description="每条消息最多显示的活动数量，超过则分多条消息发送（用于避免超出飞书消息长度限制）"
+    )
+    send_ai_filter_detail: SendAIFilterDetailConfig = Field(
+        default_factory=SendAIFilterDetailConfig,
+        description="AI筛选详情展示配置"
     )
 
 

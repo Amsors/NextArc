@@ -1,6 +1,6 @@
 """扫描相关事件定义"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +28,7 @@ class NewActivitiesFoundEvent:
     activities: list[SecondClass]
     total_found: int
     filters_applied: dict[str, list]
+    ai_keep_reasons: dict[str, str] = field(default_factory=dict)
     timestamp: datetime = None
 
     def __post_init__(self):

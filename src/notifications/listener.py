@@ -41,6 +41,11 @@ class NotificationListener:
 
         logger.info(f"收到新活动事件: {event.final_count} 个活动")
 
+        from src.config import get_settings
+        ai_detail_config = get_settings().feishu.send_ai_filter_detail
+        logger.info(f"新活动通知配置: filtered={ai_detail_config.filtered}, kept={ai_detail_config.kept}")
+        logger.debug(f"新活动事件 ai_keep_reasons: {event.ai_keep_reasons}")
+
         message_parts = []
 
         if event.enrolled_filtered_count > 0:
@@ -50,7 +55,10 @@ class NotificationListener:
             message_parts.append(format_db_filtered_result(event.filters_applied.get("db", [])))
 
         if event.ai_filtered_count > 0:
-            message_parts.append(format_ai_filtered_result(event.filters_applied.get("ai", [])))
+            message_parts.append(format_ai_filtered_result(
+                event.filters_applied.get("ai", []),
+                include_reasons=ai_detail_config.filtered,
+            ))
 
         if event.time_filtered_count > 0:
             message_parts.append(format_time_filtered_result(event.filters_applied.get("time", [])))
@@ -74,7 +82,8 @@ class NotificationListener:
                 event.activities,
                 f"有 {event.final_count} 个你可能感兴趣的活动",
                 ignored_ids=ignored_ids,
-                button_config=button_config
+                button_config=button_config,
+                ai_reasons=event.ai_keep_reasons if ai_detail_config.kept else None,
             )
             logger.info(f"已发送新活动卡片: {event.final_count} 个活动")
         except Exception as e:

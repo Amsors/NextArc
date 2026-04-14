@@ -114,17 +114,6 @@ class AIFilter:
             retry_on_status: Optional[list[int]] = None,
             retry_on_network_error: bool = True,
     ):
-        if not api_key:
-            raise ValueError("AI 筛选器初始化失败：api_key 不能为空")
-        if not model:
-            raise ValueError("AI 筛选器初始化失败：model 不能为空")
-        if not system_prompt:
-            raise ValueError("AI 筛选器初始化失败：system_prompt 不能为空")
-        if not user_prompt:
-            raise ValueError("AI 筛选器初始化失败：user_prompt 不能为空")
-        if temperature is None:
-            raise ValueError("AI 筛选器初始化失败：temperature 不能为空")
-
         self.api_key = api_key
         self.base_url = base_url
         self.model = model
@@ -150,16 +139,29 @@ class AIFilter:
             retry_on_network_error=retry_on_network_error,
         )
 
-        client_kwargs = {"api_key": api_key}
-        if base_url:
-            client_kwargs["base_url"] = base_url
+        self.client: AsyncOpenAI | None = None
+        if api_key:
+            if not model:
+                raise ValueError("AI 筛选器初始化失败：model 不能为空")
+            if not system_prompt:
+                raise ValueError("AI 筛选器初始化失败：system_prompt 不能为空")
+            if not user_prompt:
+                raise ValueError("AI 筛选器初始化失败：user_prompt 不能为空")
+            if temperature is None:
+                raise ValueError("AI 筛选器初始化失败：temperature 不能为空")
 
-        self.client = AsyncOpenAI(**client_kwargs)
+            client_kwargs = {"api_key": api_key}
+            if base_url:
+                client_kwargs["base_url"] = base_url
 
-        logger.info(f"AI 筛选器初始化完成，模型: {model}")
-        logger.info(f"重试配置: 最多{retry_max_retries}次，基础延迟{retry_base_delay}秒")
-        if self.extra_body:
-            logger.info(f"已配置额外请求参数: {self.extra_body}")
+            self.client = AsyncOpenAI(**client_kwargs)
+
+            logger.info(f"AI 筛选器初始化完成，模型: {model}")
+            logger.info(f"重试配置: 最多{retry_max_retries}次，基础延迟{retry_base_delay}秒")
+            if self.extra_body:
+                logger.info(f"已配置额外请求参数: {self.extra_body}")
+        else:
+            logger.info("AI 筛选器初始化完成（未配置 API 密钥，将跳过 AI 筛选）")
 
     async def test_connection(self) -> tuple[bool, str]:
         """测试 API 连接是否可用，返回tuple[bool, str]: (是否成功, 详细信息)"""
@@ -255,13 +257,13 @@ class AIFilter:
             write_to_db: bool = True,
             prefer_cached: bool = False,
             preference_manager: Optional['UserPreferenceManager'] = None,
-    ) -> tuple[list[SecondClass], list[FilteredActivity]]:
+    ) -> tuple[list[SecondClass], list[FilteredActivity], dict[str, str]]:
         if not activities:
-            return [], []
+            return [], [], {}
 
         if not self.api_key:
             logger.warning("未配置 API 密钥，跳过 AI 筛选")
-            return activities, []
+            return activities, [], {a.id: "未启用AI筛选，默认保留" for a in activities}
 
         cached_results: dict[str, dict] = {}
         activities_to_judge = activities
@@ -297,10 +299,12 @@ class AIFilter:
 
         kept_activities: list[SecondClass] = []
         filtered_activities: list[FilteredActivity] = []
+        keep_reasons: dict[str, str] = {}
 
         for activity, is_interested, reason in all_results:
             if is_interested:
                 kept_activities.append(activity)
+                keep_reasons[activity.id] = reason or "【没有提供原因】"
                 logger.debug(f"通过AI筛选：活动 '{activity.name}'")
             else:
                 filtered_activities.append(FilteredActivity(
@@ -311,7 +315,8 @@ class AIFilter:
                 logger.debug(f"没有通过AI筛选：活动 '{activity.name}'")
 
         logger.info(f"AI 筛选完成：{len(kept_activities)}/{len(activities)} 个活动通过")
-        return kept_activities, filtered_activities
+        logger.debug(f"AI 筛选保留原因: {keep_reasons}")
+        return kept_activities, filtered_activities, keep_reasons
 
     def _merge_results(
             self,

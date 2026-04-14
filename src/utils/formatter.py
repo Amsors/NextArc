@@ -8,6 +8,7 @@ from pyustc.young import SecondClass
 
 from src.core import FilteredActivity
 from src.models import DiffResult
+from src.utils.logger import get_logger
 from src.models.activity import (
     format_secondclass_for_list,
     get_display_time,
@@ -17,6 +18,8 @@ from src.models.activity import (
     get_department_name,
     get_labels_text, get_conceive_text, get_place_info, get_participation_form, get_description_text
 )
+
+logger = get_logger("utils.formatter")
 
 
 @dataclass
@@ -101,12 +104,23 @@ def format_activity_list(activities: list[SecondClass], title: str = "活动列�
     return "\n".join(lines)
 
 
-def format_ai_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+def format_ai_filtered_result(
+        activities_filtered: list[FilteredActivity],
+        include_reasons: bool = False,
+) -> str:
     """格式化AI筛选掉的活动列表"""
-    activities = [act.activity for act in activities_filtered]
-    lines = format_activity_list(activities, "因AI筛选被筛选掉的活动", simple_format=True)
-    lines += "\n"
-    return lines
+    if not activities_filtered:
+        return ""
+
+    lines = ["因AI筛选被筛选掉的活动（共{}条）：".format(len(activities_filtered))]
+
+    for i, filtered in enumerate(activities_filtered, 1):
+        lines.append(format_secondclass_for_list(filtered.activity, i, simple_format=True))
+        if include_reasons:
+            lines.append(f"   原因：{filtered.reason}")
+
+    lines.append("")
+    return "\n".join(lines)
 
 
 def format_time_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
@@ -230,11 +244,17 @@ def build_activity_card(
         title: str = "活动列表",
         ignored_ids: set[str] | None = None,
         start_index: int = 1,
-        button_config: CardButtonConfig | None = None  # None表示使用默认配置（显示忽略和报名按钮）
+        button_config: CardButtonConfig | None = None,  # None表示使用默认配置（显示忽略和报名按钮）
+        ai_reasons: dict[str, str] | None = None,
 ) -> dict:
     """构建活动列表的消息卡片（使用折叠面板）"""
     if ignored_ids is None:
         ignored_ids = set()
+
+    if ai_reasons is None:
+        ai_reasons = {}
+
+    logger.debug(f"build_activity_card: activities={len(activities)}, ai_reasons_keys={list(ai_reasons.keys())}")
 
     if not activities:
         return {
@@ -270,7 +290,8 @@ def build_activity_card(
         else:
             from dataclasses import replace
             act_button_config = replace(button_config, is_ignored=is_ignored)
-        collapsible_panel = _build_activity_collapsible_panel(act, i, act_button_config)
+        ai_reason = ai_reasons.get(act.id)
+        collapsible_panel = _build_activity_collapsible_panel(act, i, act_button_config, ai_reason=ai_reason)
         elements.append(collapsible_panel)
 
     return {
@@ -286,7 +307,8 @@ def build_activity_card(
 def _build_activity_collapsible_panel(
         act: SecondClass,
         index: int,
-        button_config: CardButtonConfig | None = None
+        button_config: CardButtonConfig | None = None,
+        ai_reason: str | None = None,
 ) -> dict:
     """为单个活动构建折叠面板"""
     if button_config is None:
@@ -379,6 +401,12 @@ def _build_activity_collapsible_panel(
         detail_elements.append({
             "tag": "markdown",
             "content": f"**标签：** {labels}"
+        })
+
+    if ai_reason:
+        detail_elements.append({
+            "tag": "markdown",
+            "content": f"**🤖 AI 判断理由**\n{ai_reason}"
         })
 
     detail_elements.append({"tag": "hr"})

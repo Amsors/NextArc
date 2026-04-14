@@ -251,12 +251,13 @@ class ActivityScanner:
             time_filtered = []
             db_filtered = []
             enrolled_filtered = []
+            restored_activities = []
+            ai_keep_reasons = {}
 
             enrolled_ids = enrolled_ids or set()
             enrolled_filter = EnrolledFilter(enrolled_ids)
 
             if enable_filter:
-                restored_activities = []
                 if self.user_preference_manager:
                     activities, restored_activities = \
                         await self.user_preference_manager.restore_interested_activities(activities)
@@ -293,7 +294,7 @@ class ActivityScanner:
 
                 if self.use_ai_filter and self.ai_filter and self.ai_user_info:
                     logger.info(f"使用 AI 筛选 {len(activities)} 个新活动...")
-                    activities, ai_filtered_result = await self.ai_filter.filter_activities(
+                    activities, ai_filtered_result, ai_keep_reasons = await self.ai_filter.filter_activities(
                         activities,
                         self.ai_user_info,
                         write_to_db=True,
@@ -311,6 +312,8 @@ class ActivityScanner:
                     f"最终活动列表包含 {len(restored_activities)} 个白名单活动"
                     f"和 {len(activities) - len(restored_activities)} 个通过筛选的活动")
 
+            logger.debug(f"发布新活动事件: use_ai_filter={self.use_ai_filter}, "
+                        f"ai_keep_reasons_keys={list(ai_keep_reasons.keys()) if self.use_ai_filter else []}")
             event = NewActivitiesFoundEvent(
                 activities=activities,
                 total_found=len(new_activity_ids),
@@ -320,6 +323,7 @@ class ActivityScanner:
                     "ai": ai_filtered,
                     "enrolled": enrolled_filtered,
                 },
+                ai_keep_reasons=ai_keep_reasons if self.use_ai_filter else {},
             )
             await self.event_bus.publish(event)
 
