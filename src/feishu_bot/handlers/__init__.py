@@ -10,6 +10,7 @@ from .help import HelpHandler
 from .ignore import IgnoreHandler
 from .info import InfoHandler
 from .interested import InterestedHandler
+from .menu import MenuHandler
 from .join import JoinHandler
 from .search import SearchHandler
 from .upgrade import UpgradeHandler
@@ -38,6 +39,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "info",
         "已报名",
         "已经报名",
+        "info(信息)",
     ]
     for instruction in info_instructions:
         ret[instruction] = InfoHandler()
@@ -109,6 +111,14 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
     for instruction in interested_instructions:
         ret[instruction] = InterestedHandler()
 
+    menu_instructions = [
+        "菜单",
+        "menu",
+        "功能",
+    ]
+    for instruction in menu_instructions:
+        ret[instruction] = MenuHandler()
+
     upgrade_instructions = [
         "upgrade",
         "升级",
@@ -133,5 +143,6 @@ __all__ = [
     "ValidHandler",
     "IgnoreHandler",
     "InterestedHandler",
+    "MenuHandler",
     "UpgradeHandler",
 ]
