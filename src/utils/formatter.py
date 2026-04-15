@@ -25,29 +25,20 @@ logger = get_logger("utils.formatter")
 @dataclass
 class CardButtonConfig:
     """卡片按钮配置类"""
-    show_ignore_button: bool = True
+    show_status_buttons: bool = True
     show_join_button: bool = True
     show_cancel_button: bool = False
     show_children_button: bool = True
-    is_ignored: bool = False
+    status: str = "default"  # "interested" | "ignored" | "default"
 
     def get_buttons(self, act: SecondClass) -> list[dict]:
         """根据配置生成按钮列表"""
         buttons = []
 
-        if self.show_ignore_button:
-            ignore_button_text = "已忽略" if self.is_ignored else "不感兴趣"
-            ignore_button_type = "default" if self.is_ignored else "danger"
-            buttons.append({
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": ignore_button_text},
-                "type": ignore_button_type,
-                "value": {
-                    "action": "toggle_ignore",
-                    "activity_id": act.id,
-                    "activity_name": act.name
-                }
-            })
+        # 状态按钮组（感兴趣 / 不感兴趣 / 默认）
+        if self.show_status_buttons:
+            status_buttons = self._get_status_buttons(act)
+            buttons.extend(status_buttons)
 
         if self.show_cancel_button:
             buttons.append({
@@ -85,6 +76,86 @@ class CardButtonConfig:
                         "activity_name": act.name
                     }
                 })
+
+        return buttons
+
+    def _get_status_buttons(self, act: SecondClass) -> list[dict]:
+        """生成状态按钮组"""
+        buttons = []
+
+        # 根据当前状态决定显示哪些按钮
+        if self.status == "interested":
+            # 当前是感兴趣状态：显示"已感兴趣"和"不感兴趣"
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "⭐ 已感兴趣"},
+                "type": "primary",
+                "value": {
+                    "action": "set_status",
+                    "activity_id": act.id,
+                    "activity_name": act.name,
+                    "status": "default"  # 点击恢复默认
+                }
+            })
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "不感兴趣"},
+                "type": "danger",
+                "value": {
+                    "action": "set_status",
+                    "activity_id": act.id,
+                    "activity_name": act.name,
+                    "status": "ignored"
+                }
+            })
+        elif self.status == "ignored":
+            # 当前是不感兴趣状态：显示"感兴趣"和"已忽略"
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "感兴趣"},
+                "type": "default",
+                "value": {
+                    "action": "set_status",
+                    "activity_id": act.id,
+                    "activity_name": act.name,
+                    "status": "interested"
+                }
+            })
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "🚫 已忽略"},
+                "type": "danger",
+                "value": {
+                    "action": "set_status",
+                    "activity_id": act.id,
+                    "activity_name": act.name,
+                    "status": "default"  # 点击恢复默认
+                }
+            })
+        else:
+            # 默认状态：显示"感兴趣"和"不感兴趣"
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "感兴趣"},
+                "type": "default",
+                "value": {
+                    "action": "set_status",
+                    "activity_id": act.id,
+                    "activity_name": act.name,
+                    "status": "interested"
+                }
+            })
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "不感兴趣"},
+                "type": "danger",
+                "value": {
+                    "action": "set_status",
+                    "activity_id": act.id,
+                    "activity_name": act.name,
+                    "status": "ignored"
+                }
+            })
 
         return buttons
 
@@ -143,14 +214,6 @@ def format_enrolled_filtered_result(activities_filtered: list[FilteredActivity])
     """格式化因已报名被筛选掉的活动列表"""
     activities = [act.activity for act in activities_filtered]
     lines = format_activity_list(activities, "因已报名被筛选掉的活动", simple_format=True)
-    lines += "\n"
-    return lines
-
-
-def format_overlay_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
-    """格式化因与已报名活动时间重叠被筛选掉的活动列表"""
-    activities = [act.activity for act in activities_filtered]
-    lines = format_activity_list(activities, "因与已报名活动时间重叠被筛选掉的活动", simple_format=True)
     lines += "\n"
     return lines
 
@@ -250,23 +313,19 @@ def format_help_message() -> str:
 def build_activity_card(
         activities: list[SecondClass],
         title: str = "活动列表",
-        ignored_ids: set[str] | None = None,
+        status_map: dict[str, str] | None = None,  # activity_id -> status
         start_index: int = 1,
-        button_config: CardButtonConfig | None = None,  # None表示使用默认配置（显示忽略和报名按钮）
+        button_config: CardButtonConfig | None = None,  # None表示使用默认配置
         ai_reasons: dict[str, str] | None = None,
-        overlap_reasons: dict[str, str] | None = None,
 ) -> dict:
     """构建活动列表的消息卡片（使用折叠面板）"""
-    if ignored_ids is None:
-        ignored_ids = set()
+    if status_map is None:
+        status_map = {}
 
     if ai_reasons is None:
         ai_reasons = {}
 
-    if overlap_reasons is None:
-        overlap_reasons = {}
-
-    logger.debug(f"build_activity_card: activities={len(activities)}, ai_reasons_keys={list(ai_reasons.keys())}, overlap_reasons_keys={list(overlap_reasons.keys())}")
+    logger.debug(f"build_activity_card: activities={len(activities)}, ai_reasons_keys={list(ai_reasons.keys())}")
 
     if not activities:
         return {
@@ -296,17 +355,14 @@ def build_activity_card(
     elements.append({"tag": "hr"})
 
     for i, act in enumerate(activities, start_index):
-        is_ignored = act.id in ignored_ids
+        status = status_map.get(act.id, "default")
         if button_config is None:
-            act_button_config = CardButtonConfig()
+            act_button_config = CardButtonConfig(status=status)
         else:
             from dataclasses import replace
-            act_button_config = replace(button_config, is_ignored=is_ignored)
+            act_button_config = replace(button_config, status=status)
         ai_reason = ai_reasons.get(act.id)
-        overlap_reason = overlap_reasons.get(act.id)
-        collapsible_panel = _build_activity_collapsible_panel(
-            act, i, act_button_config, ai_reason=ai_reason, overlap_reason=overlap_reason
-        )
+        collapsible_panel = _build_activity_collapsible_panel(act, i, act_button_config, ai_reason=ai_reason)
         elements.append(collapsible_panel)
 
     return {
@@ -324,18 +380,13 @@ def _build_activity_collapsible_panel(
         index: int,
         button_config: CardButtonConfig | None = None,
         ai_reason: str | None = None,
-        overlap_reason: str | None = None,
 ) -> dict:
     """为单个活动构建折叠面板"""
     if button_config is None:
         button_config = CardButtonConfig()
 
     activity_type = "系列活动" if act.is_series else "单次活动"
-    if overlap_reason:
-        header_title = f"[{index}] 【重叠】{act.name} ({activity_type})"
-    else:
-        header_title = f"[{index}] {act.name} ({activity_type})"
-
+    header_title = f"[{index}] {act.name} ({activity_type})"
 
     detail_elements = []
     detail_elements.append(
@@ -421,12 +472,6 @@ def _build_activity_collapsible_panel(
         detail_elements.append({
             "tag": "markdown",
             "content": f"**标签：** {labels}"
-        })
-
-    if overlap_reason:
-        detail_elements.append({
-            "tag": "markdown",
-            "content": f"**⚠️ 时间重叠**\n{overlap_reason}"
         })
 
     if ai_reason:
