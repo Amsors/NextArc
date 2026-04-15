@@ -36,7 +36,7 @@ class CardActionHandler:
         activity_id = action_value.get("activity_id")
         activity_name = action_value.get("activity_name", "未知活动")
 
-        if not action or not activity_id:
+        if not action:
             return {
                 "toast": {
                     "type": "error",
@@ -46,7 +46,11 @@ class CardActionHandler:
 
         logger.info(f"处理卡片交互: action={action}, activity_id={activity_id}")
 
-        if action == "toggle_ignore":
+        if action == "set_status":
+            status = action_value.get("status")
+            return await self._handle_set_status(activity_id, activity_name, status)
+        elif action == "toggle_ignore":
+            # 兼容旧按钮（如果还有的话）
             return await self._handle_toggle_ignore(activity_id, activity_name, open_message_id)
         elif action == "join":
             return await self._handle_join(activity_id, activity_name)
@@ -54,11 +58,73 @@ class CardActionHandler:
             return await self._handle_view_children(activity_id, activity_name)
         elif action == "cancel":
             return await self._handle_cancel(activity_id, activity_name)
+        elif action == "menu_cmd":
+            return await self._handle_menu_cmd(action_value)
         else:
             return {
                 "toast": {
                     "type": "error",
                     "content": f"未知的操作类型: {action}"
+                }
+            }
+
+    async def _handle_set_status(
+            self,
+            activity_id: str,
+            activity_name: str,
+            status: str
+    ) -> dict:
+        """处理设置活动状态"""
+        if not self._user_preference_manager:
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "用户偏好管理器未初始化"
+                }
+            }
+
+        if status not in ("interested", "ignored", "default"):
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": f"无效的状态: {status}"
+                }
+            }
+
+        try:
+            success = await self._user_preference_manager.set_activity_status(activity_id, status)
+
+            if not success:
+                return {
+                    "toast": {
+                        "type": "error",
+                        "content": "操作失败，请稍后重试"
+                    }
+                }
+
+            # 根据状态返回不同的提示
+            status_text_map = {
+                "interested": "⭐ 已标记为感兴趣",
+                "ignored": "🚫 已标记为不感兴趣",
+                "default": "已恢复默认状态"
+            }
+            toast_content = f"「{activity_name}」{status_text_map.get(status, '状态已更新')}"
+
+            logger.info(f"设置活动状态成功: {activity_name}, status={status}")
+
+            return {
+                "toast": {
+                    "type": "success",
+                    "content": toast_content
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"设置活动状态失败: {e}")
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": f"操作失败: {str(e)}"
                 }
             }
 
@@ -89,10 +155,8 @@ class CardActionHandler:
 
             if is_now_ignored:
                 toast_content = f"已将「{activity_name}」加入不感兴趣列表"
-                button_text = "已忽略"
             else:
                 toast_content = f"已将「{activity_name}」移出不感兴趣列表"
-                button_text = "不感兴趣"
 
             logger.info(f"切换不感兴趣状态成功: {activity_name}, is_ignored={is_now_ignored}")
 
@@ -265,12 +329,14 @@ class CardActionHandler:
                     await child.update()
 
                 from src.utils.formatter import build_activity_card, CardButtonConfig
-                from src.core import UserPreferenceManager
                 from src.config import get_settings
 
-                ignored_ids = set()
+                # 构建状态映射
+                status_map = {}
                 if self._user_preference_manager:
-                    ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
+                    for child in children:
+                        status = await self._user_preference_manager.get_activity_status(child.id)
+                        status_map[child.id] = status
 
                 max_per_card = 20
                 try:
@@ -286,7 +352,7 @@ class CardActionHandler:
                     card_content = build_activity_card(
                         children,
                         title=f'系列活动「{activity_name}」的子活动',
-                        ignored_ids=ignored_ids,
+                        status_map=status_map,
                         button_config=button_config
                     )
                     await self._bot.send_card(card_content)
@@ -303,7 +369,7 @@ class CardActionHandler:
                         card_content = build_activity_card(
                             batch_children,
                             title=batch_title,
-                            ignored_ids=ignored_ids,
+                            status_map=status_map,
                             start_index=start_index,
                             button_config=button_config
                         )
@@ -406,3 +472,44 @@ class CardActionHandler:
                     "content": f"取消报名失败: {str(e)[:50]}"
                 }
             }
+
+    async def _handle_menu_cmd(self, action_value: dict) -> dict:
+        """处理菜单按钮点击，通过 MessageRouter 转发到对应 Handler"""
+        if not self._bot:
+            return {"toast": {"type": "error", "content": "服务未就绪"}}
+
+        cmd = action_value.get("cmd")
+        args = action_value.get("args", [])
+
+        if not cmd:
+            return {"toast": {"type": "error", "content": "无效的菜单命令"}}
+
+        logger.info(f"处理菜单命令: /{cmd} args={args}")
+
+        try:
+            from src.feishu_bot.handlers import get_all_handlers
+            from src.feishu_bot.handlers.base import CommandHandler
+
+            handlers = get_all_handlers()
+            handler = handlers.get(cmd)
+
+            if not handler:
+                await self._bot.send_text(f"未知指令: /{cmd}")
+                return {"toast": {"type": "error", "content": f"未知指令: /{cmd}"}}
+
+            # 注入 bot 引用（MenuHandler 等需要）
+            if hasattr(handler, '_bot') and not handler._bot:
+                handler._bot = self._bot
+
+            response = await handler.handle(args, self._bot.user_session)
+
+            if response:
+                await self._bot.send_response(response)
+
+            return {"toast": {"type": "success", "content": "命令已执行"}}
+
+        except Exception as e:
+            logger.error(f"处理菜单命令失败: {e}")
+            traceback.print_exc()
+            await self._bot.send_text(f"执行命令时出错: {str(e)}")
+            return {"toast": {"type": "error", "content": f"执行失败: {str(e)[:50]}"}}
