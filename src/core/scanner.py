@@ -17,7 +17,6 @@ from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
 from .enrolled_filter import EnrolledFilter
-from .overlay_filter import OverlayFilter
 from .time_filter import TimeFilter
 from .user_preference_manager import UserPreferenceManager
 
@@ -252,7 +251,6 @@ class ActivityScanner:
             time_filtered = []
             db_filtered = []
             enrolled_filtered = []
-            overlay_filtered = []
             restored_activities = []
             ai_keep_reasons = {}
 
@@ -286,33 +284,6 @@ class ActivityScanner:
                         logger.info("数据库筛选后无活动需要通知（全部被用户标记为不感兴趣）")
                         return
 
-                overlay_filtered = []
-                overlap_reasons: dict[str, str] = {}
-                enrolled_time_ranges = await OverlayFilter.get_enrolled_time_ranges_from_db(
-                    self.db_manager.get_latest_db() or self.db_manager.get_new_db_path()
-                )
-                if enrolled_time_ranges:
-                    from src.config import get_settings
-                    ignore_overlap = get_settings().filter.ignore_overlap
-                    logger.info(f"使用重叠筛选检查 {len(activities)} 个新活动...")
-                    overlay_filter = OverlayFilter(enrolled_time_ranges)
-                    activities, overlay_filtered = overlay_filter.filter_activities(
-                        activities, ignore_overlap=ignore_overlap
-                    )
-                    overlap_reasons = overlay_filter.overlap_reasons
-
-                    if overlay_filtered:
-                        logger.info(f"重叠筛选过滤了 {len(overlay_filtered)} 个活动")
-
-                    if overlap_reasons:
-                        logger.info(f"重叠筛选标记了 {len(overlap_reasons)} 个活动但仍保留")
-
-                    if not activities and not restored_activities:
-                        logger.info("重叠筛选后无活动需要通知（全部与已报名活动重叠）")
-                        return
-                else:
-                    logger.debug("没有已报名活动时间记录，跳过重叠筛选")
-
                 if self.use_time_filter and self.time_filter:
                     logger.info(f"使用时间筛选检查 {len(activities)} 个新活动...")
                     activities, time_filtered = self.time_filter.filter_activities(activities)
@@ -342,8 +313,7 @@ class ActivityScanner:
                     f"和 {len(activities) - len(restored_activities)} 个通过筛选的活动")
 
             logger.debug(f"发布新活动事件: use_ai_filter={self.use_ai_filter}, "
-                        f"ai_keep_reasons_keys={list(ai_keep_reasons.keys()) if self.use_ai_filter else []}, "
-                        f"overlap_reasons_keys={list(overlap_reasons.keys()) if overlap_reasons else []}")
+                        f"ai_keep_reasons_keys={list(ai_keep_reasons.keys()) if self.use_ai_filter else []}")
             event = NewActivitiesFoundEvent(
                 activities=activities,
                 total_found=len(new_activity_ids),
@@ -352,17 +322,14 @@ class ActivityScanner:
                     "time": time_filtered,
                     "ai": ai_filtered,
                     "enrolled": enrolled_filtered,
-                    "overlay": overlay_filtered,
                 },
                 ai_keep_reasons=ai_keep_reasons if self.use_ai_filter else {},
-                overlap_reasons=overlap_reasons,
             )
             await self.event_bus.publish(event)
 
             logger.info(f"已发布新活动事件: {len(activities)} 个新活动"
                         f"{'，' + str(len(enrolled_filtered)) + ' 个已报名被过滤' if enrolled_filtered else ''}"
                         f"{'，' + str(len(db_filtered)) + ' 个被数据库过滤' if db_filtered else ''}"
-                        f"{'，' + str(len(overlay_filtered)) + ' 个被重叠筛选过滤' if overlay_filtered else ''}"
                         f"{'，' + str(len(ai_filtered)) + ' 个被 AI 过滤' if ai_filtered else ''}"
                         f"{'，' + str(len(time_filtered)) + ' 个被时间过滤' if time_filtered else ''}")
 

@@ -35,7 +35,8 @@ class NotificationService(ABC):
                 title = response.metadata.get("title", "活动列表")
                 button_config = response.metadata.get("button_config")
                 ai_reasons = response.metadata.get("ai_reasons")
-                return await self.send_activity_list_card(activities, title, button_config=button_config, ai_reasons=ai_reasons)
+                status_map = response.metadata.get("status_map")
+                return await self.send_activity_list_card(activities, title, status_map=status_map, button_config=button_config, ai_reasons=ai_reasons)
             else:
                 return await self.send_card(response.content)
 

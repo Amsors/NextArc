@@ -186,7 +186,7 @@ class UpgradeHandler(CommandHandler):
                 f"正在重启应用..."
             )
 
-            asyncio.create_task(self._delayed_restart(old_version))
+            asyncio.create_task(self._delayed_restart())
 
             return Response.text(success_msg)
 
@@ -237,9 +237,9 @@ class UpgradeHandler(CommandHandler):
         else:
             return "未知错误"
 
-    async def _delayed_restart(self, old_version: tuple[int, int, int] | None, delay: float = 5.0):
+    async def _delayed_restart(self, delay: float = 5.0):
         await asyncio.sleep(delay)
-        self._restart_application(old_version)
+        self._restart_application()
 
     def _read_version_file(self) -> tuple[int, int, int] | None:
         try:
@@ -288,9 +288,10 @@ class UpgradeHandler(CommandHandler):
             return "unknown"
         return f"{version[0]}.{version[1]}.{version[2]}"
 
-    def _restart_application(self, old_version: tuple[int, int, int] | None):
+    def _restart_application(self):
         logger.info("正在重启应用...")
 
+        old_version = self._read_version_file()
         self._create_update_marker(old_version)
 
         executable = sys.executable
