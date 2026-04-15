@@ -38,7 +38,6 @@ class Response:
             filters_applied: list[str] | None = None,
             button_config: "CardButtonConfig | None" = None,
             ai_reasons: dict[str, str] | None = None,
-            overlap_reasons: dict[str, str] | None = None,
             **metadata  # TODO 检查此处额外元数据
     ) -> "Response":
         """创建活动列表卡片响应"""
@@ -47,10 +46,7 @@ class Response:
         if button_config is None:
             button_config = CardButtonConfig()
 
-        card_content = build_activity_card(
-            activities, title, button_config=button_config,
-            ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
-        )
+        card_content = build_activity_card(activities, title, button_config=button_config, ai_reasons=ai_reasons)
 
         meta = {
             "activities": activities,
@@ -58,7 +54,6 @@ class Response:
             "filters_applied": filters_applied or [],
             "button_config": button_config,
             "ai_reasons": ai_reasons,
-            "overlap_reasons": overlap_reasons,
             **metadata
         }
 
@@ -76,7 +71,7 @@ class Response:
         from src.utils.formatter import CardButtonConfig
 
         button_config = CardButtonConfig(
-            show_ignore_button=False,
+            show_status_buttons=False,
             show_join_button=False,
             show_cancel_button=True,
             show_children_button=True

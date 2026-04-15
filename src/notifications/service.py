@@ -35,11 +35,7 @@ class NotificationService(ABC):
                 title = response.metadata.get("title", "活动列表")
                 button_config = response.metadata.get("button_config")
                 ai_reasons = response.metadata.get("ai_reasons")
-                overlap_reasons = response.metadata.get("overlap_reasons")
-                return await self.send_activity_list_card(
-                    activities, title, button_config=button_config,
-                    ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
-                )
+                return await self.send_activity_list_card(activities, title, button_config=button_config, ai_reasons=ai_reasons)
             else:
                 return await self.send_card(response.content)
 
@@ -62,19 +58,18 @@ class NotificationService(ABC):
             self,
             activities: list,
             title: str = "活动列表",
-            ignored_ids: set[str] | None = None,
+            status_map: dict[str, str] | None = None,
             button_config: "CardButtonConfig | None" = None,
             ai_reasons: dict[str, str] | None = None,
-            overlap_reasons: dict[str, str] | None = None,
     ) -> bool:
         """发送活动列表卡片，当活动数量超过限制时自动分批发送"""
         from src.utils.formatter import build_activity_card
 
+        if status_map is None:
+            status_map = {}
+
         if not activities:
-            card_content = build_activity_card(
-                activities, title, ignored_ids,
-                button_config=button_config, ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
-            )
+            card_content = build_activity_card(activities, title, status_map, button_config=button_config, ai_reasons=ai_reasons)
             return await self.send_card(card_content)
 
         max_per_card = DEFAULT_MAX_ACTIVITIES_PER_CARD
@@ -86,10 +81,7 @@ class NotificationService(ABC):
             pass
 
         if len(activities) <= max_per_card:
-            card_content = build_activity_card(
-                activities, title, ignored_ids,
-                button_config=button_config, ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
-            )
+            card_content = build_activity_card(activities, title, status_map, button_config=button_config, ai_reasons=ai_reasons)
             return await self.send_card(card_content)
 
         total = len(activities)
@@ -107,11 +99,10 @@ class NotificationService(ABC):
             card_content = build_activity_card(
                 batch_activities,
                 batch_title,
-                ignored_ids,
+                status_map,
                 start_index=start_index,
                 button_config=button_config,
                 ai_reasons=ai_reasons,
-                overlap_reasons=overlap_reasons,
             )
 
             success = await self.send_card(card_content)
