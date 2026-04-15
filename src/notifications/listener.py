@@ -9,7 +9,7 @@ from src.core.events.scan_events import (
 )
 from src.core.events.version_events import VersionUpdateEvent
 from src.utils.formatter import format_db_filtered_result, \
-    format_ai_filtered_result, format_time_filtered_result, format_enrolled_filtered_result
+    format_ai_filtered_result, format_time_filtered_result, format_enrolled_filtered_result, format_overlay_filtered_result
 from src.utils.logger import get_logger
 from .service import NotificationService
 
@@ -59,6 +59,9 @@ class NotificationListener:
         if event.time_filtered_count > 0:
             message_parts.append(format_time_filtered_result(event.filters_applied.get("time", [])))
 
+        if event.overlay_filtered_count > 0:
+            message_parts.append(format_overlay_filtered_result(event.filters_applied.get("overlay", [])))
+
         if message_parts:
             filter_message = "\n".join(message_parts)
             await self._notification_service.send_text(filter_message)
@@ -81,6 +84,7 @@ class NotificationListener:
                     ignored_ids=ignored_ids,
                     button_config=button_config,
                     ai_reasons=event.ai_keep_reasons if ai_detail_config.kept else None,
+                    overlap_reasons=event.overlap_reasons if event.overlap_reasons else None,
                 )
                 logger.info(f"已发送新活动卡片: {event.final_count} 个活动")
             except Exception as e:

@@ -29,6 +29,7 @@ class NewActivitiesFoundEvent:
     total_found: int
     filters_applied: dict[str, list]
     ai_keep_reasons: dict[str, str] = field(default_factory=dict)
+    overlap_reasons: dict[str, str] = field(default_factory=dict)
     timestamp: datetime = None
 
     def __post_init__(self):
@@ -50,6 +51,10 @@ class NewActivitiesFoundEvent:
     @property
     def enrolled_filtered_count(self) -> int:
         return len(self.filters_applied.get("enrolled", []))
+
+    @property
+    def overlay_filtered_count(self) -> int:
+        return len(self.filters_applied.get("overlay", []))
 
     @property
     def final_count(self) -> int:

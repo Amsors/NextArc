@@ -58,12 +58,16 @@ class MessageSender:
             title: str = "活动列表",
             button_config: "CardButtonConfig | None" = None,
             ai_reasons: dict[str, str] | None = None,
+            overlap_reasons: dict[str, str] | None = None,
     ) -> bool:
         if button_config is None:
             button_config = CardButtonConfig()
 
         if not activities:
-            card_content = build_activity_card(activities, title, button_config=button_config, ai_reasons=ai_reasons)
+            card_content = build_activity_card(
+                activities, title, button_config=button_config,
+                ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
+            )
             return await self.send_card(card_content)
 
         max_per_card = DEFAULT_MAX_ACTIVITIES_PER_CARD
@@ -75,7 +79,10 @@ class MessageSender:
             logger.warning(f"获取配置失败，使用默认值 {DEFAULT_MAX_ACTIVITIES_PER_CARD}: {e}")
 
         if len(activities) <= max_per_card:
-            card_content = build_activity_card(activities, title, button_config=button_config, ai_reasons=ai_reasons)
+            card_content = build_activity_card(
+                activities, title, button_config=button_config,
+                ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
+            )
             return await self.send_card(card_content)
 
         # 分批发送
@@ -101,6 +108,7 @@ class MessageSender:
                 start_index=start_index,
                 button_config=button_config,
                 ai_reasons=ai_reasons,
+                overlap_reasons=overlap_reasons,
             )
 
             success = await self.send_card(card_content)

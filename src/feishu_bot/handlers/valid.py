@@ -3,7 +3,7 @@
 import aiosqlite
 from pyustc.young import SecondClass, Status
 
-from src.core import EnrolledFilter, UserPreferenceManager
+from src.core import EnrolledFilter, OverlayFilter, UserPreferenceManager
 from src.models import UserSession, secondclass_from_db_row
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -95,6 +95,7 @@ class ValidHandler(CommandHandler):
             time_filtered = []
             ai_filtered = []
             enrolled_filtered = []
+            overlay_filtered = []
             ai_keep_reasons = {}
 
             if not show_all:
@@ -111,6 +112,25 @@ class ValidHandler(CommandHandler):
                     if db_filtered:
                         filter_info.append(f"数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
                         logger.info(f"数据库筛选过滤了 {len(db_filtered)} 个活动")
+
+                enrolled_time_ranges = await OverlayFilter.get_enrolled_time_ranges_from_db(latest_db)
+                overlap_reasons: dict[str, str] = {}
+                if enrolled_time_ranges:
+                    from src.config import get_settings
+                    ignore_overlap = get_settings().filter.ignore_overlap
+                    overlay_filter = OverlayFilter(enrolled_time_ranges)
+                    activities, overlay_filtered = overlay_filter.filter_activities(
+                        activities, ignore_overlap=ignore_overlap
+                    )
+                    overlap_reasons = overlay_filter.overlap_reasons
+                    if overlay_filtered:
+                        filter_info.append(f"重叠筛选已过滤 {len(overlay_filtered)} 个活动")
+                        logger.info(f"重叠筛选过滤了 {len(overlay_filtered)} 个活动")
+                    if overlap_reasons:
+                        filter_info.append(f"重叠筛选标记了 {len(overlap_reasons)} 个活动但仍保留")
+                        logger.info(f"重叠筛选标记了 {len(overlap_reasons)} 个活动但仍保留")
+                else:
+                    logger.debug("没有已报名活动时间记录，跳过重叠筛选")
 
                 if self._scanner.use_time_filter and self._scanner.time_filter:
                     activities, time_filtered = self._scanner.time_filter.filter_activities(activities)
@@ -146,6 +166,8 @@ class ValidHandler(CommandHandler):
                 filter_result["time"] = time_filtered
             if enrolled_filtered:
                 filter_result["enrolled"] = enrolled_filtered
+            if overlay_filtered:
+                filter_result["overlay"] = overlay_filtered
 
             session.set_displayed_activities(
                 activities=activities,
@@ -211,6 +233,7 @@ class ValidHandler(CommandHandler):
                 filters_applied=filter_info,
                 hint="\n".join(lines),
                 ai_reasons=card_ai_reasons,
+                overlap_reasons=overlap_reasons if overlap_reasons else None,
             )
 
         except Exception as e:

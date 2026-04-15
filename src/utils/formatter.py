@@ -147,6 +147,14 @@ def format_enrolled_filtered_result(activities_filtered: list[FilteredActivity])
     return lines
 
 
+def format_overlay_filtered_result(activities_filtered: list[FilteredActivity]) -> str:
+    """格式化因与已报名活动时间重叠被筛选掉的活动列表"""
+    activities = [act.activity for act in activities_filtered]
+    lines = format_activity_list(activities, "因与已报名活动时间重叠被筛选掉的活动", simple_format=True)
+    lines += "\n"
+    return lines
+
+
 def format_status_message(
         is_running: bool,
         last_scan: Optional[datetime],
@@ -246,6 +254,7 @@ def build_activity_card(
         start_index: int = 1,
         button_config: CardButtonConfig | None = None,  # None表示使用默认配置（显示忽略和报名按钮）
         ai_reasons: dict[str, str] | None = None,
+        overlap_reasons: dict[str, str] | None = None,
 ) -> dict:
     """构建活动列表的消息卡片（使用折叠面板）"""
     if ignored_ids is None:
@@ -254,7 +263,10 @@ def build_activity_card(
     if ai_reasons is None:
         ai_reasons = {}
 
-    logger.debug(f"build_activity_card: activities={len(activities)}, ai_reasons_keys={list(ai_reasons.keys())}")
+    if overlap_reasons is None:
+        overlap_reasons = {}
+
+    logger.debug(f"build_activity_card: activities={len(activities)}, ai_reasons_keys={list(ai_reasons.keys())}, overlap_reasons_keys={list(overlap_reasons.keys())}")
 
     if not activities:
         return {
@@ -291,7 +303,10 @@ def build_activity_card(
             from dataclasses import replace
             act_button_config = replace(button_config, is_ignored=is_ignored)
         ai_reason = ai_reasons.get(act.id)
-        collapsible_panel = _build_activity_collapsible_panel(act, i, act_button_config, ai_reason=ai_reason)
+        overlap_reason = overlap_reasons.get(act.id)
+        collapsible_panel = _build_activity_collapsible_panel(
+            act, i, act_button_config, ai_reason=ai_reason, overlap_reason=overlap_reason
+        )
         elements.append(collapsible_panel)
 
     return {
@@ -309,13 +324,18 @@ def _build_activity_collapsible_panel(
         index: int,
         button_config: CardButtonConfig | None = None,
         ai_reason: str | None = None,
+        overlap_reason: str | None = None,
 ) -> dict:
     """为单个活动构建折叠面板"""
     if button_config is None:
         button_config = CardButtonConfig()
 
     activity_type = "系列活动" if act.is_series else "单次活动"
-    header_title = f"[{index}] {act.name} ({activity_type})"
+    if overlap_reason:
+        header_title = f"[{index}] 【重叠】{act.name} ({activity_type})"
+    else:
+        header_title = f"[{index}] {act.name} ({activity_type})"
+
 
     detail_elements = []
     detail_elements.append(
@@ -401,6 +421,12 @@ def _build_activity_collapsible_panel(
         detail_elements.append({
             "tag": "markdown",
             "content": f"**标签：** {labels}"
+        })
+
+    if overlap_reason:
+        detail_elements.append({
+            "tag": "markdown",
+            "content": f"**⚠️ 时间重叠**\n{overlap_reason}"
         })
 
     if ai_reason:

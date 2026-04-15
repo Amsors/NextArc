@@ -18,6 +18,9 @@ ustc:
 filter:
   # 是否在显示自己已经报名的活动列表时，忽略已报名但活动已结束的活动，默认开启
   ignore_participated_but_ended_activity: true
+  # 是否忽略与已报名活动时间重叠的单次活动
+  # true: 直接过滤掉重叠的单次活动（默认 false）
+  ignore_overlap: false
 
 behavior:
   # 是否在程序启动时扫描所有活动，建议关闭，默认关闭
