@@ -17,8 +17,10 @@ from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConf
 from src.core.events import EventBus
 from src.core.time_filter import TimeFilter
 from src.core.user_preference_manager import UserPreferenceManager
+from src.core.auto_enroller import AutoEnroller
 from src.feishu_bot import FeishuBot, CardActionHandler
 from src.feishu_bot.handlers.alive import AliveHandler
+from src.feishu_bot.handlers.base import CommandHandler
 from src.feishu_bot.handlers.ignore import IgnoreHandler
 from src.feishu_bot.handlers.valid import ValidHandler
 from src.feishu_bot.message_router import MessageRouter
@@ -49,6 +51,7 @@ class NextArcApp:
         self.router: MessageRouter = None
         self.time_filter: TimeFilter = None
         self.card_handler: CardActionHandler = None
+        self.auto_enroller: AutoEnroller = None
         self.version_checker = None
         self._should_notify_file_auth_deprecation = False
         self._shutdown_event = asyncio.Event()
@@ -226,6 +229,15 @@ class NextArcApp:
             )
             logger.info("卡片交互处理器初始化完成")
 
+            # 初始化自动报名器
+            self.auto_enroller = AutoEnroller(
+                auth_manager=self.auth_manager,
+                user_preference_manager=self.user_preference_manager,
+                bot=None,  # 等bot创建后再设置
+                interval_minutes=5,
+            )
+            logger.info("自动报名器初始化完成")
+
             if self.settings.feishu.app_id and self.settings.feishu.app_secret:
                 chat_id = self.settings.feishu.chat_id if self.settings.feishu.chat_id else None
                 self.bot = FeishuBot(
@@ -241,6 +253,13 @@ class NextArcApp:
                     auth_manager=self.auth_manager,
                     bot=self.bot
                 )
+
+                # 设置自动报名器的 bot 并启动
+                self.auto_enroller.set_bot(self.bot)
+                self.auto_enroller.start()
+
+                CommandHandler.set_bot(self.bot)
+                logger.info("Handler bot 引用设置完成")
 
                 self.notification_service = FeishuNotificationService(self.bot)
                 logger.info("通知服务初始化完成")
@@ -381,6 +400,9 @@ class NextArcApp:
 
         if self.scanner:
             self.scanner.stop()
+
+        if self.auto_enroller:
+            self.auto_enroller.stop()
 
         if self.bot:
             await self.bot.stop()
