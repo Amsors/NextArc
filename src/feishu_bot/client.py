@@ -326,3 +326,20 @@ class FeishuBot:
 
     def get_chat_id(self) -> Optional[str]:
         return self._chat_id
+
+    async def send_response(self, response) -> bool:
+        """根据 Response 类型自动发送文本或卡片"""
+        if not response:
+            return True
+
+        from src.notifications import ResponseType
+
+        response_type = getattr(response, 'type', None)
+        content = getattr(response, 'content', None)
+
+        if response_type == ResponseType.TEXT:
+            return await self.send_text(content or "")
+        elif response_type == ResponseType.CARD:
+            return await self.send_card(content)
+        else:
+            return False
