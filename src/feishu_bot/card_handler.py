@@ -36,7 +36,7 @@ class CardActionHandler:
         activity_id = action_value.get("activity_id")
         activity_name = action_value.get("activity_name", "未知活动")
 
-        if not action or not activity_id:
+        if not action or (action != "menu_cmd" and not activity_id):
             return {
                 "toast": {
                     "type": "error",
@@ -54,6 +54,8 @@ class CardActionHandler:
             return await self._handle_view_children(activity_id, activity_name)
         elif action == "cancel":
             return await self._handle_cancel(activity_id, activity_name)
+        elif action == "menu_cmd":
+            return await self._handle_menu_cmd(action_value)
         else:
             return {
                 "toast": {
@@ -406,3 +408,48 @@ class CardActionHandler:
                     "content": f"取消报名失败: {str(e)[:50]}"
                 }
             }
+
+    async def _handle_menu_cmd(self, action_value: dict) -> dict:
+        """将菜单按钮转回现有文本指令入口。"""
+        if not self._bot or not self._bot.message_handler:
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "服务未就绪"
+                }
+            }
+
+        cmd = action_value.get("cmd")
+        args = action_value.get("args") or []
+
+        if not cmd:
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "无效的菜单命令"
+                }
+            }
+
+        command_text = f"/{cmd}"
+        if args:
+            command_text += " " + " ".join(str(arg) for arg in args)
+
+        logger.info(f"执行菜单命令: {command_text}")
+
+        try:
+            await self._bot.message_handler(command_text, self._bot.user_session)
+        except Exception as e:
+            logger.error(f"执行菜单命令失败: {e}")
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": f"执行失败: {str(e)[:50]}"
+                }
+            }
+
+        return {
+            "toast": {
+                "type": "success",
+                "content": f"已执行 {command_text}"
+            }
+        }
