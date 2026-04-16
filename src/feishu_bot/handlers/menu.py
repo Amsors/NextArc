@@ -86,15 +86,15 @@ def build_menu_card() -> dict:
                 "actions": [
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "立即扫描"},
+                        "text": {"tag": "plain_text", "content": "扫描"},
                         "type": "default",
-                        "value": {"action": "menu_cmd", "cmd": "update"},
+                        "value": {"action": "menu_cmd", "cmd": "check"},
                     },
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "检查差异"},
+                        "text": {"tag": "plain_text", "content": "扫描并推送"},
                         "type": "default",
-                        "value": {"action": "menu_cmd", "cmd": "check"},
+                        "value": {"action": "menu_cmd", "cmd": "check", "args": ["推送"]},
                     },
                 ],
             },
