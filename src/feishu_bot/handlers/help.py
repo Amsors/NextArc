@@ -56,6 +56,8 @@ class HelpHandler(CommandHandler):
             "\n\n"
             "/alive 查看系统状态\n"
             "\n\n"
+            "/菜单 显示功能菜单\n"
+            "\n\n"
             "/upgrade 检查并安装程序更新\n"
             "  自动从 git 拉取最新代码并重启应用\n"
             "  如有更新会显示变更内容并要求确认\n"
