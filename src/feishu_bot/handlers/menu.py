@@ -36,15 +36,15 @@ def build_menu_card() -> dict:
                 "actions": [
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "已报名"},
+                        "text": {"tag": "plain_text", "content": "已报名活动"},
                         "type": "primary",
                         "value": {"action": "menu_cmd", "cmd": "info"},
                     },
                     {
                         "tag": "button",
-                        "text": {"tag": "plain_text", "content": "已报名(全部)"},
+                        "text": {"tag": "plain_text", "content": "未结项活动"},
                         "type": "primary",
-                        "value": {"action": "menu_cmd", "cmd": "info", "args": ["全部"]},
+                        "value": {"action": "menu_cmd", "cmd": "info", "args": ["未结项"]},
                     },
                 ],
             },
@@ -70,6 +70,12 @@ def build_menu_card() -> dict:
                         "text": {"tag": "plain_text", "content": "可报名(全部)"},
                         "type": "primary",
                         "value": {"action": "menu_cmd", "cmd": "valid", "args": ["全部"]},
+                    },
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "可报名(重新扫描)"},
+                        "type": "primary",
+                        "value": {"action": "menu_cmd", "cmd": "valid", "args": ["深度", "重新扫描"]},
                     },
                 ],
             },

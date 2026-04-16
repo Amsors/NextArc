@@ -165,17 +165,13 @@ def format_status_message(
         interested_count: int = 0,
 ) -> str:
     """格式化状态消息"""
-    lines = ["服务状态", ""]
+    lines = []
 
     if is_running:
         lines.append("服务运行中")
     else:
         lines.append("服务已停止")
 
-    if is_logged_in:
-        lines.append("已登录")
-    else:
-        lines.append("未登录")
 
     lines.append("")
 
@@ -186,6 +182,8 @@ def format_status_message(
 
     if next_scan:
         lines.append(f"下次扫描：{next_scan.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    lines.append("")
 
     lines.append(f"数据库数量：{db_count}")
     lines.append(f"不感兴趣活动：{ignore_count}")
