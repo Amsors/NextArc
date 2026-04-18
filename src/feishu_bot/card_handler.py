@@ -49,6 +49,8 @@ class CardActionHandler:
 
         if action == "toggle_ignore":
             return await self._handle_toggle_ignore(activity_id, activity_name, open_message_id)
+        elif action == "toggle_interested":
+            return await self._handle_toggle_interested(activity_id, activity_name, open_message_id)
         elif action == "join":
             return await self._handle_join(activity_id, activity_name)
         elif action == "view_children":
@@ -108,6 +110,54 @@ class CardActionHandler:
 
         except Exception as e:
             logger.error(f"切换不感兴趣状态失败: {e}")
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": f"操作失败: {str(e)}"
+                }
+            }
+
+    async def _handle_toggle_interested(
+            self,
+            activity_id: str,
+            activity_name: str,
+            open_message_id: str
+    ) -> dict:
+        if not self._user_preference_manager:
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "用户偏好管理器未初始化"
+                }
+            }
+
+        try:
+            success, is_now_interested = await self._user_preference_manager.toggle_interested_activity(activity_id)
+
+            if not success:
+                return {
+                    "toast": {
+                        "type": "error",
+                        "content": "操作失败，请稍后重试"
+                    }
+                }
+
+            if is_now_interested:
+                toast_content = f"已将「{activity_name}」标记为感兴趣"
+            else:
+                toast_content = f"已将「{activity_name}」移出感兴趣列表"
+
+            logger.info(f"切换感兴趣状态成功: {activity_name}, is_interested={is_now_interested}")
+
+            return {
+                "toast": {
+                    "type": "success",
+                    "content": toast_content
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"切换感兴趣状态失败: {e}")
             return {
                 "toast": {
                     "type": "error",

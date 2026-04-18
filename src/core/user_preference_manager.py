@@ -166,6 +166,10 @@ class UserPreferenceManager:
         if not activity_ids:
             return 0, 0
 
+        # 先从感兴趣列表移除所有要添加的活动（保持互斥）
+        for activity_id in activity_ids:
+            await self.remove_interested_activity(activity_id)
+
         success_count = 0
         failed_count = 0
         current_time = int(time.time())
@@ -254,6 +258,8 @@ class UserPreferenceManager:
                 success = await self.remove_ignored_activity(activity_id)
                 return success, False
             else:
+                # 添加到不感兴趣时，同时从感兴趣列表移除（保持互斥）
+                await self.remove_interested_activity(activity_id)
                 success = await self.add_ignored_activity(activity_id)
                 return success, True
 
@@ -261,6 +267,29 @@ class UserPreferenceManager:
             logger.error(f"切换活动不感兴趣状态失败: {e}")
             try:
                 original_state = await self.is_ignored(activity_id)
+                return False, original_state
+            except:
+                return False, False
+
+    async def toggle_interested_activity(self, activity_id: str) -> tuple[bool, bool]:
+        await self.initialize()
+
+        try:
+            is_currently_interested = await self.is_interested(activity_id)
+
+            if is_currently_interested:
+                success = await self.remove_interested_activity(activity_id)
+                return success, False
+            else:
+                # 添加到感兴趣时，同时从忽略列表移除（保持互斥）
+                await self.remove_ignored_activity(activity_id)
+                success = await self.add_interested_activity(activity_id)
+                return success, True
+
+        except Exception as e:
+            logger.error(f"切换活动感兴趣状态失败: {e}")
+            try:
+                original_state = await self.is_interested(activity_id)
                 return False, original_state
             except:
                 return False, False
@@ -299,6 +328,9 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
+            # 添加到感兴趣时，先从忽略列表移除（保持互斥）
+            await self.remove_ignored_activity(activity_id)
+
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
                     """
@@ -321,6 +353,10 @@ class UserPreferenceManager:
 
         if not activity_ids:
             return 0, 0
+
+        # 先从忽略列表移除所有要添加的活动（保持互斥）
+        for activity_id in activity_ids:
+            await self.remove_ignored_activity(activity_id)
 
         success_count = 0
         failed_count = 0
