@@ -11,6 +11,37 @@ from .base import CommandHandler
 logger = get_logger("feishu.handler.join")
 
 
+def _should_sync_calendar(session: UserSession, sc) -> tuple[bool, str]:
+    """
+    判断是否应该同步日历。
+    
+    Returns:
+        (should_sync, reason): 是否同步，以及原因描述
+    """
+    # 1. 检查配置是否启用
+    from src.config import get_settings
+    settings = get_settings()
+    if not settings.feishu.calendar_sync.enabled:
+        return False, ""
+    
+    # 2. 检查活动是否有有效时间
+    if not sc.hold_time or not sc.hold_time.start:
+        logger.info(f"活动 {sc.name} 无有效时间信息，跳过日历同步")
+        return False, ""
+    
+    # 3. 检查用户 open_id
+    if not session.open_id or not JoinHandler._bot:
+        return False, ""
+    
+    # 4. OAuth 模式：检查用户是否已绑定
+    if settings.feishu.calendar_sync.mode == "oauth":
+        if not session.feishu_user_token:
+            logger.info(f"OAuth 模式但用户未绑定日历，跳过同步")
+            return False, ""
+    
+    return True, ""
+
+
 class JoinHandler(CommandHandler):
     @property
     def command(self) -> str:
@@ -95,19 +126,15 @@ class JoinHandler(CommandHandler):
 
             # 同步到飞书日历
             calendar_msg = ""
-            if session.open_id and JoinHandler._bot:
+            should_sync, _ = _should_sync_calendar(session, sc)
+            if should_sync:
                 try:
                     cal_svc = CalendarService(JoinHandler._bot.app_id, JoinHandler._bot.app_secret)
-                    cal_result = cal_svc.create_event_from_secondclass(session.open_id, sc)
+                    user_token = session.feishu_user_token
+                    cal_result = await cal_svc.create_event_from_secondclass(session.open_id, sc, user_token)
                     if cal_result.get("code") == 0:
-                        event_data = cal_result.get("data", {}).get("event", {})
-                        app_link = event_data.get("app_link", "")
-                        if app_link:
-                            calendar_msg = f"\n📅 日程已同步到你的飞书日历\n{app_link}"
-                            logger.info(f"日历同步成功: {activity_name}")
-                        else:
-                            calendar_msg = "\n📅 日程已同步到你的飞书日历"
-                            logger.info(f"日历同步成功（无链接）: {activity_name}")
+                        calendar_msg = "\n📅 日程已同步到你的飞书日历"
+                        logger.info(f"日历同步成功: {activity_name}")
                     else:
                         logger.warning(f"日历同步失败: code={cal_result.get('code')} msg={cal_result.get('msg')}")
                 except Exception as cal_e:

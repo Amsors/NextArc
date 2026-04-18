@@ -8,6 +8,8 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings
 
+from src.utils.logger import get_logger
+
 
 class USTCConfig(BaseModel):
     auth_mode: Literal["file", "env"] = "env"
@@ -50,6 +52,28 @@ class SendAIFilterDetailConfig(BaseModel):
     kept: bool = Field(default=False, description="被AI保留的活动是否显示具体原因")
 
 
+class CalendarSyncConfig(BaseModel):
+    enabled: bool = Field(default=True, description="报名成功后是否自动同步到飞书日历")
+    mode: Literal["oauth", "app_token"] = Field(
+        default="app_token",
+        description="日历同步模式: oauth=用户授权后自动同步(推荐), app_token=发送日历邀请(每次需手动接受)"
+    )
+    oauth_redirect_uri: Optional[str] = Field(
+        default=None,
+        description="OAuth 模式的重定向 URI（mode=oauth 时必填，需在飞书开发者后台配置）"
+    )
+
+    def validate_for_oauth(self) -> bool:
+        """检查 OAuth 模式配置是否完整"""
+        if self.mode != "oauth":
+            return False
+        if not self.oauth_redirect_uri:
+            logger = get_logger("feishu.config")
+            logger.warning("OAuth 模式未配置 oauth_redirect_uri，将降级为 app_token 模式")
+            return False
+        return True
+
+
 class FeishuConfig(BaseModel):
     app_id: str = ""
     app_secret: str = ""
@@ -64,6 +88,10 @@ class FeishuConfig(BaseModel):
     send_ai_filter_detail: SendAIFilterDetailConfig = Field(
         default_factory=SendAIFilterDetailConfig,
         description="AI筛选详情展示配置"
+    )
+    calendar_sync: CalendarSyncConfig = Field(
+        default_factory=CalendarSyncConfig,
+        description="日历同步配置"
     )
 
 

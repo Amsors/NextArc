@@ -33,7 +33,7 @@ class CalendarService:
             payload = {"app_id": self.app_id, "app_secret": self.app_secret}
 
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
+                async with httpx.AsyncClient(timeout=10) as client:
                     resp = await client.post(url, json=payload)
                     result = resp.json()
 
@@ -55,6 +55,7 @@ class CalendarService:
         description: str,
         start_timestamp: str,
         end_timestamp: str,
+        user_token: str = None,
     ) -> dict:
         """
         在用户的飞书日历主日历上创建一个日程事件。
@@ -65,11 +66,16 @@ class CalendarService:
             description: 日程描述
             start_timestamp: 开始时间，Unix 时间戳（秒）
             end_timestamp: 结束时间，Unix 时间戳（秒）
+            user_token: 用户的飞书 user_access_token（可选），如果有则直接创建到用户日历
         """
-        token = await self._get_token()
+        # 如果有用户 token，使用用户身份创建日程（直接显示在用户日历中）
+        # 否则使用应用身份（需要用户接受邀请）
+        token = user_token if user_token else await self._get_token()
         if not token:
             return {"code": 1, "msg": "获取 access_token 失败"}
 
+        # 使用用户 token 时，日程直接创建在用户的主日历上
+        # 不需要添加 attendees，日程会自动出现在用户日历中
         url = "https://open.feishu.cn/open-apis/calendar/v4/calendars/primary/events"
         payload = {
             "summary": summary,
@@ -82,42 +88,47 @@ class CalendarService:
                 "timestamp": end_timestamp,
                 "timezone": "Asia/Shanghai",
             },
-            "attendees": [
-                {
-                    "type": "user",
-                    "user_id": open_id,
-                    "user_id_type": "open_id",
-                }
-            ],
             "location": {},
             "reminders": [
                 {"minutes": 30}
             ],
         }
+
+        # 只有使用应用身份时才需要添加 attendees
+        if not user_token:
+            payload["attendees"] = [
+                {
+                    "type": "user",
+                    "user_id": open_id,
+                    "user_id_type": "open_id",
+                }
+            ]
+
         headers = {
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json",
         }
 
-        logger.info(f"日历请求 open_id={open_id} summary={summary} start={start_timestamp} end={end_timestamp}")
+        logger.info(f"日历请求 open_id={open_id} summary={summary} start={start_timestamp} end={end_timestamp} user_token={'有' if user_token else '无'}")
 
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
+            async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 result = resp.json()
 
-            logger.info(f"日历响应: code={result.get('code')} msg={result.get('msg')} data={result.get('data')}")
+            logger.info(f"日历响应: code={result.get('code')} msg={result.get('msg')}")
 
             if result.get("code") == 0:
                 logger.info(f"日历事件创建成功: {summary}")
-                # 主动把日程共享给用户，否则用户在自己的日历里看不到
-                event_data = result.get("data", {}).get("event", {})
-                event_id = event_data.get("event_id")
-                if event_id:
-                    await self._share_event_to_user(event_id, open_id)
+                # 如果使用应用身份，需要发送邀请
+                if not user_token:
+                    event_data = result.get("data", {}).get("event", {})
+                    event_id = event_data.get("event_id")
+                    if event_id:
+                        await self._share_event_to_user(event_id, open_id)
             else:
                 logger.warning(
-                    f"日历事件创建失败: code={result.get('code')} msg={result.get('msg')} extra={result.get('msg_extra')}"
+                    f"日历事件创建失败: code={result.get('code')} msg={result.get('msg')}"
                 )
             return result
         except Exception as e:
@@ -128,8 +139,8 @@ class CalendarService:
 
     async def _share_event_to_user(self, event_id: str, open_id: str) -> bool:
         """
-        将日程以邀请方式共享给用户，并设置 attendee_ability 让用户有权查看。
-        仅靠创建时添加 attendees 不够，需要额外 patch attendee 的权限。
+        将日程邀请发送给用户。
+        用户收到邀请后可以在飞书日历中接受邀请查看日程。
         """
         token = await self._get_token()
         if not token:
@@ -142,36 +153,49 @@ class CalendarService:
         }
 
         try:
-            # 用 PATCH 更新 attendees[0].attende_ability，让用户有权查看日程
-            patch_url = (
+            # 用 POST 添加 attendee，并发送邀请通知
+            add_url = (
                 f"https://open.feishu.cn/open-apis/calendar/v4/calendars/{calendar_id}"
-                f"/events/{event_id}/attendees/{open_id}"
+                f"/events/{event_id}/attendees"
             )
-            patch_payload = {
-                "user_id_type": "open_id",
-                "attende_ability": "can_see_others",
+            add_payload = {
+                "attendees": [
+                    {
+                        "type": "user",
+                        "user_id": open_id,
+                        "user_id_type": "open_id",
+                        "is_optional": False,
+                    }
+                ],
                 "need_notification": True,
             }
 
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.patch(patch_url, json=patch_payload, headers=headers)
-                patch_result = resp.json()
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(add_url, json=add_payload, headers=headers)
+                add_result = resp.json()
 
-            if patch_result.get("code") == 0:
-                logger.info(f"日程共享成功: event_id={event_id} open_id={open_id}")
+            logger.info(f"添加参会人响应: code={add_result.get('code')} msg={add_result.get('msg')}")
+
+            if add_result.get("code") == 0:
+                logger.info(f"日程邀请已发送: event_id={event_id} open_id={open_id}")
                 return True
             else:
                 logger.warning(
-                    f"日程共享失败(PATCH): code={patch_result.get('code')} msg={patch_result.get('msg')}"
+                    f"日程邀请发送失败: code={add_result.get('code')} msg={add_result.get('msg')}"
                 )
                 return False
         except Exception as e:
-            logger.error(f"日程共享异常: {e}")
+            logger.error(f"日程邀请发送异常: {e}")
             return False
 
-    async def create_event_from_secondclass(self, open_id: str, sc) -> dict:
+    async def create_event_from_secondclass(self, open_id: str, sc, user_token: str = None) -> dict:
         """
         从 SecondClass 活动对象直接创建日历事件。
+
+        Args:
+            open_id: 用户的飞书 open_id
+            sc: SecondClass 活动对象
+            user_token: 用户的飞书 user_access_token（可选）
         """
         summary = f"【第二课堂】{sc.name}"
 
@@ -211,4 +235,5 @@ class CalendarService:
             description=description,
             start_timestamp=start_ts,
             end_timestamp=end_ts,
+            user_token=user_token,
         )

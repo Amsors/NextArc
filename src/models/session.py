@@ -136,6 +136,7 @@ class UserSession:
         self.confirm: Optional[ConfirmSession] = None
         self.displayed_activities: Optional[DisplayedActivitiesSession] = None
         self.open_id: Optional[str] = None  # 用户的飞书 open_id，用于日历同步
+        self.feishu_user_token: Optional[str] = None  # 用户的飞书 user_access_token，用于日历直接共享
 
     def set_search(self, keyword: str, results: list[SecondClass]) -> None:
         self.search = SearchSession(

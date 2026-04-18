@@ -4,6 +4,7 @@ from typing import Dict
 
 from .alive import AliveHandler
 from .base import CommandHandler
+from .bind_calendar import BindCalendarHandler
 from .cancel import CancelHandler
 from .check import CheckHandler
 from .help import HelpHandler
@@ -136,6 +137,14 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
     for instruction in wishlist_instructions:
         ret[instruction] = WishlistHandler()
 
+    bind_calendar_instructions = [
+        "bind_calendar",
+        "绑定日历",
+        "日历绑定",
+    ]
+    for instruction in bind_calendar_instructions:
+        ret[instruction] = BindCalendarHandler()
+
     return ret
 
 
@@ -155,4 +164,5 @@ __all__ = [
     "MenuHandler",
     "UpgradeHandler",
     "WishlistHandler",
+    "BindCalendarHandler",
 ]

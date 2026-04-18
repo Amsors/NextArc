@@ -218,13 +218,14 @@ class CardActionHandler:
                     # 同步到飞书日历
                     calendar_msg = ""
                     open_id = self._bot.user_session.open_id if self._bot else None
+                    user_token = self._bot.user_session.feishu_user_token if self._bot else None
                     if open_id:
                         try:
                             cal_svc = CalendarService(self._bot.app_id, self._bot.app_secret)
-                            cal_result = await cal_svc.create_event_from_secondclass(open_id, sc)
+                            cal_result = await cal_svc.create_event_from_secondclass(open_id, sc, user_token)
                             if cal_result.get("code") == 0:
                                 event_data = cal_result.get("data", {}).get("event", {})
-                                app_link = event_data.get("app_link", "")
+                                app_link = event_data.get("html_link", "") or event_data.get("app_link", "")
                                 if app_link:
                                     calendar_msg = f"\n📅 日程已同步到你的飞书日历\n{app_link}"
                                     logger.info(f"卡片报名日历同步成功: {activity_name}")

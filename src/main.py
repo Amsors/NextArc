@@ -244,6 +244,10 @@ class NextArcApp:
                     bot=self.bot
                 )
 
+                # 设置 BindCalendarHandler 的 bot 依赖
+                from src.feishu_bot.handlers.bind_calendar import BindCalendarHandler
+                BindCalendarHandler.set_bot(self.bot)
+
                 self.notification_service = FeishuNotificationService(self.bot)
                 logger.info("通知服务初始化完成")
 
