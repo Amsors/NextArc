@@ -13,8 +13,8 @@ class USTCConfig(BaseModel):
     auth_mode: Literal["file", "env"] = "env"
     username: Optional[str] = None
     password: Optional[str] = None
-    env_username: str = "USTC_USERNAME"
-    env_password: str = "USTC_PASSWORD"
+    env_username: str = "UN"
+    env_password: str = "PW"
 
 
 class BehaviorConfig(BaseModel):

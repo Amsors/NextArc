@@ -65,7 +65,7 @@ class MessageRouter:
 
         handler = self.handlers.get(cmd)
         if not handler:
-            return Response.text(f"未知指令: /{cmd}\n\n发送 /alive 查看可用指令")
+            return Response.text(f"未知指令: /{cmd}\n\n发送 /help 查看可用指令")
 
         try:
             return await handler.handle(args, session)

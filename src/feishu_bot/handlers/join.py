@@ -5,6 +5,7 @@ from pyustc.young import Status
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
+from src.feishu_bot.calendar_service import CalendarService
 from .base import CommandHandler
 
 logger = get_logger("feishu.handler.join")
@@ -91,8 +92,29 @@ class JoinHandler(CommandHandler):
                     return Response.text(f"报名失败：活动不可报名或名额已满")
 
             logger.info(f"报名成功: {activity_name}")
+
+            # 同步到飞书日历
+            calendar_msg = ""
+            if session.open_id and JoinHandler._bot:
+                try:
+                    cal_svc = CalendarService(JoinHandler._bot.app_id, JoinHandler._bot.app_secret)
+                    cal_result = cal_svc.create_event_from_secondclass(session.open_id, sc)
+                    if cal_result.get("code") == 0:
+                        event_data = cal_result.get("data", {}).get("event", {})
+                        app_link = event_data.get("app_link", "")
+                        if app_link:
+                            calendar_msg = f"\n📅 日程已同步到你的飞书日历\n{app_link}"
+                            logger.info(f"日历同步成功: {activity_name}")
+                        else:
+                            calendar_msg = "\n📅 日程已同步到你的飞书日历"
+                            logger.info(f"日历同步成功（无链接）: {activity_name}")
+                    else:
+                        logger.warning(f"日历同步失败: code={cal_result.get('code')} msg={cal_result.get('msg')}")
+                except Exception as cal_e:
+                    logger.error(f"日历同步异常: {cal_e}")
+
             return Response.text(
-                f"已成功报名「{activity_name}」\n\n"
+                f"已成功报名「{activity_name}」{calendar_msg}\n\n"
                 # TODO 自动更新已报名活动
             )
 

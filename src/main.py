@@ -216,10 +216,12 @@ class NextArcApp:
             logger.info("消息路由器初始化完成")
 
             from src.feishu_bot.handlers.interested import InterestedHandler
+            from src.feishu_bot.handlers.wishlist import WishlistHandler
             ValidHandler.set_ignore_manager(self.user_preference_manager)
             AliveHandler.set_ignore_manager(self.user_preference_manager)
             IgnoreHandler.set_ignore_manager(self.user_preference_manager)
             InterestedHandler.set_user_preference_manager(self.user_preference_manager)
+            WishlistHandler.set_dependencies(self.db_manager, self.user_preference_manager)
 
             self.card_handler = CardActionHandler()
             self.card_handler.set_dependencies(
@@ -314,9 +316,11 @@ class NextArcApp:
         return None
 
     async def run(self) -> None:
-        loop = asyncio.get_event_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, self._signal_handler)
+        import platform
+        if platform.system() != "Windows":
+            loop = asyncio.get_event_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, self._signal_handler)
 
         try:
             self.scanner.start()
@@ -408,6 +412,8 @@ class NextArcApp:
             await self.bot.stop()
 
         logger.info("应用已关闭")
+
+
 
     def get_status(self) -> dict:
         return {

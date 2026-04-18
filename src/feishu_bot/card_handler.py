@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 from pyustc.young import Status
 
 from src.core import SecondClassFilter
+from src.feishu_bot.calendar_service import CalendarService
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -226,11 +227,32 @@ class CardActionHandler:
                     result = await sc.apply(force=False, auto_cancel=False)
 
                 if result:
+                    # 同步到飞书日历
+                    calendar_msg = ""
+                    open_id = self._bot.user_session.open_id if self._bot else None
+                    if open_id:
+                        try:
+                            cal_svc = CalendarService(self._bot.app_id, self._bot.app_secret)
+                            cal_result = await cal_svc.create_event_from_secondclass(open_id, sc)
+                            if cal_result.get("code") == 0:
+                                event_data = cal_result.get("data", {}).get("event", {})
+                                app_link = event_data.get("app_link", "")
+                                if app_link:
+                                    calendar_msg = f"\n📅 日程已同步到你的飞书日历\n{app_link}"
+                                    logger.info(f"卡片报名日历同步成功: {activity_name}")
+                                else:
+                                    calendar_msg = "\n📅 日程已同步到你的飞书日历"
+                            else:
+                                logger.warning(f"卡片报名日历同步失败: code={cal_result.get('code')}")
+                        except Exception as cal_e:
+                            logger.error(f"卡片报名日历同步异常: {cal_e}")
+
                     success_message = (
                         f"报名成功\n\n"
                         f"活动：{activity_name}\n"
                         f"时间：{sc.hold_time.start.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'} ~ "
                         f"{sc.hold_time.end.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'}\n"
+                        f"{calendar_msg}"
                     )
                     await self._bot.send_text(success_message)
                     logger.info(f"卡片报名成功: {activity_name}")
