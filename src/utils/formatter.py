@@ -26,6 +26,7 @@ logger = get_logger("utils.formatter")
 class CardButtonConfig:
     """卡片按钮配置类"""
     show_ignore_button: bool = True
+    show_interested_button: bool = True
     show_join_button: bool = True
     show_cancel_button: bool = False
     show_children_button: bool = True
@@ -35,13 +36,23 @@ class CardButtonConfig:
         """根据配置生成按钮列表"""
         buttons = []
 
-        if self.show_ignore_button:
-            ignore_button_text = "已忽略" if self.is_ignored else "不感兴趣"
-            ignore_button_type = "default" if self.is_ignored else "danger"
+        if self.show_interested_button:
             buttons.append({
                 "tag": "button",
-                "text": {"tag": "plain_text", "content": ignore_button_text},
-                "type": ignore_button_type,
+                "text": {"tag": "plain_text", "content": "感兴趣"},
+                "type": "default",
+                "value": {
+                    "action": "toggle_interested",
+                    "activity_id": act.id,
+                    "activity_name": act.name
+                }
+            })
+
+        if self.show_ignore_button:
+            buttons.append({
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "不感兴趣"},
+                "type": "danger",
                 "value": {
                     "action": "toggle_ignore",
                     "activity_id": act.id,

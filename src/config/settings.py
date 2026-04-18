@@ -13,8 +13,8 @@ class USTCConfig(BaseModel):
     auth_mode: Literal["file", "env"] = "env"
     username: Optional[str] = None
     password: Optional[str] = None
-    env_username: str = "USTC_USERNAME"
-    env_password: str = "USTC_PASSWORD"
+    env_username: str = "UN"
+    env_password: str = "PW"
 
 
 class BehaviorConfig(BaseModel):
@@ -50,6 +50,10 @@ class SendAIFilterDetailConfig(BaseModel):
     kept: bool = Field(default=False, description="被AI保留的活动是否显示具体原因")
 
 
+class CalendarSyncConfig(BaseModel):
+    enabled: bool = Field(default=True, description="报名成功后是否自动同步到飞书日历")
+
+
 class FeishuConfig(BaseModel):
     app_id: str = ""
     app_secret: str = ""
@@ -64,6 +68,10 @@ class FeishuConfig(BaseModel):
     send_ai_filter_detail: SendAIFilterDetailConfig = Field(
         default_factory=SendAIFilterDetailConfig,
         description="AI筛选详情展示配置"
+    )
+    calendar_sync: CalendarSyncConfig = Field(
+        default_factory=CalendarSyncConfig,
+        description="日历同步配置"
     )
 
 

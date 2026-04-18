@@ -108,7 +108,7 @@ class FeishuBot:
                     self._main_loop
                 )
                 try:
-                    result = future.result(timeout=2.0)
+                    result = future.result(timeout=10.0)
                     logger.info(f"处理完成，返回结果: {result}")
                     return result
                 except Exception as e:
@@ -146,6 +146,16 @@ class FeishuBot:
                 else:
                     logger.info(f"记录 chat_id: {chat_id}")
 
+            # 提取并存储用户的 open_id
+            sender = getattr(event.event, "sender", None)
+            if sender:
+                sender_id = getattr(sender, "sender_id", None)
+                if sender_id:
+                    open_id = getattr(sender_id, "open_id", None)
+                    if open_id:
+                        self.user_session.open_id = open_id
+                        logger.info(f"记录用户 open_id: {open_id}")
+
         except Exception as e:
             logger.error(f"处理进入私聊事件失败: {e}")
 
@@ -157,6 +167,17 @@ class FeishuBot:
 
                 if not self._chat_id_configured:
                     logger.info(f"收到消息，当前 chat_id: {chat_id} （可配置到 config.yaml 的 feishu.chat_id 中）")
+
+                # 提取并存储用户的 open_id（首次消息时触发）
+                if not self.user_session.open_id:
+                    sender = getattr(event.event, "sender", None)
+                    if sender:
+                        sender_id = getattr(sender, "sender_id", None)
+                        if sender_id:
+                            open_id = getattr(sender_id, "open_id", None)
+                            if open_id:
+                                self.user_session.open_id = open_id
+                                logger.info(f"记录用户 open_id: {open_id}")
 
                 if self._main_loop and self.message_handler:
                     message = event.event.message

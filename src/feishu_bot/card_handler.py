@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Optional
 from pyustc.young import Status
 
 from src.core import SecondClassFilter
+from src.feishu_bot.calendar_service import CalendarService, should_sync_calendar
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -48,6 +49,8 @@ class CardActionHandler:
 
         if action == "toggle_ignore":
             return await self._handle_toggle_ignore(activity_id, activity_name, open_message_id)
+        elif action == "toggle_interested":
+            return await self._handle_toggle_interested(activity_id, activity_name, open_message_id)
         elif action == "join":
             return await self._handle_join(activity_id, activity_name)
         elif action == "view_children":
@@ -91,10 +94,8 @@ class CardActionHandler:
 
             if is_now_ignored:
                 toast_content = f"已将「{activity_name}」加入不感兴趣列表"
-                button_text = "已忽略"
             else:
                 toast_content = f"已将「{activity_name}」移出不感兴趣列表"
-                button_text = "不感兴趣"
 
             logger.info(f"切换不感兴趣状态成功: {activity_name}, is_ignored={is_now_ignored}")
 
@@ -107,6 +108,54 @@ class CardActionHandler:
 
         except Exception as e:
             logger.error(f"切换不感兴趣状态失败: {e}")
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": f"操作失败: {str(e)}"
+                }
+            }
+
+    async def _handle_toggle_interested(
+            self,
+            activity_id: str,
+            activity_name: str,
+            open_message_id: str
+    ) -> dict:
+        if not self._user_preference_manager:
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "用户偏好管理器未初始化"
+                }
+            }
+
+        try:
+            success, is_now_interested = await self._user_preference_manager.toggle_interested_activity(activity_id)
+
+            if not success:
+                return {
+                    "toast": {
+                        "type": "error",
+                        "content": "操作失败，请稍后重试"
+                    }
+                }
+
+            if is_now_interested:
+                toast_content = f"已将「{activity_name}」标记为感兴趣"
+            else:
+                toast_content = f"已将「{activity_name}」移出感兴趣列表"
+
+            logger.info(f"切换感兴趣状态成功: {activity_name}, is_interested={is_now_interested}")
+
+            return {
+                "toast": {
+                    "type": "success",
+                    "content": toast_content
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"切换感兴趣状态失败: {e}")
             return {
                 "toast": {
                     "type": "error",
@@ -164,11 +213,31 @@ class CardActionHandler:
                     result = await sc.apply(force=False, auto_cancel=False)
 
                 if result:
+                    calendar_msg = ""
+                    open_id = self._bot.user_session.open_id if self._bot else None
+                    if should_sync_calendar(open_id, sc):
+                        try:
+                            cal_svc = CalendarService(self._bot.app_id, self._bot.app_secret)
+                            cal_result = await cal_svc.create_event_from_secondclass(open_id, sc)
+                            if cal_result.get("code") == 0:
+                                event_data = cal_result.get("data", {}).get("event", {})
+                                app_link = event_data.get("html_link", "") or event_data.get("app_link", "")
+                                if app_link:
+                                    calendar_msg = f"\n📅 日程已同步到你的飞书日历\n{app_link}"
+                                    logger.info(f"卡片报名日历同步成功: {activity_name}")
+                                else:
+                                    calendar_msg = "\n📅 日程已同步到你的飞书日历"
+                            else:
+                                logger.warning(f"卡片报名日历同步失败: code={cal_result.get('code')}")
+                        except Exception as cal_e:
+                            logger.error(f"卡片报名日历同步异常: {cal_e}")
+
                     success_message = (
                         f"报名成功\n\n"
                         f"活动：{activity_name}\n"
                         f"时间：{sc.hold_time.start.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'} ~ "
                         f"{sc.hold_time.end.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'}\n"
+                        f"{calendar_msg}"
                     )
                     await self._bot.send_text(success_message)
                     logger.info(f"卡片报名成功: {activity_name}")

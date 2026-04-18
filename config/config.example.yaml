@@ -184,6 +184,9 @@ feishu:
   send_ai_filter_detail:
     filtered: false  # 被AI筛选掉的活动是否显示具体原因
     kept: false      # 被AI保留的活动是否显示具体原因
+  # 报名成功后是否同步飞书日历邀请
+  calendar_sync:
+    enabled: true
 
 database:
   # 数据库文件存储目录（相对于项目根目录）

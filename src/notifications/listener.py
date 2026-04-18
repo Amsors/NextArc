@@ -76,7 +76,12 @@ class NotificationListener:
                         logger.warning(f"获取忽略列表失败: {e}")
 
                 from src.utils.formatter import CardButtonConfig
-                button_config = CardButtonConfig(show_ignore_button=True)
+                button_config = CardButtonConfig(
+                    show_ignore_button=True,
+                    show_interested_button=True,
+                    show_join_button=True,
+                    show_children_button=True
+                )
 
                 await self._notification_service.send_activity_list_card(
                     event.activities,

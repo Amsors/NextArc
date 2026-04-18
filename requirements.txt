@@ -21,6 +21,7 @@ typing-extensions>=4.5.0
 
 # 异步 HTTP 客户端（lark-oapi 依赖）
 aiohttp>=3.8.0
+httpx>=0.27.0
 
 # 日志增强
 colorlog>=6.7.0
