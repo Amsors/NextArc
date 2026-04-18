@@ -4,6 +4,7 @@ import asyncio
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import TYPE_CHECKING, Callable, Coroutine, Optional
 
 from lark_oapi.api.im.v1 import (
@@ -22,6 +23,13 @@ if TYPE_CHECKING:
     from .card_handler import CardActionHandler
 
 logger = get_logger("feishu")
+
+CARD_ACTION_RESPONSE_TIMEOUT = 2.5
+ASYNC_CARD_ACTIONS = {
+    "join": "正在报名，请稍候查看机器人消息",
+    "cancel": "正在取消报名，请稍候查看机器人消息",
+    "view_children": "正在获取子活动，请稍候查看机器人消息",
+}
 
 
 class FeishuBot:
@@ -68,6 +76,25 @@ class FeishuBot:
 
         return builder.build()
 
+    def _schedule_card_action(self, action_value: dict, open_message_id: str):
+        if not self._main_loop:
+            return None
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._async_handle_card_action(action_value, open_message_id),
+            self._main_loop
+        )
+
+        def _log_completion(done_future):
+            try:
+                result = done_future.result()
+                logger.info(f"后台卡片操作完成: action={action_value.get('action')} result={result}")
+            except Exception as e:
+                logger.error(f"后台卡片操作失败: action={action_value.get('action')} error={e}")
+
+        future.add_done_callback(_log_completion)
+        return future
+
     def _on_message_read(self, event: P2ImMessageMessageReadV1) -> None:
         logger.debug(f"用户已读消息")
 
@@ -100,20 +127,25 @@ class FeishuBot:
             action_value = action.value
             logger.info(f"操作数据: {action_value}")
 
-            import asyncio
             if self._main_loop:
+                action_name = action_value.get("action")
+                if action_name in ASYNC_CARD_ACTIONS:
+                    logger.info(f"卡片操作将异步执行: action={action_name}")
+                    self._schedule_card_action(action_value, open_message_id)
+                    return {"toast": {"type": "info", "content": ASYNC_CARD_ACTIONS[action_name]}}
+
                 logger.info("正在调度异步处理...")
-                future = asyncio.run_coroutine_threadsafe(
-                    self._async_handle_card_action(action_value, open_message_id),
-                    self._main_loop
-                )
+                future = self._schedule_card_action(action_value, open_message_id)
                 try:
-                    result = future.result(timeout=10.0)
+                    result = future.result(timeout=CARD_ACTION_RESPONSE_TIMEOUT)
                     logger.info(f"处理完成，返回结果: {result}")
                     return result
-                except Exception as e:
-                    logger.error(f"处理超时或失败: {e}")
+                except FutureTimeoutError:
+                    logger.warning(f"卡片操作等待超时: action={action_name}")
                     return {"toast": {"type": "info", "content": "处理中，请稍后..."}}
+                except Exception as e:
+                    logger.error(f"处理失败: {e}")
+                    return {"toast": {"type": "error", "content": "处理失败，请稍后重试"}}
             else:
                 logger.error("主事件循环未设置")
                 return {"toast": {"type": "error", "content": "服务未就绪"}}

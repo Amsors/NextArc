@@ -4,6 +4,7 @@
       "application:application.app_message_stats.overview:readonly",
       "application:application:self_manage",
       "application:bot.menu:write",
+      "calendar:calendar",
       "cardkit:card:read",
       "cardkit:card:write",
       "contact:contact.base:readonly",
@@ -27,4 +28,3 @@
     ]
   }
 }
-

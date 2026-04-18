@@ -252,12 +252,8 @@ async def sync_secondclass_to_calendar(
             )
             return ""
 
-        event_data = cal_result.get("data", {}).get("event", {})
-        app_link = event_data.get("html_link", "") or event_data.get("app_link", "")
         logger.info(f"日历同步成功: {sc.name}")
-        if app_link:
-            return f"\n📅 日程已同步到你的飞书日历\n{app_link}"
-        return "\n📅 日程已同步到你的飞书日历"
+        return "\n📅 已向你的飞书日历发送日程邀请"
     except Exception as e:
         logger.error(f"日历同步异常: activity={sc.name} error={e}")
         return ""
