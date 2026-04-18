@@ -59,6 +59,10 @@ class FeishuConfig(BaseModel):
     app_secret: str = ""
     chat_id: str = Field(default="",
                          description="预配置的私聊会话ID，格式如 oc_xxx。若配置，则机器人启动即可发送消息，无需等待用户先发消息")
+    user_id: str = Field(
+        default="",
+        description="预配置的飞书用户ID，格式如 ou_xxx。用于报名成功后发送日历邀请"
+    )
     max_activities_per_card: int = Field(
         default=20,
         ge=1,

@@ -39,6 +39,7 @@ class FeishuBot:
             app_secret: str,
             message_handler: Optional[Callable[[str, UserSession], Coroutine]] = None,
             chat_id: Optional[str] = None,
+            user_id: Optional[str] = None,
             card_handler: Optional["CardActionHandler"] = None,
     ):
         self.app_id = app_id
@@ -46,11 +47,14 @@ class FeishuBot:
         self.message_handler = message_handler
         self.card_handler = card_handler
         self.user_session = UserSession()
+        if user_id:
+            self.user_session.user_id = user_id
         self._client: Optional[WSClient] = None
         self._thread: Optional[threading.Thread] = None
         self._connected = False
         self._chat_id: Optional[str] = chat_id if chat_id else None
         self._chat_id_configured: bool = bool(chat_id)
+        self._user_id_configured: bool = bool(user_id)
         self._stop_event = threading.Event()
 
         self._main_loop: Optional[asyncio.AbstractEventLoop] = None
@@ -178,15 +182,21 @@ class FeishuBot:
                 else:
                     logger.info(f"记录 chat_id: {chat_id}")
 
-            # 提取并存储用户的 open_id
+            # 提取并存储用户的 user_id
             sender = getattr(event.event, "sender", None)
             if sender:
                 sender_id = getattr(sender, "sender_id", None)
                 if sender_id:
-                    open_id = getattr(sender_id, "open_id", None)
-                    if open_id:
-                        self.user_session.open_id = open_id
-                        logger.info(f"记录用户 open_id: {open_id}")
+                    user_id = getattr(sender_id, "user_id", None)
+                    if user_id:
+                        self.user_session.user_id = user_id
+                        if not self._user_id_configured:
+                            logger.info(
+                                f"用户进入私聊，当前 user_id: {user_id} "
+                                f"（可配置到 config.yaml 的 feishu.user_id 中）"
+                            )
+                        else:
+                            logger.info(f"记录用户 user_id: {user_id}")
 
         except Exception as e:
             logger.error(f"处理进入私聊事件失败: {e}")
@@ -200,16 +210,19 @@ class FeishuBot:
                 if not self._chat_id_configured:
                     logger.info(f"收到消息，当前 chat_id: {chat_id} （可配置到 config.yaml 的 feishu.chat_id 中）")
 
-                # 提取并存储用户的 open_id（首次消息时触发）
-                if not self.user_session.open_id:
+                # 提取并存储用户的 user_id（首次消息时触发）
+                if not self.user_session.user_id:
                     sender = getattr(event.event, "sender", None)
                     if sender:
                         sender_id = getattr(sender, "sender_id", None)
                         if sender_id:
-                            open_id = getattr(sender_id, "open_id", None)
-                            if open_id:
-                                self.user_session.open_id = open_id
-                                logger.info(f"记录用户 open_id: {open_id}")
+                            user_id = getattr(sender_id, "user_id", None)
+                            if user_id:
+                                self.user_session.user_id = user_id
+                                logger.info(
+                                    f"收到消息，当前 user_id: {user_id} "
+                                    f"（可配置到 config.yaml 的 feishu.user_id 中）"
+                                )
 
                 if self._main_loop and self.message_handler:
                     message = event.event.message

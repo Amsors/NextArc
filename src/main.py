@@ -235,6 +235,7 @@ class NextArcApp:
                     app_secret=self.settings.feishu.app_secret,
                     message_handler=self._handle_message,
                     chat_id=chat_id,
+                    user_id=self.settings.feishu.user_id if self.settings.feishu.user_id else None,
                     card_handler=self.card_handler,
                 )
 

@@ -96,7 +96,7 @@ class JoinHandler(CommandHandler):
             calendar_msg = await sync_secondclass_to_calendar(
                 app_id=JoinHandler._bot.app_id,
                 app_secret=JoinHandler._bot.app_secret,
-                open_id=session.open_id,
+                user_id=session.user_id,
                 sc=sc,
             )
 

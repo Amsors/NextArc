@@ -50,7 +50,7 @@ class CalendarService:
 
     async def create_calendar_event(
         self,
-        open_id: str,
+        user_id: str,
         summary: str,
         description: str,
         start_timestamp: str,
@@ -60,7 +60,7 @@ class CalendarService:
         在用户的飞书日历主日历上创建一个日程事件。
 
         Args:
-            open_id: 用户的飞书 open_id
+            user_id: 用户的飞书 user_id
             summary: 日程标题
             description: 日程描述
             start_timestamp: 开始时间，Unix 时间戳（秒）
@@ -93,7 +93,7 @@ class CalendarService:
             "Content-Type": "application/json",
         }
 
-        logger.info(f"日历请求 open_id={open_id} summary={summary} start={start_timestamp} end={end_timestamp}")
+        logger.info(f"日历请求 user_id={user_id} summary={summary} start={start_timestamp} end={end_timestamp}")
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:
@@ -107,7 +107,7 @@ class CalendarService:
                 event_data = result.get("data", {}).get("event", {})
                 event_id = event_data.get("event_id")
                 if event_id:
-                    await self._share_event_to_user(event_id, open_id)
+                    await self._share_event_to_user(event_id, user_id)
             else:
                 logger.warning(
                     f"日历事件创建失败: code={result.get('code')} msg={result.get('msg')}"
@@ -119,7 +119,7 @@ class CalendarService:
             traceback.print_exc()
             return {"code": 1, "msg": str(e)}
 
-    async def _share_event_to_user(self, event_id: str, open_id: str) -> bool:
+    async def _share_event_to_user(self, event_id: str, user_id: str) -> bool:
         """
         将日程邀请发送给用户。
         用户收到邀请后可以在飞书日历中接受邀请查看日程。
@@ -138,14 +138,13 @@ class CalendarService:
             # 用 POST 添加 attendee，并发送邀请通知
             add_url = (
                 f"https://open.feishu.cn/open-apis/calendar/v4/calendars/{calendar_id}"
-                f"/events/{event_id}/attendees"
+                f"/events/{event_id}/attendees?user_id_type=user_id"
             )
             add_payload = {
                 "attendees": [
                     {
                         "type": "user",
-                        "user_id": open_id,
-                        "user_id_type": "open_id",
+                        "user_id": user_id,
                         "is_optional": False,
                     }
                 ],
@@ -159,7 +158,7 @@ class CalendarService:
             logger.info(f"添加参会人响应: code={add_result.get('code')} msg={add_result.get('msg')}")
 
             if add_result.get("code") == 0:
-                logger.info(f"日程邀请已发送: event_id={event_id} open_id={open_id}")
+                logger.info(f"日程邀请已发送: event_id={event_id} user_id={user_id}")
                 return True
             else:
                 logger.warning(
@@ -170,12 +169,12 @@ class CalendarService:
             logger.error(f"日程邀请发送异常: {e}")
             return False
 
-    async def create_event_from_secondclass(self, open_id: str, sc) -> dict:
+    async def create_event_from_secondclass(self, user_id: str, sc) -> dict:
         """
         从 SecondClass 活动对象直接创建日历事件。
 
         Args:
-            open_id: 用户的飞书 open_id
+            user_id: 用户的飞书 user_id
             sc: SecondClass 活动对象
         """
         summary = f"【第二课堂】{sc.name}"
@@ -211,7 +210,7 @@ class CalendarService:
             end_ts = str(int((now + dt.timedelta(hours=2)).timestamp()))
 
         return await self.create_calendar_event(
-            open_id=open_id,
+            user_id=user_id,
             summary=summary,
             description=description,
             start_timestamp=start_ts,
@@ -219,16 +218,19 @@ class CalendarService:
         )
 
 
-def should_sync_calendar(open_id: str | None, sc) -> bool:
+def should_sync_calendar(user_id: str | None, sc) -> bool:
     from src.config import get_settings
 
     settings = get_settings()
     if not settings.feishu.calendar_sync.enabled:
         return False
-    if not open_id:
+    if not user_id:
         return False
-    if not sc.hold_time or not sc.hold_time.start:
-        logger.info(f"活动 {sc.name} 无有效时间信息，跳过日历同步")
+    if (
+        not (sc.hold_time and sc.hold_time.start and sc.hold_time.end)
+        and not (sc.apply_time and sc.apply_time.start and sc.apply_time.end)
+    ):
+        logger.info(f"活动 {sc.name} 无有效举办/报名时间信息，跳过日历同步")
         return False
     return True
 
@@ -236,16 +238,16 @@ def should_sync_calendar(open_id: str | None, sc) -> bool:
 async def sync_secondclass_to_calendar(
     app_id: str,
     app_secret: str,
-    open_id: str | None,
+    user_id: str | None,
     sc,
 ) -> str:
     """同步活动到飞书日历，并返回可直接拼接到用户消息中的文本。"""
-    if not should_sync_calendar(open_id, sc):
+    if not should_sync_calendar(user_id, sc):
         return ""
 
     try:
         cal_svc = CalendarService(app_id, app_secret)
-        cal_result = await cal_svc.create_event_from_secondclass(open_id, sc)
+        cal_result = await cal_svc.create_event_from_secondclass(user_id, sc)
         if cal_result.get("code") != 0:
             logger.warning(
                 f"日历同步失败: activity={sc.name} code={cal_result.get('code')} msg={cal_result.get('msg')}"

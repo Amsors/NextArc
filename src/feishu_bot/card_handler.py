@@ -213,11 +213,11 @@ class CardActionHandler:
                     result = await sc.apply(force=False, auto_cancel=False)
 
                 if result:
-                    open_id = self._bot.user_session.open_id if self._bot else None
+                    user_id = self._bot.user_session.user_id if self._bot else None
                     calendar_msg = await sync_secondclass_to_calendar(
                         app_id=self._bot.app_id,
                         app_secret=self._bot.app_secret,
-                        open_id=open_id,
+                        user_id=user_id,
                         sc=sc,
                     )
 
