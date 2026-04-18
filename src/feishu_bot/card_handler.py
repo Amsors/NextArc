@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 from pyustc.young import Status
 
 from src.core import SecondClassFilter
-from src.feishu_bot.calendar_service import CalendarService, should_sync_calendar
+from src.feishu_bot.calendar_service import sync_secondclass_to_calendar
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -213,24 +213,13 @@ class CardActionHandler:
                     result = await sc.apply(force=False, auto_cancel=False)
 
                 if result:
-                    calendar_msg = ""
                     open_id = self._bot.user_session.open_id if self._bot else None
-                    if should_sync_calendar(open_id, sc):
-                        try:
-                            cal_svc = CalendarService(self._bot.app_id, self._bot.app_secret)
-                            cal_result = await cal_svc.create_event_from_secondclass(open_id, sc)
-                            if cal_result.get("code") == 0:
-                                event_data = cal_result.get("data", {}).get("event", {})
-                                app_link = event_data.get("html_link", "") or event_data.get("app_link", "")
-                                if app_link:
-                                    calendar_msg = f"\n📅 日程已同步到你的飞书日历\n{app_link}"
-                                    logger.info(f"卡片报名日历同步成功: {activity_name}")
-                                else:
-                                    calendar_msg = "\n📅 日程已同步到你的飞书日历"
-                            else:
-                                logger.warning(f"卡片报名日历同步失败: code={cal_result.get('code')}")
-                        except Exception as cal_e:
-                            logger.error(f"卡片报名日历同步异常: {cal_e}")
+                    calendar_msg = await sync_secondclass_to_calendar(
+                        app_id=self._bot.app_id,
+                        app_secret=self._bot.app_secret,
+                        open_id=open_id,
+                        sc=sc,
+                    )
 
                     success_message = (
                         f"报名成功\n\n"

@@ -2,7 +2,7 @@
 
 from pyustc.young import Status
 
-from src.feishu_bot.calendar_service import CalendarService, should_sync_calendar
+from src.feishu_bot.calendar_service import sync_secondclass_to_calendar
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -93,18 +93,12 @@ class JoinHandler(CommandHandler):
 
             logger.info(f"报名成功: {activity_name}")
 
-            calendar_msg = ""
-            if should_sync_calendar(session.open_id, sc):
-                try:
-                    cal_svc = CalendarService(JoinHandler._bot.app_id, JoinHandler._bot.app_secret)
-                    cal_result = await cal_svc.create_event_from_secondclass(session.open_id, sc)
-                    if cal_result.get("code") == 0:
-                        calendar_msg = "\n📅 日程已同步到你的飞书日历"
-                        logger.info(f"日历同步成功: {activity_name}")
-                    else:
-                        logger.warning(f"日历同步失败: code={cal_result.get('code')} msg={cal_result.get('msg')}")
-                except Exception as cal_e:
-                    logger.error(f"日历同步异常: {cal_e}")
+            calendar_msg = await sync_secondclass_to_calendar(
+                app_id=JoinHandler._bot.app_id,
+                app_secret=JoinHandler._bot.app_secret,
+                open_id=session.open_id,
+                sc=sc,
+            )
 
             return Response.text(
                 f"已成功报名「{activity_name}」{calendar_msg}\n\n"

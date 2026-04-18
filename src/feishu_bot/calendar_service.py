@@ -231,3 +231,33 @@ def should_sync_calendar(open_id: str | None, sc) -> bool:
         logger.info(f"活动 {sc.name} 无有效时间信息，跳过日历同步")
         return False
     return True
+
+
+async def sync_secondclass_to_calendar(
+    app_id: str,
+    app_secret: str,
+    open_id: str | None,
+    sc,
+) -> str:
+    """同步活动到飞书日历，并返回可直接拼接到用户消息中的文本。"""
+    if not should_sync_calendar(open_id, sc):
+        return ""
+
+    try:
+        cal_svc = CalendarService(app_id, app_secret)
+        cal_result = await cal_svc.create_event_from_secondclass(open_id, sc)
+        if cal_result.get("code") != 0:
+            logger.warning(
+                f"日历同步失败: activity={sc.name} code={cal_result.get('code')} msg={cal_result.get('msg')}"
+            )
+            return ""
+
+        event_data = cal_result.get("data", {}).get("event", {})
+        app_link = event_data.get("html_link", "") or event_data.get("app_link", "")
+        logger.info(f"日历同步成功: {sc.name}")
+        if app_link:
+            return f"\n📅 日程已同步到你的飞书日历\n{app_link}"
+        return "\n📅 日程已同步到你的飞书日历"
+    except Exception as e:
+        logger.error(f"日历同步异常: activity={sc.name} error={e}")
+        return ""

@@ -49,10 +49,12 @@ class CardButtonConfig:
             })
 
         if self.show_ignore_button:
+            ignore_button_text = "已忽略" if self.is_ignored else "不感兴趣"
+            ignore_button_type = "default" if self.is_ignored else "danger"
             buttons.append({
                 "tag": "button",
-                "text": {"tag": "plain_text", "content": "不感兴趣"},
-                "type": "danger",
+                "text": {"tag": "plain_text", "content": ignore_button_text},
+                "type": ignore_button_type,
                 "value": {
                     "action": "toggle_ignore",
                     "activity_id": act.id,
