@@ -57,7 +57,7 @@ class CalendarService:
         end_timestamp: str,
     ) -> dict:
         """
-        在用户的飞书日历主日历上创建一个日程事件。
+        创建机器人主日历事件，并向目标用户发送邀请。
 
         Args:
             user_id: 用户的飞书 user_id
@@ -107,7 +107,15 @@ class CalendarService:
                 event_data = result.get("data", {}).get("event", {})
                 event_id = event_data.get("event_id")
                 if event_id:
-                    await self._share_event_to_user(event_id, user_id)
+                    invite_sent = await self._share_event_to_user(event_id, user_id)
+                    result["invite_sent"] = invite_sent
+                    if not invite_sent:
+                        logger.warning(
+                            f"日历事件已创建，但邀请发送失败: event_id={event_id} user_id={user_id}"
+                        )
+                else:
+                    result["invite_sent"] = False
+                    logger.warning("日历事件创建成功，但响应中未返回 event_id")
             else:
                 logger.warning(
                     f"日历事件创建失败: code={result.get('code')} msg={result.get('msg')}"
@@ -251,6 +259,11 @@ async def sync_secondclass_to_calendar(
         if cal_result.get("code") != 0:
             logger.warning(
                 f"日历同步失败: activity={sc.name} code={cal_result.get('code')} msg={cal_result.get('msg')}"
+            )
+            return ""
+        if not cal_result.get("invite_sent"):
+            logger.warning(
+                f"日历事件已创建，但邀请未成功发送: activity={sc.name} msg={cal_result.get('msg')}"
             )
             return ""
 

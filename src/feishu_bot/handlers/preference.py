@@ -96,9 +96,9 @@ class PreferenceHandler(CommandHandler):
             name = act.name[:30]
             suffix = ""
             if preference_type == "interested":
-                if act.status == Status.APPLYING.code:
+                if act.status == Status.APPLYING:
                     suffix = " 🎯 可报名"
-                elif act.status == Status.PUBLISHED.code:
+                elif act.status == Status.PUBLISHED:
                     suffix = " 📢 已发布"
             lines.append(f"  {i}. {name}{suffix}")
 
