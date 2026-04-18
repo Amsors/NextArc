@@ -1,9 +1,6 @@
 """飞书日历服务 - 报名成功后自动同步到用户飞书日历"""
 
-import asyncio
 import datetime as dt
-import time
-from typing import Optional
 
 import httpx
 
@@ -16,37 +13,25 @@ class CalendarService:
     def __init__(self, app_id: str, app_secret: str):
         self.app_id = app_id
         self.app_secret = app_secret
-        self._token: Optional[str] = None
-        self._token_expires_at: float = 0
-        self._lock: asyncio.Lock = asyncio.Lock()
 
-    async def _get_token(self) -> Optional[str]:
-        """获取 tenant_access_token，带缓存，异步安全"""
-        if self._token and time.time() < self._token_expires_at - 60:
-            return self._token
+    async def _get_token(self) -> str | None:
+        """获取 tenant_access_token。"""
+        url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+        payload = {"app_id": self.app_id, "app_secret": self.app_secret}
 
-        async with self._lock:
-            if self._token and time.time() < self._token_expires_at - 60:
-                return self._token
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, json=payload)
+                result = resp.json()
 
-            url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
-            payload = {"app_id": self.app_id, "app_secret": self.app_secret}
+            if result.get("code") == 0:
+                return result.get("tenant_access_token")
 
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    resp = await client.post(url, json=payload)
-                    result = resp.json()
-
-                if result.get("code") == 0:
-                    self._token = result.get("tenant_access_token")
-                    self._token_expires_at = time.time() + 7200
-                    return self._token
-                else:
-                    logger.error(f"获取 tenant_access_token 失败: {result.get('msg')}")
-                    return None
-            except Exception as e:
-                logger.error(f"获取 tenant_access_token 异常: {e}")
-                return None
+            logger.error(f"获取 tenant_access_token 失败: {result.get('msg')}")
+            return None
+        except Exception as e:
+            logger.error(f"获取 tenant_access_token 异常: {e}")
+            return None
 
     async def create_calendar_event(
         self,
