@@ -23,6 +23,10 @@ class BehaviorConfig(BaseModel):
 
 class FilterConfig(BaseModel):
     ignore_participated_but_ended_activity: bool = True
+    ignore_overlap: bool = Field(
+        default=False,
+        description="如果为 true，则直接过滤与已报名活动时间重叠的单次活动；如果为 false，则保留但标注【重叠】"
+    )
 
 
 class MonitorConfig(BaseModel):

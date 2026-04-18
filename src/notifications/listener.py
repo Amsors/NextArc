@@ -9,7 +9,7 @@ from src.core.events.scan_events import (
 )
 from src.core.events.version_events import VersionUpdateEvent
 from src.utils.formatter import format_db_filtered_result, \
-    format_ai_filtered_result, format_time_filtered_result, format_enrolled_filtered_result
+    format_ai_filtered_result, format_time_filtered_result, format_enrolled_filtered_result, format_overlay_filtered_result
 from src.utils.logger import get_logger
 from .service import NotificationService
 
@@ -59,37 +59,32 @@ class NotificationListener:
         if event.time_filtered_count > 0:
             message_parts.append(format_time_filtered_result(event.filters_applied.get("time", [])))
 
+        if event.overlay_filtered_count > 0:
+            message_parts.append(format_overlay_filtered_result(event.filters_applied.get("overlay", [])))
+
         if message_parts:
             filter_message = "\n".join(message_parts)
             await self._notification_service.send_text(filter_message)
 
         if event.activities:
             try:
-                # 构建状态映射
-                status_map = {}
+                ignored_ids = set()
                 if self._user_preference_manager:
                     try:
-                        interested_ids = await self._user_preference_manager.get_all_interested_ids()
                         ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
-                        for act in event.activities:
-                            act_id = getattr(act, 'id', None)
-                            if act_id:
-                                if act_id in interested_ids:
-                                    status_map[act_id] = "interested"
-                                elif act_id in ignored_ids:
-                                    status_map[act_id] = "ignored"
                     except Exception as e:
-                        logger.warning(f"获取状态映射失败: {e}")
+                        logger.warning(f"获取忽略列表失败: {e}")
 
                 from src.utils.formatter import CardButtonConfig
-                button_config = CardButtonConfig(show_status_buttons=True)
+                button_config = CardButtonConfig(show_ignore_button=True)
 
                 await self._notification_service.send_activity_list_card(
                     event.activities,
                     f"有 {event.final_count} 个你可能感兴趣的活动",
-                    status_map=status_map,
+                    ignored_ids=ignored_ids,
                     button_config=button_config,
                     ai_reasons=event.ai_keep_reasons if ai_detail_config.kept else None,
+                    overlap_reasons=event.overlap_reasons if event.overlap_reasons else None,
                 )
                 logger.info(f"已发送新活动卡片: {event.final_count} 个活动")
             except Exception as e:

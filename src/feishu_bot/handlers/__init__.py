@@ -15,7 +15,6 @@ from .join import JoinHandler
 from .search import SearchHandler
 from .upgrade import UpgradeHandler
 from .valid import ValidHandler
-from .wishlist import WishlistHandler
 
 
 def get_all_handlers() -> Dict[str, CommandHandler]:
@@ -40,7 +39,6 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "info",
         "已报名",
         "已经报名",
-        "info(信息)",
     ]
     for instruction in info_instructions:
         ret[instruction] = InfoHandler()
@@ -120,15 +118,6 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
     for instruction in menu_instructions:
         ret[instruction] = MenuHandler()
 
-    wishlist_instructions = [
-        "wishlist",
-        "愿望单",
-        "我的列表",
-        "标记列表",
-    ]
-    for instruction in wishlist_instructions:
-        ret[instruction] = WishlistHandler()
-
     upgrade_instructions = [
         "upgrade",
         "升级",
@@ -155,5 +144,4 @@ __all__ = [
     "InterestedHandler",
     "MenuHandler",
     "UpgradeHandler",
-    "WishlistHandler",
 ]

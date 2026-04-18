@@ -17,7 +17,6 @@ class CommandHandler(ABC):
     _scanner: "ActivityScanner" = None
     _auth_manager: "AuthManager" = None
     _db_manager: "DatabaseManager" = None
-    _bot = None
 
     @classmethod
     def set_dependencies(
@@ -29,10 +28,6 @@ class CommandHandler(ABC):
         cls._scanner = scanner
         cls._auth_manager = auth_manager
         cls._db_manager = db_manager
-
-    @classmethod
-    def set_bot(cls, bot):
-        cls._bot = bot
 
     @property
     @abstractmethod

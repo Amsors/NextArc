@@ -61,7 +61,7 @@ class SearchHandler(CommandHandler):
             if hint:
                 title += f"\n{hint}"
 
-            button_config = CardButtonConfig(show_status_buttons=False)
+            button_config = CardButtonConfig(show_ignore_button=False)
             
             return Response.activity_list(
                 activities,

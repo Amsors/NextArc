@@ -4,7 +4,6 @@ from src.models.filter_result import FilteredActivity
 
 from .ai_filter import AIFilter, AIFilterConfig
 from .auth_manager import AuthManager
-from .auto_enroller import AutoEnroller
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
 from .enrolled_filter import EnrolledFilter
@@ -18,7 +17,6 @@ __all__ = [
     "AIFilter",
     "AIFilterConfig",
     "AuthManager",
-    "AutoEnroller",
     "DatabaseManager",
     "DiffEngine",
     "EnrolledFilter",

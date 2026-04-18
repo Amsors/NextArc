@@ -295,55 +295,6 @@ class UserPreferenceManager:
             logger.error(f"获取忽略活动数量失败: {e}")
             return 0
 
-    # ========== 统一状态管理方法 ==========
-
-    async def set_activity_status(self, activity_id: str, status: str) -> bool:
-        """
-        设置活动状态
-        status: "interested" | "ignored" | "default"
-        """
-        await self.initialize()
-
-        if status == "interested":
-            # 先移除可能存在的忽略状态
-            await self.remove_ignored_activity(activity_id)
-            return await self.add_interested_activity(activity_id)
-        elif status == "ignored":
-            # 先移除可能存在的感兴趣状态
-            await self.remove_interested_activity(activity_id)
-            return await self.add_ignored_activity(activity_id)
-        elif status == "default":
-            # 清除所有状态
-            await self.remove_interested_activity(activity_id)
-            await self.remove_ignored_activity(activity_id)
-            return True
-        else:
-            logger.error(f"无效的状态: {status}")
-            return False
-
-    async def get_activity_status(self, activity_id: str) -> str:
-        """
-        获取活动状态
-        返回: "interested" | "ignored" | "default"
-        """
-        await self.initialize()
-
-        if await self.is_interested(activity_id):
-            return "interested"
-        elif await self.is_ignored(activity_id):
-            return "ignored"
-        else:
-            return "default"
-
-    async def get_all_by_status(self, status: str) -> set[str]:
-        """获取指定状态的所有活动ID"""
-        if status == "interested":
-            return await self.get_all_interested_ids()
-        elif status == "ignored":
-            return await self.get_all_ignored_ids()
-        else:
-            return set()
-
     async def add_interested_activity(self, activity_id: str) -> bool:
         await self.initialize()
 
