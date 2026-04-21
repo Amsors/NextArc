@@ -38,29 +38,35 @@ class NotificationListener:
         logger.info(f"收到新活动事件: {event.final_count} 个活动")
 
         from src.config import get_settings
-        ai_detail_config = get_settings().feishu.send_ai_filter_detail
-        logger.info(f"新活动通知配置: filtered={ai_detail_config.filtered}, kept={ai_detail_config.kept}")
+        settings = get_settings()
+        ai_detail_config = settings.feishu.send_ai_filter_detail
+        notify_filtered_activities = settings.monitor.notify_filtered_activities
+        logger.info(
+            f"新活动通知配置: filtered={ai_detail_config.filtered}, "
+            f"kept={ai_detail_config.kept}, notify_filtered_activities={notify_filtered_activities}"
+        )
         logger.debug(f"新活动事件 ai_keep_reasons: {event.ai_keep_reasons}")
 
         message_parts = []
 
-        if event.enrolled_filtered_count > 0:
-            message_parts.append(format_enrolled_filtered_result(event.filters_applied.get("enrolled", [])))
+        if notify_filtered_activities:
+            if event.enrolled_filtered_count > 0:
+                message_parts.append(format_enrolled_filtered_result(event.filters_applied.get("enrolled", [])))
 
-        if event.db_filtered_count > 0:
-            message_parts.append(format_db_filtered_result(event.filters_applied.get("db", [])))
+            if event.db_filtered_count > 0:
+                message_parts.append(format_db_filtered_result(event.filters_applied.get("db", [])))
 
-        if event.ai_filtered_count > 0:
-            message_parts.append(format_ai_filtered_result(
-                event.filters_applied.get("ai", []),
-                include_reasons=ai_detail_config.filtered,
-            ))
+            if event.ai_filtered_count > 0:
+                message_parts.append(format_ai_filtered_result(
+                    event.filters_applied.get("ai", []),
+                    include_reasons=ai_detail_config.filtered,
+                ))
 
-        if event.time_filtered_count > 0:
-            message_parts.append(format_time_filtered_result(event.filters_applied.get("time", [])))
+            if event.time_filtered_count > 0:
+                message_parts.append(format_time_filtered_result(event.filters_applied.get("time", [])))
 
-        if event.overlay_filtered_count > 0:
-            message_parts.append(format_overlay_filtered_result(event.filters_applied.get("overlay", [])))
+            if event.overlay_filtered_count > 0:
+                message_parts.append(format_overlay_filtered_result(event.filters_applied.get("overlay", [])))
 
         if message_parts:
             filter_message = "\n".join(message_parts)

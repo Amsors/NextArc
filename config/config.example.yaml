@@ -31,6 +31,8 @@ monitor:
   interval_minutes: 15
   # 发现新活动时是否发送飞书通知，默认开启
   notify_new_activities: true
+  # 是否发送被 AI/数据库/时间等筛选掉的活动列表，默认开启
+  notify_filtered_activities: true
   # 是否使用 AI 筛选新活动（需要配置 ai 部分），默认关闭
   use_ai_filter: false
 

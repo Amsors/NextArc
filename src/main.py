@@ -202,6 +202,7 @@ class NextArcApp:
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
+            logger.info(f"筛选活动通知: {'开启' if self.settings.monitor.notify_filtered_activities else '关闭'}")
             if self.settings.monitor.use_ai_filter and self.settings.ai.enabled and ai_filter:
                 logger.info(f"AI 筛选: 开启，模型: {self.settings.ai.model}")
             if use_time_filter and self.time_filter:

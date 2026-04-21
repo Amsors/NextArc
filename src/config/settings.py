@@ -32,6 +32,7 @@ class FilterConfig(BaseModel):
 class MonitorConfig(BaseModel):
     interval_minutes: int = Field(default=15, ge=1, le=1440)
     notify_new_activities: bool = Field(default=True, description="发现新活动时发送飞书通知")
+    notify_filtered_activities: bool = Field(default=True, description="是否推送被筛选掉的活动列表")
     use_ai_filter: bool = Field(default=False, description="是否使用 AI 筛选新活动")
 
 
