@@ -139,8 +139,14 @@ class OverlayFilter:
 
         try:
             async with aiosqlite.connect(db_path) as db:
+                # 参与形式为“提交作品”的已报名活动不参与筛选
                 async with db.execute(
-                        "SELECT hold_time, name FROM enrolled_secondclass"
+                        """
+                        SELECT hold_time, name
+                        FROM enrolled_secondclass
+                        WHERE participation_form IS NULL
+                           OR CAST(participation_form AS INTEGER) != 1
+                        """
                 ) as cursor:
                     async for row in cursor:
                         hold_time_json = row[0]
@@ -168,7 +174,7 @@ class OverlayFilter:
                             logger.warning(f"解析已报名活动时间失败: {e}, 数据={hold_time_json}")
                             continue
 
-            logger.debug(f"从数据库获取到 {len(time_ranges)} 个有效已报名活动时间")
+            logger.debug(f"从数据库获取到 {len(time_ranges)} 个有效已报名活动时间（已排除提交作品类活动）")
 
         except Exception as e:
             logger.error(f"获取已报名活动时间列表失败: {e}")

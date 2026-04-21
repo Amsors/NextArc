@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from pyustc.young import SecondClass
+from pyustc.young import SecondClass, ParticipationForm
 
 from src.core import FilteredActivity
 from src.models import DiffResult
@@ -343,7 +343,10 @@ def _build_activity_collapsible_panel(
 
     activity_type = "系列活动" if act.is_series else "单次活动"
     if overlap_reason:
-        header_title = f"[{index}] 【重叠】{act.name} ({activity_type})"
+        if act.participation_form == ParticipationForm.SUBMIT_WORKS:
+            header_title = f"[{index}] 【重,提交作品】{act.name} ({activity_type})"
+        else:
+            header_title = f"[{index}] 【重】{act.name} ({activity_type})"
     else:
         header_title = f"[{index}] {act.name} ({activity_type})"
 
