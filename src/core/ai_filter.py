@@ -361,6 +361,7 @@ class AIFilter:
             "AI判断失败",
             "无审核结果",
             "解析失败",
+            "AI认为不符合用户兴趣"
         )
         return not reason.startswith(failed_reason_prefixes)
 
