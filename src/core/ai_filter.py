@@ -274,6 +274,11 @@ class AIFilter:
         if prefer_cached and preference_manager:
             activity_ids = [a.id for a in activities]
             cached_results = await preference_manager.get_ai_filter_results(activity_ids)
+            cached_results = {
+                activity_id: result
+                for activity_id, result in cached_results.items()
+                if self._should_save_ai_filter_result(result.get("reason", ""))
+            }
 
             cached_ids = set(cached_results.keys())
             activities_to_judge = [a for a in activities if a.id not in cached_ids]
@@ -293,6 +298,9 @@ class AIFilter:
             current_time = int(time.time())
 
             for activity, is_interested, reason in all_results:
+                if not self._should_save_ai_filter_result(reason):
+                    logger.debug(f"跳过保存未成功的 AI 筛选结果: {activity.id}, reason={reason}")
+                    continue
                 if not prefer_cached or activity.id not in cached_results:
                     results_to_save.append((activity.id, is_interested, reason, current_time))
 
@@ -342,6 +350,19 @@ class AIFilter:
                 merged.append((activity, True, "无审核结果，默认保留"))
 
         return merged
+
+    def _should_save_ai_filter_result(self, reason: str) -> bool:
+        """只缓存 API 正常返回的判断结果，避免失败默认保留结果污染缓存。"""
+        if not reason:
+            return False
+
+        failed_reason_prefixes = (
+            "AI判断超时",
+            "AI判断失败",
+            "无审核结果",
+            "解析失败",
+        )
+        return not reason.startswith(failed_reason_prefixes)
 
     async def _judge_activities_batch(
             self,
@@ -403,14 +424,25 @@ class AIFilter:
         content = response.choices[0].message.content.strip()
 
         result = self._parse_response(content)
-        reason = result.get('reason', '')
+        self._validate_response_result(result, content)
+        reason = result["reason"]
 
-        if result.get("interested"):
+        if result["interested"]:
             logger.debug(f"AI 认为 '{activity.name}' 符合用户兴趣: {reason}")
             return True, reason
         else:
             logger.debug(f"AI 认为 '{activity.name}' 不符合用户兴趣: {reason}")
             return False, reason
+
+    def _validate_response_result(self, result: dict, raw_content: str) -> None:
+        if "interested" not in result:
+            raise ValueError(f"AI 响应缺少 'interested' 字段。响应: {raw_content[:200]}")
+        if "reason" not in result:
+            raise ValueError(f"AI 响应缺少 'reason' 字段。响应: {raw_content[:200]}")
+        if not isinstance(result["interested"], bool):
+            raise ValueError(f"AI 响应 'interested' 字段不是布尔类型。响应: {raw_content[:200]}")
+        if not isinstance(result["reason"], str):
+            raise ValueError(f"AI 响应 'reason' 字段不是字符串类型。响应: {raw_content[:200]}")
 
     def _parse_response(self, content: str) -> dict:
         try:
@@ -438,8 +470,7 @@ class AIFilter:
             except json.JSONDecodeError:
                 continue
 
-        logger.warning(f"无法解析 AI 响应: {content[:200]}...")
-        return {"interested": True, "reason": "解析失败，默认保留"}
+        raise ValueError(f"无法解析 AI 响应: {content[:200]}")
 
 
 class AIFilterConfig:
