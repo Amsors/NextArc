@@ -2,6 +2,8 @@
 
 from pyustc.young import Status
 
+from src.core.repositories import ActivityRepository
+from src.core.services import ActivityQueryService
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -33,11 +35,6 @@ class CancelHandler(CommandHandler):
         except ValueError:
             return Response.text("无效的序号，请输入正整数\n\n示例：/cancel 1")
 
-        from src.feishu_bot.handlers.info import InfoHandler
-        info_handler = InfoHandler()
-        info_handler._scanner = self._scanner
-        info_handler._db_manager = self._db_manager
-
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
@@ -53,7 +50,8 @@ class CancelHandler(CommandHandler):
             Status.FINISHED,
         ])
 
-        enrolled = await info_handler._get_enrolled_activities(latest_db, filter=filter)
+        query_service = self._activity_query_service or ActivityQueryService(ActivityRepository())
+        enrolled = await query_service.list_enrolled_activities(latest_db, filter)
 
         if not enrolled:
             return Response.text("您目前没有报名任何活动")
@@ -82,21 +80,15 @@ class CancelHandler(CommandHandler):
         logger.info(f"执行取消报名: {activity_name} ({activity_id})")
 
         try:
-            from pyustc.young.second_class import SecondClass
+            enrollment_service = self._enrollment_service
+            if enrollment_service is None:
+                from src.core.services import EnrollmentService
+                enrollment_service = EnrollmentService(self._auth_manager)
 
-            async with self._auth_manager.create_session_once():
-                sc = SecondClass(activity_id, {})
-                result = await sc.cancel_apply()
-
-                logger.info(f"cancel_apply() 返回值: {result}")
-
-                if not result:
-                    return Response.text("取消报名失败")
-
-            logger.info(f"取消报名成功: {activity_name}")
-            return Response.text(
-                f"已成功取消报名「{activity_name}」\n"
-            )
+            result = await enrollment_service.cancel_activity(activity_id, activity_name)
+            if result.success:
+                return Response.text(f"{result.message}\n")
+            return Response.text(result.message)
 
         except Exception as e:
             logger.error(f"取消报名失败: {e}")

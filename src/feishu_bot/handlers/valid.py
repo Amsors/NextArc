@@ -1,10 +1,11 @@
 """/valid 指令处理器"""
 
-import aiosqlite
-from pyustc.young import SecondClass, Status
+from pyustc.young import SecondClass
 
 from src.core import EnrolledFilter, OverlayFilter, UserPreferenceManager
-from src.models import UserSession, secondclass_from_db_row
+from src.core.repositories import ActivityRepository
+from src.core.services import ActivityQueryService
+from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
@@ -74,13 +75,17 @@ class ValidHandler(CommandHandler):
             activities = await self._get_valid_activities(latest_db)
 
             if deep_update:
-                async with self._auth_manager.create_session_once() as service:
-                    for activity in activities:
-                        try:
-                            await activity.update()
-                            logger.debug(f"更新活动信息成功: {activity.name}")
-                        except Exception as e:
-                            logger.warning(f"更新活动 {activity.id} 信息失败: {e}")
+                update_service = self._activity_update_service
+                if update_service is None:
+                    from src.core.services import ActivityUpdateService
+                    update_service = ActivityUpdateService(self._auth_manager)
+
+                update_result = await update_service.update_activities(
+                    activities,
+                    continue_on_error=True,
+                )
+                if update_result.failed:
+                    logger.warning(f"/valid 深度更新失败 {update_result.failed_count} 个活动")
 
             if not activities:
                 lines = ["可报名活动\n\n目前暂无可报名的活动"]
@@ -97,6 +102,7 @@ class ValidHandler(CommandHandler):
             enrolled_filtered = []
             overlay_filtered = []
             ai_keep_reasons = {}
+            overlap_reasons: dict[str, str] = {}
 
             if not show_all:
                 enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(latest_db)
@@ -114,7 +120,6 @@ class ValidHandler(CommandHandler):
                         logger.info(f"数据库筛选过滤了 {len(db_filtered)} 个活动")
 
                 enrolled_time_ranges = await OverlayFilter.get_enrolled_time_ranges_from_db(latest_db)
-                overlap_reasons: dict[str, str] = {}
                 if enrolled_time_ranges:
                     from src.config import get_settings
                     ignore_overlap = get_settings().filter.ignore_overlap
@@ -243,23 +248,7 @@ class ValidHandler(CommandHandler):
             return Response.error(str(e), context="查询可报名活动")
 
     async def _get_valid_activities(self, db_path) -> list[SecondClass]:
-        activities = []
-
-        valid_status_codes = [Status.APPLYING.code, Status.PUBLISHED.code]
-
-        async with aiosqlite.connect(db_path) as conn:
-            conn.row_factory = aiosqlite.Row
-            placeholders = ",".join(["?"] * len(valid_status_codes))
-            async with conn.execute(
-                    f"""
-                SELECT * FROM all_secondclass
-                WHERE status IN ({placeholders})
-                ORDER BY name
-                """,
-                    valid_status_codes
-            ) as cursor:
-                async for row in cursor:
-                    activities.append(secondclass_from_db_row(dict(row)))
-
+        service = self._activity_query_service or ActivityQueryService(ActivityRepository())
+        activities = await service.list_valid_activities(db_path)
         logger.debug(f"从数据库获取到 {len(activities)} 个可报名活动")
         return activities

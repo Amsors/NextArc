@@ -131,6 +131,12 @@ def secondclass_from_db_row(row: dict[str, Any]) -> SecondClass:
     if row.get("parent_id"):
         data["parentId"] = row["parent_id"]
 
+    if row.get("place_info"):
+        data["placeInfo"] = row["place_info"]
+
+    if row.get("participation_form") is not None:
+        data["form"] = str(row["participation_form"])
+
     return SecondClass.from_dict(data)
 
 
@@ -256,10 +262,7 @@ def format_secondclass_for_list(sc: SecondClass, index: int, simple_format: bool
         f"    状态：{get_status_text(sc)}\n"
     )
 
-    if not sc.place_info:
-        ret += f"    地点：{get_place_info(sc)}\n"
-    else:
-        ret += f"    地点：未提供\n"
+    ret += f"    地点：{get_place_info(sc)}\n"
 
     if not sc.is_series:
         ret += f"    学时：{sc.valid_hour or '未知'}\n"

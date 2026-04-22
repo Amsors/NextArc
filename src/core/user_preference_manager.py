@@ -6,6 +6,7 @@ from typing import Optional
 
 import aiosqlite
 
+from src.core.repositories import ActivityRepository, PreferenceKind, PreferenceRepository
 from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
 
@@ -24,6 +25,8 @@ class UserPreferenceManager:
                 db_path = project_root / db_path
 
         self.db_path = db_path.resolve()
+        self.preference_repository = PreferenceRepository(self.db_path)
+        self.activity_repository = ActivityRepository()
         self._initialized = False
 
     async def initialize(self) -> None:
@@ -33,29 +36,9 @@ class UserPreferenceManager:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         await self._migrate_from_old_db()
 
+        await self.preference_repository.initialize()
+
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS ignored_activities (
-                    activity_id TEXT PRIMARY KEY,
-                    added_at INTEGER NOT NULL
-                )
-            """)
-            await db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_ignored_added_at 
-                ON ignored_activities(added_at)
-            """)
-
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS interested_activities (
-                    activity_id TEXT PRIMARY KEY,
-                    added_at INTEGER NOT NULL
-                )
-            """)
-            await db.execute("""
-                CREATE INDEX IF NOT EXISTS idx_interested_added_at 
-                ON interested_activities(added_at)
-            """)
-
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS ai_filter_result (
                     activity_id TEXT PRIMARY KEY,
@@ -143,18 +126,13 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    """
-                    INSERT OR REPLACE INTO ignored_activities (activity_id, added_at)
-                    VALUES (?, ?)
-                    """,
-                    (activity_id, int(time.time()))
-                )
-                await db.commit()
+            _, failed_count = await self.preference_repository.add_many(
+                PreferenceKind.IGNORED,
+                [activity_id],
+            )
 
             logger.debug(f"添加活动到忽略列表: {activity_id}")
-            return True
+            return failed_count == 0
 
         except Exception as e:
             logger.error(f"添加活动到忽略列表失败: {e}")
@@ -166,31 +144,11 @@ class UserPreferenceManager:
         if not activity_ids:
             return 0, 0
 
-        # 先从感兴趣列表移除所有要添加的活动（保持互斥）
-        for activity_id in activity_ids:
-            await self.remove_interested_activity(activity_id)
-
-        success_count = 0
-        failed_count = 0
-        current_time = int(time.time())
-
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                for activity_id in activity_ids:
-                    try:
-                        await db.execute(
-                            """
-                            INSERT OR REPLACE INTO ignored_activities (activity_id, added_at)
-                            VALUES (?, ?)
-                            """,
-                            (activity_id, current_time)
-                        )
-                        success_count += 1
-                    except Exception as e:
-                        logger.warning(f"添加活动 {activity_id} 到忽略列表失败: {e}")
-                        failed_count += 1
-
-                await db.commit()
+            success_count, failed_count = await self.preference_repository.add_many(
+                PreferenceKind.IGNORED,
+                activity_ids,
+            )
 
             logger.info(f"批量添加忽略活动: 成功 {success_count} 个, 失败 {failed_count} 个")
             return success_count, failed_count
@@ -203,13 +161,7 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute(
-                        "SELECT 1 FROM ignored_activities WHERE activity_id = ?",
-                        (activity_id,)
-                ) as cursor:
-                    row = await cursor.fetchone()
-                    return row is not None
+            return await self.preference_repository.exists(PreferenceKind.IGNORED, activity_id)
 
         except Exception as e:
             logger.error(f"检查活动忽略状态失败: {e}")
@@ -219,12 +171,7 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute(
-                        "SELECT activity_id FROM ignored_activities"
-                ) as cursor:
-                    rows = await cursor.fetchall()
-                    return {row[0] for row in rows}
+            return await self.preference_repository.get_ids(PreferenceKind.IGNORED)
 
         except Exception as e:
             logger.error(f"获取忽略活动列表失败: {e}")
@@ -234,12 +181,7 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    "DELETE FROM ignored_activities WHERE activity_id = ?",
-                    (activity_id,)
-                )
-                await db.commit()
+            await self.preference_repository.remove_many(PreferenceKind.IGNORED, [activity_id])
 
             logger.debug(f"从忽略列表移除活动: {activity_id}")
             return True
@@ -258,8 +200,6 @@ class UserPreferenceManager:
                 success = await self.remove_ignored_activity(activity_id)
                 return success, False
             else:
-                # 添加到不感兴趣时，同时从感兴趣列表移除（保持互斥）
-                await self.remove_interested_activity(activity_id)
                 success = await self.add_ignored_activity(activity_id)
                 return success, True
 
@@ -268,7 +208,8 @@ class UserPreferenceManager:
             try:
                 original_state = await self.is_ignored(activity_id)
                 return False, original_state
-            except:
+            except Exception as fallback_error:
+                logger.error(f"读取活动不感兴趣原始状态失败: {fallback_error}")
                 return False, False
 
     async def toggle_interested_activity(self, activity_id: str) -> tuple[bool, bool]:
@@ -281,8 +222,6 @@ class UserPreferenceManager:
                 success = await self.remove_interested_activity(activity_id)
                 return success, False
             else:
-                # 添加到感兴趣时，同时从忽略列表移除（保持互斥）
-                await self.remove_ignored_activity(activity_id)
                 success = await self.add_interested_activity(activity_id)
                 return success, True
 
@@ -291,19 +230,15 @@ class UserPreferenceManager:
             try:
                 original_state = await self.is_interested(activity_id)
                 return False, original_state
-            except:
+            except Exception as fallback_error:
+                logger.error(f"读取活动感兴趣原始状态失败: {fallback_error}")
                 return False, False
 
     async def get_ignored_count(self) -> int:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute(
-                        "SELECT COUNT(*) FROM ignored_activities"
-                ) as cursor:
-                    row = await cursor.fetchone()
-                    return row[0] if row else 0
+            return await self.preference_repository.count(PreferenceKind.IGNORED)
 
         except Exception as e:
             logger.error(f"获取忽略活动数量失败: {e}")
@@ -328,21 +263,13 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            # 添加到感兴趣时，先从忽略列表移除（保持互斥）
-            await self.remove_ignored_activity(activity_id)
-
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    """
-                    INSERT OR REPLACE INTO interested_activities (activity_id, added_at)
-                    VALUES (?, ?)
-                    """,
-                    (activity_id, int(time.time()))
-                )
-                await db.commit()
+            _, failed_count = await self.preference_repository.add_many(
+                PreferenceKind.INTERESTED,
+                [activity_id],
+            )
 
             logger.debug(f"添加活动到感兴趣列表: {activity_id}")
-            return True
+            return failed_count == 0
 
         except Exception as e:
             logger.error(f"添加活动到感兴趣列表失败: {e}")
@@ -354,31 +281,11 @@ class UserPreferenceManager:
         if not activity_ids:
             return 0, 0
 
-        # 先从忽略列表移除所有要添加的活动（保持互斥）
-        for activity_id in activity_ids:
-            await self.remove_ignored_activity(activity_id)
-
-        success_count = 0
-        failed_count = 0
-        current_time = int(time.time())
-
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                for activity_id in activity_ids:
-                    try:
-                        await db.execute(
-                            """
-                            INSERT OR REPLACE INTO interested_activities (activity_id, added_at)
-                            VALUES (?, ?)
-                            """,
-                            (activity_id, current_time)
-                        )
-                        success_count += 1
-                    except Exception as e:
-                        logger.warning(f"添加活动 {activity_id} 到感兴趣列表失败: {e}")
-                        failed_count += 1
-
-                await db.commit()
+            success_count, failed_count = await self.preference_repository.add_many(
+                PreferenceKind.INTERESTED,
+                activity_ids,
+            )
 
             logger.info(f"批量添加感兴趣活动: 成功 {success_count} 个, 失败 {failed_count} 个")
             return success_count, failed_count
@@ -391,13 +298,7 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute(
-                        "SELECT 1 FROM interested_activities WHERE activity_id = ?",
-                        (activity_id,)
-                ) as cursor:
-                    row = await cursor.fetchone()
-                    return row is not None
+            return await self.preference_repository.exists(PreferenceKind.INTERESTED, activity_id)
 
         except Exception as e:
             logger.error(f"检查活动感兴趣状态失败: {e}")
@@ -407,12 +308,7 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute(
-                        "SELECT activity_id FROM interested_activities"
-                ) as cursor:
-                    rows = await cursor.fetchall()
-                    return {row[0] for row in rows}
+            return await self.preference_repository.get_ids(PreferenceKind.INTERESTED)
 
         except Exception as e:
             logger.error(f"获取感兴趣活动列表失败: {e}")
@@ -432,19 +328,8 @@ class UserPreferenceManager:
         if not activity_ids:
             return []
 
-        placeholders = ",".join(["?"] * len(activity_ids))
-        query = f"SELECT * FROM all_secondclass WHERE id IN ({placeholders})"
-
         try:
-            from src.models.activity import secondclass_from_db_row
-
-            activities = []
-            async with aiosqlite.connect(latest_db) as conn:
-                conn.row_factory = aiosqlite.Row
-                async with conn.execute(query, tuple(activity_ids)) as cursor:
-                    async for row in cursor:
-                        activities.append(secondclass_from_db_row(dict(row)))
-            return activities
+            return await self.activity_repository.get_by_ids(latest_db, list(activity_ids))
         except Exception as e:
             logger.error(f"查询 {preference_type} 活动列表失败: {e}")
             return []
@@ -453,12 +338,7 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    "DELETE FROM interested_activities WHERE activity_id = ?",
-                    (activity_id,)
-                )
-                await db.commit()
+            await self.preference_repository.remove_many(PreferenceKind.INTERESTED, [activity_id])
 
             logger.debug(f"从感兴趣列表移除活动: {activity_id}")
             return True
@@ -471,12 +351,7 @@ class UserPreferenceManager:
         await self.initialize()
 
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                async with db.execute(
-                        "SELECT COUNT(*) FROM interested_activities"
-                ) as cursor:
-                    row = await cursor.fetchone()
-                    return row[0] if row else 0
+            return await self.preference_repository.count(PreferenceKind.INTERESTED)
 
         except Exception as e:
             logger.error(f"获取感兴趣活动数量失败: {e}")

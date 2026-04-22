@@ -9,7 +9,9 @@ from .diff_engine import DiffEngine
 from .enrolled_filter import EnrolledFilter
 from .filter import SecondClassFilter
 from .overlay_filter import OverlayFilter
+from .repositories import ActivityRepository, PreferenceKind, PreferenceRepository
 from .scanner import ActivityScanner
+from .services import ActivityQueryService, ActivityUpdateService, EnrollmentService
 from .time_filter import TimeFilter
 from .user_preference_manager import UserPreferenceManager
 
@@ -21,7 +23,13 @@ __all__ = [
     "DiffEngine",
     "EnrolledFilter",
     "OverlayFilter",
+    "ActivityRepository",
+    "PreferenceKind",
+    "PreferenceRepository",
     "ActivityScanner",
+    "ActivityQueryService",
+    "ActivityUpdateService",
+    "EnrollmentService",
     "SecondClassFilter",
     "TimeFilter",
     "UserPreferenceManager",

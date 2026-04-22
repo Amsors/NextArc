@@ -5,11 +5,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from pyustc.young import SecondClass
 
+from src.core.repositories import ActivityRepository
 from src.core.secondclass_db import SecondClassDB
 from src.utils.logger import get_logger
 from .ai_filter import AIFilter
@@ -63,7 +63,8 @@ class ActivityScanner:
         self.user_preference_manager = user_preference_manager
         self.version_checker = version_checker
         self.scheduler = AsyncIOScheduler()
-        self.diff_engine = DiffEngine()
+        self.activity_repository = ActivityRepository()
+        self.diff_engine = DiffEngine(self.activity_repository)
         self._last_scan_time: Optional[datetime] = None
         self._is_running = False
         self._scan_lock = asyncio.Lock()  # 防止并发扫描
@@ -209,16 +210,10 @@ class ActivityScanner:
         return result
 
     async def _count_activities(self, db_path: Path) -> int:
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("SELECT COUNT(*) FROM all_secondclass") as cursor:
-                row = await cursor.fetchone()
-                return row[0] if row else 0
+        return await self.activity_repository.count_all(db_path)
 
     async def _count_enrolled(self, db_path: Path) -> int:
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("SELECT COUNT(*) FROM enrolled_secondclass") as cursor:
-                row = await cursor.fetchone()
-                return row[0] if row else 0
+        return await self.activity_repository.count_enrolled(db_path)
 
     def _create_background_task(self, coro) -> None:
         async def wrapped_coro():
@@ -508,20 +503,16 @@ class ActivityScanner:
     ) -> list[SecondClass]:
         logger.info(f"开始获取 {len(activity_ids)} 个活动的详情，并发数: {max_concurrent}...")
 
-        activities: list[SecondClass] = []
+        sc_instances = [SecondClass(aid, {}) for aid in activity_ids]
 
-        async with self.auth_manager.create_session_once() as service:
-            sc_instances = [SecondClass(aid, None) for aid in activity_ids]
+        from src.core.services import ActivityUpdateService
+        update_service = ActivityUpdateService(self.auth_manager, max_concurrent=max_concurrent)
+        update_result = await update_service.update_activities(sc_instances, continue_on_error=True)
 
-            from .batch_updater import SecondClassBatchUpdater
-            updater = SecondClassBatchUpdater(max_concurrent)
-
-            successful, failed = await updater.update_batch(sc_instances, continue_on_error=True)
-            activities.extend(successful)
-
-            if failed:
-                for sc, error in failed:
-                    logger.warning(f"获取活动 {sc.id} 失败，可能已删除: {error}")
+        activities = update_result.successful
+        if update_result.failed:
+            for sc, error in update_result.failed:
+                logger.warning(f"获取活动 {sc.id} 失败，可能已删除: {error}")
 
         logger.info(f"成功获取 {len(activities)}/{len(activity_ids)} 个活动详情")
         return activities

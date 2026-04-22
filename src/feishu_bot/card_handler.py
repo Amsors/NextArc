@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 from pyustc.young import Status
 
 from src.core import SecondClassFilter
-from src.feishu_bot.calendar_service import sync_secondclass_to_calendar
+from src.core.services import ActivityUpdateService, EnrollmentService, EnrollmentStatus
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -21,16 +21,38 @@ class CardActionHandler:
         self._user_preference_manager: Optional["UserPreferenceManager"] = None
         self._auth_manager: Optional["AuthManager"] = None
         self._bot: Optional["FeishuBot"] = None
+        self._activity_update_service: Optional[ActivityUpdateService] = None
+        self._enrollment_service: Optional[EnrollmentService] = None
 
     def set_dependencies(
             self,
             user_preference_manager: "UserPreferenceManager",
             auth_manager: "AuthManager",
-            bot: "FeishuBot"
+            bot: "FeishuBot",
+            activity_update_service: ActivityUpdateService | None = None,
+            enrollment_service: EnrollmentService | None = None,
     ) -> None:
         self._user_preference_manager = user_preference_manager
         self._auth_manager = auth_manager
         self._bot = bot
+        self._activity_update_service = activity_update_service
+        self._enrollment_service = enrollment_service
+
+    def _get_activity_update_service(self) -> ActivityUpdateService:
+        if self._activity_update_service is None:
+            self._activity_update_service = ActivityUpdateService(self._auth_manager)
+        return self._activity_update_service
+
+    def _get_enrollment_service(self) -> EnrollmentService:
+        if self._enrollment_service is None:
+            app_id = self._bot.app_id if self._bot else ""
+            app_secret = self._bot.app_secret if self._bot else ""
+            self._enrollment_service = EnrollmentService(
+                self._auth_manager,
+                app_id=app_id,
+                app_secret=app_secret,
+            )
+        return self._enrollment_service
 
     async def handle(self, action_value: dict, open_message_id: str) -> dict:
         action = action_value.get("action")
@@ -175,81 +197,74 @@ class CardActionHandler:
         logger.info(f"执行卡片报名: {activity_name} ({activity_id})")
 
         try:
-            from pyustc.young import SecondClass, Status
+            result = await self._get_enrollment_service().join_activity(
+                activity_id,
+                activity_name,
+                user_id=self._bot.user_session.user_id if self._bot else None,
+                force=False,
+                auto_cancel=False,
+                precheck_applyable=False,
+            )
 
-            async with self._auth_manager.create_session_once():
-                sc = SecondClass(activity_id, {})
-                await sc.update()
-
-                if sc.applied:
-                    message = f"您已经报名了「{activity_name}」"
-                    await self._bot.send_text(message)
-                    return {
-                        "toast": {
-                            "type": "info",
-                            "content": "您已报名该活动"
-                        }
+            if result.status == EnrollmentStatus.ALREADY_APPLIED:
+                await self._bot.send_text(result.message)
+                return {
+                    "toast": {
+                        "type": "info",
+                        "content": "您已报名该活动"
                     }
+                }
 
-                if sc.status != Status.APPLYING and sc.status != Status.PUBLISHED:
-                    message = (
-                        f"报名失败\n\n"
-                        f"活动：{activity_name}\n"
-                        f"原因：当前状态不可报名（{sc.status.text if sc.status else '未知'}）"
-                    )
-                    await self._bot.send_text(message)
-                    return {
-                        "toast": {
-                            "type": "error",
-                            "content": "当前状态不可报名"
-                        }
+            if result.status == EnrollmentStatus.NOT_APPLYABLE:
+                status_text = (
+                    result.activity.status.text
+                    if result.activity and result.activity.status
+                    else "未知"
+                )
+                message = (
+                    f"报名失败\n\n"
+                    f"活动：{activity_name}\n"
+                    f"原因：当前状态不可报名（{status_text}）"
+                )
+                await self._bot.send_text(message)
+                return {
+                    "toast": {
+                        "type": "error",
+                        "content": "当前状态不可报名"
                     }
+                }
 
-                if sc.need_sign_info:
-                    from pyustc.young.second_class import SignInfo
-                    sign_info = await SignInfo.get_self()
-                    result = await sc.apply(force=False, auto_cancel=False, sign_info=sign_info)
-                else:
-                    result = await sc.apply(force=False, auto_cancel=False)
-
-                if result:
-                    user_id = self._bot.user_session.user_id if self._bot else None
-                    calendar_msg = await sync_secondclass_to_calendar(
-                        app_id=self._bot.app_id,
-                        app_secret=self._bot.app_secret,
-                        user_id=user_id,
-                        sc=sc,
-                    )
-
-                    success_message = (
-                        f"报名成功\n\n"
-                        f"活动：{activity_name}\n"
-                        f"时间：{sc.hold_time.start.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'} ~ "
-                        f"{sc.hold_time.end.strftime('%m-%d(%a) %H:%M') if sc.hold_time else '待定'}\n"
-                        f"{calendar_msg}"
-                    )
-                    await self._bot.send_text(success_message)
-                    logger.info(f"卡片报名成功: {activity_name}")
-                    return {
-                        "toast": {
-                            "type": "success",
-                            "content": "报名成功"
-                        }
+            if result.success:
+                sc = result.activity
+                success_message = (
+                    f"报名成功\n\n"
+                    f"活动：{activity_name}\n"
+                    f"时间：{sc.hold_time.start.strftime('%m-%d(%a) %H:%M') if sc and sc.hold_time else '待定'} ~ "
+                    f"{sc.hold_time.end.strftime('%m-%d(%a) %H:%M') if sc and sc.hold_time else '待定'}\n"
+                    f"{result.calendar_message}"
+                )
+                await self._bot.send_text(success_message)
+                logger.info(f"卡片报名成功: {activity_name}")
+                return {
+                    "toast": {
+                        "type": "success",
+                        "content": "报名成功"
                     }
-                else:
-                    fail_message = (
-                        f"报名失败\n\n"
-                        f"活动：{activity_name}\n"
-                        f"原因：活动不可报名或名额已满"
-                    )
-                    await self._bot.send_text(fail_message)
-                    logger.warning(f"卡片报名失败: {activity_name}")
-                    return {
-                        "toast": {
-                            "type": "error",
-                            "content": "报名失败，名额已满或已结束"
-                        }
-                    }
+                }
+
+            fail_message = (
+                f"报名失败\n\n"
+                f"活动：{activity_name}\n"
+                f"原因：活动不可报名或名额已满"
+            )
+            await self._bot.send_text(fail_message)
+            logger.warning(f"卡片报名失败: {activity_name}")
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "报名失败，名额已满或已结束"
+                }
+            }
 
         except Exception as e:
             logger.error(f"卡片报名失败: {e}")
@@ -282,105 +297,102 @@ class CardActionHandler:
         logger.info(f"查看系列活动子活动: {activity_name} ({activity_id})")
 
         try:
-            from pyustc.young import SecondClass
+            sc, children = await self._get_activity_update_service().fetch_children(activity_id)
 
-            async with self._auth_manager.create_session_once():
-                sc = SecondClass(activity_id, {})
-                await sc.update()
-
-                if not sc.is_series:
-                    return {
-                        "toast": {
-                            "type": "error",
-                            "content": "该活动不是系列活动"
-                        }
+            if not sc.is_series:
+                return {
+                    "toast": {
+                        "type": "error",
+                        "content": "该活动不是系列活动"
                     }
+                }
 
-                children = await sc.get_children()
+            filter = SecondClassFilter().exclude_status([
+                Status.ABNORMAL,
+                Status.APPLY_ENDED,
+                Status.HOUR_PUBLIC,
+                Status.HOUR_APPEND_PUBLIC,
+                Status.PUBLIC_ENDED,
+                Status.HOUR_APPLYING,
+                Status.HOUR_APPROVED,
+                Status.HOUR_REJECTED,
+                Status.FINISHED,
+            ])
 
-                filter = SecondClassFilter().exclude_status([
-                    Status.ABNORMAL,
-                    Status.APPLY_ENDED,
-                    Status.HOUR_PUBLIC,
-                    Status.HOUR_APPEND_PUBLIC,
-                    Status.PUBLIC_ENDED,
-                    Status.HOUR_APPLYING,
-                    Status.HOUR_APPROVED,
-                    Status.HOUR_REJECTED,
-                    Status.FINISHED,
-                ])
+            children = filter(children)
 
-                children = filter(children)
-
-                if not children:
-                    await self._bot.send_text(f'系列活动「{activity_name}」暂无可报名的子活动')
-                    return {
-                        "toast": {
-                            "type": "info",
-                            "content": "该系列活动暂无子活动"
-                        }
+            if not children:
+                await self._bot.send_text(f'系列活动「{activity_name}」暂无可报名的子活动')
+                return {
+                    "toast": {
+                        "type": "info",
+                        "content": "该系列活动暂无子活动"
                     }
+                }
 
-                for child in children:
-                    await child.update()
+            update_result = await self._get_activity_update_service().update_activities(
+                children,
+                continue_on_error=True,
+            )
+            if update_result.failed:
+                logger.warning(f"子活动深度更新失败 {update_result.failed_count} 个")
 
-                from src.utils.formatter import build_activity_card, CardButtonConfig
-                from src.core import UserPreferenceManager
-                from src.config import get_settings
+            from src.utils.formatter import build_activity_card, CardButtonConfig
+            from src.config import get_settings
 
-                ignored_ids = set()
-                if self._user_preference_manager:
-                    ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
+            ignored_ids = set()
+            if self._user_preference_manager:
+                ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
 
-                max_per_card = 20
-                try:
-                    settings = get_settings()
-                    max_per_card = settings.feishu.max_activities_per_card
-                except Exception:
-                    pass
+            max_per_card = 20
+            try:
+                settings = get_settings()
+                max_per_card = settings.feishu.max_activities_per_card
+            except Exception:
+                pass
 
-                button_config = CardButtonConfig()
+            button_config = CardButtonConfig()
 
-                total = len(children)
-                if total <= max_per_card:
+            total = len(children)
+            if total <= max_per_card:
+                card_content = build_activity_card(
+                    children,
+                    title=f'系列活动「{activity_name}」的子活动',
+                    ignored_ids=ignored_ids,
+                    button_config=button_config
+                )
+                await self._bot.send_card(card_content)
+            else:
+                batches = (total + max_per_card - 1) // max_per_card
+                for batch_idx in range(batches):
+                    start = batch_idx * max_per_card
+                    end = min(start + max_per_card, total)
+                    batch_children = children[start:end]
+                    start_index = start + 1
+
+                    batch_title = f'系列活动「{activity_name}」的子活动（{batch_idx + 1}/{batches}）'
+
                     card_content = build_activity_card(
-                        children,
-                        title=f'系列活动「{activity_name}」的子活动',
+                        batch_children,
+                        title=batch_title,
                         ignored_ids=ignored_ids,
+                        start_index=start_index,
                         button_config=button_config
                     )
                     await self._bot.send_card(card_content)
-                else:
-                    batches = (total + max_per_card - 1) // max_per_card
-                    for batch_idx in range(batches):
-                        start = batch_idx * max_per_card
-                        end = min(start + max_per_card, total)
-                        batch_children = children[start:end]
-                        start_index = start + 1
 
-                        batch_title = f'系列活动「{activity_name}」的子活动（{batch_idx + 1}/{batches}）'
+                    if batch_idx < batches - 1:
+                        import asyncio
+                        await asyncio.sleep(0.5)
 
-                        card_content = build_activity_card(
-                            batch_children,
-                            title=batch_title,
-                            ignored_ids=ignored_ids,
-                            start_index=start_index,
-                            button_config=button_config
-                        )
-                        await self._bot.send_card(card_content)
+            logger.info(f"成功发送系列活动「{activity_name}」的 {len(children)} 个子活动")
 
-                        if batch_idx < batches - 1:
-                            import asyncio
-                            await asyncio.sleep(0.5)
-
-                logger.info(f"成功发送系列活动「{activity_name}」的 {len(children)} 个子活动")
-
-                return {
-                    "toast": {
-                        "type": "success",
-                        "content": f"已发送 {len(children)} 个子活动"
-                    }
+            return {
+                "toast": {
+                    "type": "success",
+                    "content": f"已发送 {len(children)} 个子活动"
                 }
+            }
 
         except Exception as e:
             traceback.print_exc()
@@ -414,39 +426,35 @@ class CardActionHandler:
         logger.info(f"执行卡片取消报名: {activity_name} ({activity_id})")
 
         try:
-            from pyustc.young.second_class import SecondClass
+            result = await self._get_enrollment_service().cancel_activity(activity_id, activity_name)
 
-            async with self._auth_manager.create_session_once():
-                sc = SecondClass(activity_id, {})
-                result = await sc.cancel_apply()
+            if result.success:
+                success_message = (
+                    f"取消报名成功\n\n"
+                    f"活动：{activity_name}\n"
+                )
+                await self._bot.send_text(success_message)
+                logger.info(f"卡片取消报名成功: {activity_name}")
+                return {
+                    "toast": {
+                        "type": "success",
+                        "content": "取消报名成功"
+                    }
+                }
 
-                if result:
-                    success_message = (
-                        f"取消报名成功\n\n"
-                        f"活动：{activity_name}\n"
-                    )
-                    await self._bot.send_text(success_message)
-                    logger.info(f"卡片取消报名成功: {activity_name}")
-                    return {
-                        "toast": {
-                            "type": "success",
-                            "content": "取消报名成功"
-                        }
-                    }
-                else:
-                    fail_message = (
-                        f"取消报名失败\n\n"
-                        f"活动：{activity_name}\n"
-                        f"原因：无法取消报名，请检查活动状态"
-                    )
-                    await self._bot.send_text(fail_message)
-                    logger.warning(f"卡片取消报名失败: {activity_name}")
-                    return {
-                        "toast": {
-                            "type": "error",
-                            "content": "取消报名失败，请检查活动状态"
-                        }
-                    }
+            fail_message = (
+                f"取消报名失败\n\n"
+                f"活动：{activity_name}\n"
+                f"原因：无法取消报名，请检查活动状态"
+            )
+            await self._bot.send_text(fail_message)
+            logger.warning(f"卡片取消报名失败: {activity_name}")
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "取消报名失败，请检查活动状态"
+                }
+            }
 
         except Exception as e:
             logger.error(f"卡片取消报名失败: {e}")

@@ -4,15 +4,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import aiosqlite
 from pyustc.young import SecondClass
 
 from src.models import (
     ActivityChange,
     DiffResult,
     FieldChange,
-    secondclass_from_db_row,
 )
+from src.core.repositories import ActivityRepository
 from src.utils.logger import get_logger
 
 logger = get_logger("diff")
@@ -43,6 +42,9 @@ COMPARABLE_FIELDS = {
 
 
 class DiffEngine:
+    def __init__(self, activity_repository: ActivityRepository | None = None):
+        self.activity_repository = activity_repository or ActivityRepository()
+
     async def diff(self, old_db_path: Path, new_db_path: Path) -> DiffResult:
         logger.info(f"开始对比数据库: {old_db_path.name} -> {new_db_path.name}")
 
@@ -173,57 +175,23 @@ class DiffEngine:
         return changes
 
     async def _load_activities(self, db_path: Path) -> dict[str, SecondClass]:
-        activities = {}
-
-        if not db_path.exists():
-            logger.warning(f"数据库不存在: {db_path}")
-            return activities
-
-        async with aiosqlite.connect(db_path) as db:
-            db.row_factory = aiosqlite.Row
-            try:
-                async with db.execute("SELECT * FROM all_secondclass") as cursor:
-                    async for row in cursor:
-                        row_dict = dict(row)
-                        activity = secondclass_from_db_row(row_dict)
-                        activities[activity.id] = activity
-            except Exception as e:
-                logger.error(f"加载数据库失败 {db_path}: {e}")
-                raise
+        activities = {
+            activity.id: activity
+            for activity in await self.activity_repository.list_all(db_path)
+        }
 
         logger.debug(f"从 {db_path.name} 加载了 {len(activities)} 个活动")
         return activities
 
     async def get_enrolled_ids(self, db_path: Path) -> set[str]:
-        enrolled_ids = set()
-
-        if not db_path.exists():
-            return enrolled_ids
-
-        async with aiosqlite.connect(db_path) as db:
-            db.row_factory = aiosqlite.Row
-            try:
-                async with db.execute("SELECT id FROM enrolled_secondclass") as cursor:
-                    async for row in cursor:
-                        enrolled_ids.add(row["id"])
-            except Exception as e:
-                logger.error(f"加载已报名活动失败 {db_path}: {e}")
-
-        logger.debug(f"已报名活动数量: {len(enrolled_ids)}")
-        return enrolled_ids
+        return await self.activity_repository.list_enrolled_ids(db_path)
 
     async def _get_db_scan_time(self, db_path: Path) -> Optional[datetime]:
         if not db_path or not db_path.exists():
             return None
 
         try:
-            async with aiosqlite.connect(db_path) as db:
-                async with db.execute(
-                        "SELECT MIN(scan_timestamp) as min_ts FROM all_secondclass"
-                ) as cursor:
-                    row = await cursor.fetchone()
-                    if row and row[0]:
-                        return datetime.fromtimestamp(row[0])
+            return await self.activity_repository.get_scan_time(db_path)
         except Exception as e:
             logger.warning(f"获取数据库扫描时间失败 {db_path}: {e}")
             traceback.print_exc()

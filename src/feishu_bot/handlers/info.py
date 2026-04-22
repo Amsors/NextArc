@@ -1,10 +1,11 @@
 """/info 指令处理器"""
 
-import aiosqlite
 from pyustc.young import SecondClass, Status
 
 from src.core.filter import SecondClassFilter
-from src.models import UserSession, secondclass_from_db_row
+from src.core.repositories import ActivityRepository
+from src.core.services import ActivityQueryService
+from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
@@ -116,17 +117,5 @@ class InfoHandler(CommandHandler):
             return Response.error(str(e), context="查询已报名活动")
 
     async def _get_enrolled_activities(self, db_path, filter: SecondClassFilter | None = None) -> list[SecondClass]:
-        activities = []
-
-        async with aiosqlite.connect(db_path) as conn:
-            conn.row_factory = aiosqlite.Row
-            async with conn.execute(
-                    "SELECT * FROM enrolled_secondclass ORDER BY name"
-            ) as cursor:
-                async for row in cursor:
-                    activities.append(secondclass_from_db_row(dict(row)))
-
-        if filter:
-            activities = filter(activities)
-
-        return activities
+        service = self._activity_query_service or ActivityQueryService(ActivityRepository())
+        return await service.list_enrolled_activities(db_path, filter)

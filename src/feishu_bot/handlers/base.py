@@ -9,6 +9,7 @@ from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from src.core import ActivityScanner, AuthManager, DatabaseManager
+    from src.core.services import ActivityQueryService, ActivityUpdateService, EnrollmentService
 
 logger = get_logger("feishu.handler")
 
@@ -17,6 +18,9 @@ class CommandHandler(ABC):
     _scanner: "ActivityScanner" = None
     _auth_manager: "AuthManager" = None
     _db_manager: "DatabaseManager" = None
+    _activity_query_service: "ActivityQueryService" = None
+    _activity_update_service: "ActivityUpdateService" = None
+    _enrollment_service: "EnrollmentService" = None
 
     @classmethod
     def set_dependencies(
@@ -24,10 +28,16 @@ class CommandHandler(ABC):
             scanner: "ActivityScanner",
             auth_manager: "AuthManager",
             db_manager: "DatabaseManager",
+            activity_query_service: "ActivityQueryService | None" = None,
+            activity_update_service: "ActivityUpdateService | None" = None,
+            enrollment_service: "EnrollmentService | None" = None,
     ):
         cls._scanner = scanner
         cls._auth_manager = auth_manager
         cls._db_manager = db_manager
+        cls._activity_query_service = activity_query_service
+        cls._activity_update_service = activity_update_service
+        cls._enrollment_service = enrollment_service
 
     @property
     @abstractmethod

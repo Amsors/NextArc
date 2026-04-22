@@ -475,27 +475,26 @@ class SecondClassDB:
                         cursor.execute("DELETE FROM all_secondclass")
                         logger.info("Deleted all records (empty batch)")
 
-                    for row in rows_to_insert:
-                        cursor.execute(
-                            """
-                            INSERT OR REPLACE INTO all_secondclass (
-                                id, name, status, create_time, apply_time, hold_time,
-                                tel, valid_hour, apply_num, apply_limit, applied,
-                                need_sign_info, module, department, labels, conceive,
-                                is_series, children_id, parent_id, scan_timestamp,
-                                deep_scaned, deep_scaned_time,
-                                place_info, participation_form
-                            ) VALUES (
-                                :id, :name, :status, :create_time, :apply_time, :hold_time,
-                                :tel, :valid_hour, :apply_num, :apply_limit, :applied,
-                                :need_sign_info, :module, :department, :labels, :conceive,
-                                :is_series, :children_id, :parent_id, :scan_timestamp,
-                                :deep_scaned, :deep_scaned_time,
-                                :place_info, :participation_form
-                            )
-                            """,
-                            row,
+                    cursor.executemany(
+                        """
+                        INSERT OR REPLACE INTO all_secondclass (
+                            id, name, status, create_time, apply_time, hold_time,
+                            tel, valid_hour, apply_num, apply_limit, applied,
+                            need_sign_info, module, department, labels, conceive,
+                            is_series, children_id, parent_id, scan_timestamp,
+                            deep_scaned, deep_scaned_time,
+                            place_info, participation_form
+                        ) VALUES (
+                            :id, :name, :status, :create_time, :apply_time, :hold_time,
+                            :tel, :valid_hour, :apply_num, :apply_limit, :applied,
+                            :need_sign_info, :module, :department, :labels, :conceive,
+                            :is_series, :children_id, :parent_id, :scan_timestamp,
+                            :deep_scaned, :deep_scaned_time,
+                            :place_info, :participation_form
                         )
+                        """,
+                        rows_to_insert,
+                    )
 
                     conn.commit()
 
@@ -556,27 +555,26 @@ class SecondClassDB:
                     else:
                         cursor.execute("DELETE FROM enrolled_secondclass")
 
-                    for row in rows_to_insert:
-                        cursor.execute(
-                            """
-                            INSERT OR REPLACE INTO enrolled_secondclass (
-                                id, name, status, create_time, apply_time, hold_time,
-                                tel, valid_hour, apply_num, apply_limit, applied,
-                                need_sign_info, module, department, labels, conceive,
-                                is_series, children_id, parent_id, scan_timestamp,
-                                deep_scaned, deep_scaned_time,
-                                place_info, participation_form
-                            ) VALUES (
-                                :id, :name, :status, :create_time, :apply_time, :hold_time,
-                                :tel, :valid_hour, :apply_num, :apply_limit, :applied,
-                                :need_sign_info, :module, :department, :labels, :conceive,
-                                :is_series, :children_id, :parent_id, :scan_timestamp,
-                                :deep_scaned, :deep_scaned_time,
-                                :place_info, :participation_form
-                            )
-                            """,
-                            row,
+                    cursor.executemany(
+                        """
+                        INSERT OR REPLACE INTO enrolled_secondclass (
+                            id, name, status, create_time, apply_time, hold_time,
+                            tel, valid_hour, apply_num, apply_limit, applied,
+                            need_sign_info, module, department, labels, conceive,
+                            is_series, children_id, parent_id, scan_timestamp,
+                            deep_scaned, deep_scaned_time,
+                            place_info, participation_form
+                        ) VALUES (
+                            :id, :name, :status, :create_time, :apply_time, :hold_time,
+                            :tel, :valid_hour, :apply_num, :apply_limit, :applied,
+                            :need_sign_info, :module, :department, :labels, :conceive,
+                            :is_series, :children_id, :parent_id, :scan_timestamp,
+                            :deep_scaned, :deep_scaned_time,
+                            :place_info, :participation_form
                         )
+                        """,
+                        rows_to_insert,
+                    )
 
                     conn.commit()
                     logger.info("Committed successfully")

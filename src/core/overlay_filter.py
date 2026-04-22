@@ -1,6 +1,5 @@
 """已有活动重叠筛选器"""
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
@@ -132,51 +131,6 @@ class OverlayFilter:
 
     @staticmethod
     async def get_enrolled_time_ranges_from_db(db_path) -> list[EnrolledActivityTime]:
-        import aiosqlite
+        from src.core.repositories import ActivityRepository
 
-        time_ranges: list[EnrolledActivityTime] = []
-        now = datetime.now()
-
-        try:
-            async with aiosqlite.connect(db_path) as db:
-                # 参与形式为“提交作品”的已报名活动不参与筛选
-                async with db.execute(
-                        """
-                        SELECT hold_time, name
-                        FROM enrolled_secondclass
-                        WHERE participation_form IS NULL
-                           OR CAST(participation_form AS INTEGER) != 1
-                        """
-                ) as cursor:
-                    async for row in cursor:
-                        hold_time_json = row[0]
-                        activity_name = row[1] or "未知活动"
-                        if not hold_time_json:
-                            continue
-                        try:
-                            data = json.loads(hold_time_json)
-                            if not isinstance(data, dict):
-                                logger.warning(f"已报名活动时间格式异常（期望字典）: {hold_time_json}")
-                                continue
-                            start_str = data.get("start")
-                            end_str = data.get("end")
-                            start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S") if start_str else None
-                            end_dt = datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S") if end_str else None
-                            if start_dt:
-                                effective_end = end_dt or (start_dt + timedelta(hours=2))
-                                # 过滤掉已经结束超过1天的历史记录，避免干扰
-                                if effective_end < now - timedelta(days=1):
-                                    continue
-                                time_ranges.append(EnrolledActivityTime(
-                                    start=start_dt, end=end_dt, name=activity_name
-                                ))
-                        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
-                            logger.warning(f"解析已报名活动时间失败: {e}, 数据={hold_time_json}")
-                            continue
-
-            logger.debug(f"从数据库获取到 {len(time_ranges)} 个有效已报名活动时间（已排除提交作品类活动）")
-
-        except Exception as e:
-            logger.error(f"获取已报名活动时间列表失败: {e}")
-
-        return time_ranges
+        return await ActivityRepository().list_enrolled_time_ranges(db_path)

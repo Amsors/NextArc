@@ -2,7 +2,6 @@
 
 from pyustc.young import Status
 
-from src.feishu_bot.calendar_service import sync_secondclass_to_calendar
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -45,7 +44,8 @@ class JoinHandler(CommandHandler):
             return Response.text(f"您已经报名了「{activity.name}」")
 
         if activity.status != Status.APPLYING and activity.status != Status.PUBLISHED:
-            return Response.text(f"「{activity.name}」当前状态不可报名\n状态：{activity.status()}")
+            status_text = activity.status.text if activity.status else "未知"
+            return Response.text(f"「{activity.name}」当前状态不可报名\n状态：{status_text}")
 
         if session.confirm and not session.confirm.is_expired():
             return Response.text("您有一个待确认的操作，请先回复「确认」或「取消」")
@@ -67,43 +67,23 @@ class JoinHandler(CommandHandler):
         logger.info(f"执行报名: {activity_name} ({activity_id})")
 
         try:
-            from pyustc.young.second_class import SecondClass
+            enrollment_service = self._enrollment_service
+            if enrollment_service is None:
+                from src.core.services import EnrollmentService
+                enrollment_service = EnrollmentService(self._auth_manager)
 
-            async with self._auth_manager.create_session_once():
-                sc = SecondClass(activity_id, {})
-
-                await sc.update()
-
-                if not sc.applyable:
-                    return Response.text(
-                        f"「{activity_name}」当前不可报名\n状态：{sc.status.text if sc.status else '未知'}")
-
-                if sc.need_sign_info:
-                    from pyustc.young.second_class import SignInfo
-                    sign_info = await SignInfo.get_self()
-                    result = await sc.apply(force=True, auto_cancel=False, sign_info=sign_info)
-                else:
-                    result = await sc.apply(force=True, auto_cancel=False)
-                    # TODO 添加是否强制报名的配置
-
-                logger.info(f"apply() 返回值: {result}")
-
-                if not result:
-                    return Response.text(f"报名失败：活动不可报名或名额已满")
-
-            logger.info(f"报名成功: {activity_name}")
-
-            calendar_msg = await sync_secondclass_to_calendar(
-                app_id=JoinHandler._bot.app_id,
-                app_secret=JoinHandler._bot.app_secret,
+            result = await enrollment_service.join_activity(
+                activity_id,
+                activity_name,
                 user_id=session.user_id,
-                sc=sc,
+                force=True,
+                auto_cancel=False,
+                precheck_applyable=True,
             )
 
-            return Response.text(
-                f"已成功报名「{activity_name}」{calendar_msg}\n\n"
-                # TODO 自动更新已报名活动
-            )
+            if result.success:
+                return Response.text(f"{result.message}\n\n")
+            return Response.text(result.message)
 
         except Exception as e:
             logger.error(f"报名失败: {e}")

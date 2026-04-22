@@ -12,6 +12,7 @@ from .handlers.upgrade import UpgradeHandler
 
 if TYPE_CHECKING:
     from src.core import ActivityScanner, AuthManager, DatabaseManager
+    from src.core.services import ActivityQueryService, ActivityUpdateService, EnrollmentService
     from src.core.user_preference_manager import UserPreferenceManager
 
 logger = get_logger("feishu.router")
@@ -32,16 +33,29 @@ class MessageRouter:
             scanner: "ActivityScanner",
             auth_manager: "AuthManager",
             db_manager: "DatabaseManager",
-            ignore_manager: "UserPreferenceManager | None" = None
+            ignore_manager: "UserPreferenceManager | None" = None,
+            activity_query_service: "ActivityQueryService | None" = None,
+            activity_update_service: "ActivityUpdateService | None" = None,
+            enrollment_service: "EnrollmentService | None" = None,
     ):
         from .handlers.base import CommandHandler
 
-        CommandHandler.set_dependencies(scanner, auth_manager, db_manager)
+        CommandHandler.set_dependencies(
+            scanner,
+            auth_manager,
+            db_manager,
+            activity_query_service,
+            activity_update_service,
+            enrollment_service,
+        )
 
         for handler in self._confirm_handlers.values():
             handler._scanner = scanner
             handler._auth_manager = auth_manager
             handler._db_manager = db_manager
+            handler._activity_query_service = activity_query_service
+            handler._activity_update_service = activity_update_service
+            handler._enrollment_service = enrollment_service
 
         if ignore_manager:
             IgnoreHandler.set_ignore_manager(ignore_manager)
