@@ -8,6 +8,7 @@ from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
 from .enrolled_filter import EnrolledFilter
 from .filter import SecondClassFilter
+from .filtering import ActivityFilterPipeline, FilterContext, FilterPipelineResult
 from .overlay_filter import OverlayFilter
 from .repositories import ActivityRepository, PreferenceKind, PreferenceRepository
 from .scanner import ActivityScanner
@@ -34,4 +35,7 @@ __all__ = [
     "TimeFilter",
     "UserPreferenceManager",
     "FilteredActivity",
+    "ActivityFilterPipeline",
+    "FilterContext",
+    "FilterPipelineResult",
 ]

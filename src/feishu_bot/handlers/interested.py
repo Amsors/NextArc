@@ -23,7 +23,7 @@ class InterestedHandler(CommandHandler):
     def get_usage(self) -> str:
         return (
             "/interested <筛选类型> <序号> - 将筛选掉的活动标记为感兴趣\n"
-            "  筛选类型: ai, db/ignore/忽略, time/时间\n"
+                "  筛选类型: ai, db/ignore/忽略, time/时间, overlay/重叠\n"
             "  序号格式: 1,2,3 或 1-5 或 全部"
         )
 
@@ -37,11 +37,13 @@ class InterestedHandler(CommandHandler):
                 "用法：\n"
                 "• /interested ai 1,2,3 - 将AI筛选掉的第1、2、3个活动标记为感兴趣\n"
                 "• /interested time 1-5 - 将时间筛选掉的第1到5个活动标记为感兴趣\n"
+                "• /interested overlay 全部 - 将重叠筛选掉的全部活动标记为感兴趣\n"
                 "• /interested ignore 1,3-5 - 将数据库筛选掉的活动标记为感兴趣\n"
                 "• /interested ai 全部 - 将AI筛选掉的全部活动标记为感兴趣\n"
                 "\n筛选类型说明：\n"
                 "• ai - AI筛选掉的活动\n"
                 "• time/时间 - 时间筛选掉的活动\n"
+                "• overlay/重叠 - 重叠筛选掉的活动\n"
                 "• db/ignore/忽略 - 数据库筛选掉的活动\n"
                 "\n被标记为感兴趣的活动将绕过所有筛选，在后续扫描中会被推荐"
             )
@@ -55,12 +57,13 @@ class InterestedHandler(CommandHandler):
                 "支持的筛选类型：\n"
                 "• ai - AI筛选掉的活动\n"
                 "• time/时间 - 时间筛选掉的活动\n"
+                "• overlay/重叠 - 重叠筛选掉的活动\n"
                 "• db/ignore/忽略 - 数据库筛选掉的活动"
             )
 
         indices_str = " ".join(args[1:]).strip()
 
-        filtered_activities = session.get_filtered_activities_by_type(filter_type)
+        filtered_activities = await session.context_manager.get_filtered_activities_by_type(filter_type)
 
         if not filtered_activities:
             type_name = self._get_filter_type_name(filter_type)
@@ -120,6 +123,7 @@ class InterestedHandler(CommandHandler):
         ai_aliases = ["ai", "人工智能", "智能"]
         db_aliases = ["db", "ignore", "数据库", "忽略", "不感兴趣"]
         time_aliases = ["time", "时间", "时间筛选"]
+        overlay_aliases = ["overlay", "重叠", "时间重叠", "重叠筛选"]
 
         if arg in ai_aliases:
             return "ai"
@@ -127,6 +131,8 @@ class InterestedHandler(CommandHandler):
             return "db"
         if arg in time_aliases:
             return "time"
+        if arg in overlay_aliases:
+            return "overlay"
 
         return None
 
@@ -135,6 +141,7 @@ class InterestedHandler(CommandHandler):
             "ai": "AI",
             "db": "数据库",
             "time": "时间",
+            "overlay": "重叠",
         }
         return names.get(filter_type, filter_type)
 

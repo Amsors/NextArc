@@ -63,7 +63,8 @@ class MessageRouter:
     async def handle_message(self, text: str, session: UserSession) -> Response:
         text = text.strip()
 
-        if session.confirm and not session.confirm.is_expired():
+        confirmation = await session.context_manager.get_confirmation()
+        if confirmation:
             return await self._handle_confirmation(text, session)
 
         if text.startswith("/"):
@@ -90,28 +91,31 @@ class MessageRouter:
 
     async def _handle_confirmation(self, text: str, session: UserSession) -> Response:
         text = text.strip()
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation:
+            return Response.text("待确认操作已过期，请重新发起操作")
 
         if text == "确认":
-            operation = session.confirm.operation
+            operation = confirmation.operation
             handler = self._confirm_handlers.get(operation)
 
             if handler is None:
-                session.clear_confirm()
+                await session.context_manager.clear_confirmation()
                 return Response.text(f"未知的操作类型: {operation}")
 
             execute_method = getattr(handler, f"execute_{operation}", None)
             if execute_method is None:
-                session.clear_confirm()
+                await session.context_manager.clear_confirmation()
                 return Response.text(f"操作 {operation} 未实现执行方法")
 
             return await execute_method(session)
 
         elif text == "取消":
-            session.clear_confirm()
+            await session.context_manager.clear_confirmation()
             return Response.text("已取消操作")
         else:
             return Response.text(
-                f"{session.confirm.get_confirm_prompt()}\n\n"
+                f"{confirmation.get_confirm_prompt()}\n\n"
                 f"请回复「确认」或「取消」"
             )
 

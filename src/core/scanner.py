@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from pyustc.young import SecondClass
+from pyustc.young import SecondClass, Status
 
+from src.core.filtering import ActivityFilterPipeline, FilterContext
 from src.core.repositories import ActivityRepository
 from src.core.secondclass_db import SecondClassDB
 from src.utils.logger import get_logger
@@ -16,8 +17,6 @@ from .ai_filter import AIFilter
 from .auth_manager import AuthManager
 from .db_manager import DatabaseManager
 from .diff_engine import DiffEngine
-from .enrolled_filter import EnrolledFilter
-from .overlay_filter import OverlayFilter
 from .time_filter import TimeFilter
 from .user_preference_manager import UserPreferenceManager
 
@@ -49,6 +48,8 @@ class ActivityScanner:
             use_time_filter: bool = False,
             user_preference_manager: Optional[UserPreferenceManager] = None,
             version_checker: Optional["VersionChecker"] = None,
+            filter_pipeline: Optional[ActivityFilterPipeline] = None,
+            ignore_overlap: bool = False,
     ):
         self.auth_manager = auth_manager
         self.db_manager = db_manager
@@ -62,8 +63,18 @@ class ActivityScanner:
         self.use_time_filter = use_time_filter
         self.user_preference_manager = user_preference_manager
         self.version_checker = version_checker
+        self.ignore_overlap = ignore_overlap
         self.scheduler = AsyncIOScheduler()
         self.activity_repository = ActivityRepository()
+        self.filter_pipeline = filter_pipeline or ActivityFilterPipeline(
+            activity_repository=self.activity_repository,
+            user_preference_manager=self.user_preference_manager,
+            ai_filter=self.ai_filter,
+            use_ai_filter=self.use_ai_filter,
+            ai_user_info=self.ai_user_info,
+            time_filter=self.time_filter,
+            use_time_filter=self.use_time_filter,
+        )
         self.diff_engine = DiffEngine(self.activity_repository)
         self._last_scan_time: Optional[datetime] = None
         self._is_running = False
@@ -174,8 +185,7 @@ class ActivityScanner:
                         await self.event_bus.publish(event)
 
                 if notify_new_activities and diff.added and self.event_bus:
-                    enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(new_db_path)
-                    self._create_background_task(self._publish_new_activities_event(diff, not no_filter, enrolled_ids))
+                    self._create_background_task(self._publish_new_activities_event(diff, not no_filter))
 
                 if self.event_bus:
                     completed_event = ScanCompletedEvent(
@@ -232,8 +242,7 @@ class ActivityScanner:
 
         task.add_done_callback(on_task_done)
 
-    async def _publish_new_activities_event(self, diff, enable_filter: bool = True,
-                                            enrolled_ids: set[str] = None) -> None:
+    async def _publish_new_activities_event(self, diff, enable_filter: bool = True) -> None:
         if not self.event_bus:
             return
 
@@ -243,123 +252,46 @@ class ActivityScanner:
         try:
             new_activity_ids = [change.activity_id for change in diff.added]
             activities = await self.get_activity_list_by_id(new_activity_ids)
-            ai_filtered = []
-            time_filtered = []
-            db_filtered = []
-            enrolled_filtered = []
-            overlay_filtered = []
-            restored_activities = []
-            ai_keep_reasons = {}
 
-            enrolled_ids = enrolled_ids or set()
-            enrolled_filter = EnrolledFilter(enrolled_ids)
+            latest_db = self.db_manager.get_latest_db() or self.db_manager.get_new_db_path()
+            filter_result = await self.filter_pipeline.apply(
+                activities,
+                FilterContext(
+                    latest_db=latest_db,
+                    enable_filters=enable_filter,
+                    include_interested_restore=enable_filter,
+                    use_ai_cache=True,
+                    force_ai_review=False,
+                    ignore_overlap=self.ignore_overlap,
+                    source="scanner",
+                    allowed_statuses=[Status.APPLYING, Status.PUBLISHED],
+                    apply_enrolled_filter=enable_filter,
+                ),
+            )
+            activities = filter_result.kept
+            filters_applied = filter_result.non_empty_filtered()
 
-            if enable_filter:
-                if self.user_preference_manager:
-                    activities, restored_activities = \
-                        await self.user_preference_manager.restore_interested_activities(activities)
-                    if restored_activities:
-                        logger.info(f"从感兴趣白名单恢复了 {len(restored_activities)} 个活动")
+            if not activities and not filters_applied:
+                logger.info("筛选后无活动需要通知")
+                return
 
-                if enrolled_ids:
-                    logger.info(f"使用已报名筛选检查 {len(activities)} 个新活动...")
-                    activities, enrolled_filtered = enrolled_filter.filter_activities(activities)
-
-                    if enrolled_filtered:
-                        logger.info(f"已报名筛选过滤了 {len(enrolled_filtered)} 个活动")
-
-                    if not activities and not restored_activities:
-                        logger.info("已报名筛选后无活动需要通知（全部已报名）")
-                        return
-
-                db_filtered = []
-                if self.user_preference_manager:
-                    logger.info(f"使用数据库筛选检查 {len(activities)} 个新活动...")
-                    activities, db_filtered = await self.user_preference_manager.filter_activities(activities)
-
-                    if not activities and not restored_activities:
-                        logger.info("数据库筛选后无活动需要通知（全部被用户标记为不感兴趣）")
-                        return
-
-                overlay_filtered = []
-                overlap_reasons: dict[str, str] = {}
-                enrolled_time_ranges = await OverlayFilter.get_enrolled_time_ranges_from_db(
-                    self.db_manager.get_latest_db() or self.db_manager.get_new_db_path()
-                )
-                if enrolled_time_ranges:
-                    from src.config import get_settings
-                    ignore_overlap = get_settings().filter.ignore_overlap
-                    logger.info(f"使用重叠筛选检查 {len(activities)} 个新活动...")
-                    overlay_filter = OverlayFilter(enrolled_time_ranges)
-                    activities, overlay_filtered = overlay_filter.filter_activities(
-                        activities, ignore_overlap=ignore_overlap
-                    )
-                    overlap_reasons = overlay_filter.overlap_reasons
-
-                    if overlay_filtered:
-                        logger.info(f"重叠筛选过滤了 {len(overlay_filtered)} 个活动")
-
-                    if overlap_reasons:
-                        logger.info(f"重叠筛选标记了 {len(overlap_reasons)} 个活动但仍保留")
-
-                    if not activities and not restored_activities:
-                        logger.info("重叠筛选后无活动需要通知（全部与已报名活动重叠）")
-                        return
-                else:
-                    logger.debug("没有已报名活动时间记录，跳过重叠筛选")
-
-                if self.use_time_filter and self.time_filter:
-                    logger.info(f"使用时间筛选检查 {len(activities)} 个新活动...")
-                    activities, time_filtered = self.time_filter.filter_activities(activities)
-
-                    if not activities:
-                        logger.info("时间筛选后无活动需要通知")
-                        return
-
-                if self.use_ai_filter and self.ai_filter and self.ai_user_info:
-                    logger.info(f"使用 AI 筛选 {len(activities)} 个新活动...")
-                    activities, ai_filtered_result, ai_keep_reasons = await self.ai_filter.filter_activities(
-                        activities,
-                        self.ai_user_info,
-                        write_to_db=True,
-                        prefer_cached=True,
-                        preference_manager=self.user_preference_manager,
-                    )
-                    ai_filtered = ai_filtered_result
-
-                    if not activities and not restored_activities:
-                        logger.info("AI 筛选后无活动需要通知")
-
-            if restored_activities:
-                activities = restored_activities + activities
-                logger.info(
-                    f"最终活动列表包含 {len(restored_activities)} 个白名单活动"
-                    f"和 {len(activities) - len(restored_activities)} 个通过筛选的活动")
-
-            logger.debug(f"发布新活动事件: use_ai_filter={self.use_ai_filter}, "
-                        f"ai_keep_reasons_keys={list(ai_keep_reasons.keys()) if self.use_ai_filter else []}, "
-                        f"overlap_reasons_keys={list(overlap_reasons.keys()) if overlap_reasons else []}")
+            logger.debug(
+                "发布新活动事件: use_ai_filter=%s, ai_keep_reasons_keys=%s, overlap_reasons_keys=%s",
+                self.use_ai_filter,
+                list(filter_result.ai_keep_reasons.keys()) if self.use_ai_filter else [],
+                list(filter_result.overlap_reasons.keys()) if filter_result.overlap_reasons else [],
+            )
             event = NewActivitiesFoundEvent(
                 activities=activities,
                 total_found=len(new_activity_ids),
-                filters_applied={
-                    "db": db_filtered,
-                    "time": time_filtered,
-                    "ai": ai_filtered,
-                    "enrolled": enrolled_filtered,
-                    "overlay": overlay_filtered,
-                },
-                ai_keep_reasons=ai_keep_reasons if self.use_ai_filter else {},
-                overlap_reasons=overlap_reasons,
+                filters_applied=filters_applied,
+                ai_keep_reasons=filter_result.ai_keep_reasons if self.use_ai_filter else {},
+                overlap_reasons=filter_result.overlap_reasons,
             )
             await self.event_bus.publish(event)
 
-            logger.info(f"已发布新活动事件: {len(activities)} 个新活动"
-                        f"{'，' + str(len(enrolled_filtered)) + ' 个已报名被过滤' if enrolled_filtered else ''}"
-                        f"{'，' + str(len(db_filtered)) + ' 个被数据库过滤' if db_filtered else ''}"
-                        f"{'，' + str(len(overlay_filtered)) + ' 个被重叠筛选过滤' if overlay_filtered else ''}"
-                        f"{'，' + str(len(ai_filtered)) + ' 个被 AI 过滤' if ai_filtered else ''}"
-                        f"{'，' + str(len(time_filtered)) + ' 个被时间过滤' if time_filtered else ''}")
+            summary_suffix = f"，{'，'.join(filter_result.summaries)}" if filter_result.summaries else ""
+            logger.info(f"已发布新活动事件: {len(activities)} 个新活动{summary_suffix}")
 
         except Exception as e:
             logger.error(f"发布新活动事件失败: {e}")

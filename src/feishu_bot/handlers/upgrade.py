@@ -62,7 +62,7 @@ class UpgradeHandler(CommandHandler):
 
             logger.info(f"发现新版本: {result.current_sha[:7]} -> {result.latest_sha[:7]}")
 
-            session.set_confirm(
+            await session.context_manager.set_confirmation(
                 operation="upgrade",
                 data={
                     "current_sha": result.current_sha,
@@ -109,10 +109,11 @@ class UpgradeHandler(CommandHandler):
             return Response.error(str(e), context="检查更新")
 
     async def execute_upgrade(self, session) -> Response:
-        if not session.confirm or session.confirm.operation != "upgrade":
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation or confirmation.operation != "upgrade":
             return Response.text("升级会话已过期，请重新执行 /upgrade")
 
-        data = session.confirm.data
+        data = confirmation.data
         current_sha = data.get("current_sha", "")[:7]
         latest_sha = data.get("latest_sha", "")[:7]
 
@@ -134,7 +135,7 @@ class UpgradeHandler(CommandHandler):
             returncode, stdout, stderr = await self._run_git_pull(version_checker)
 
             if returncode != 0:
-                session.clear_confirm()
+                await session.context_manager.clear_confirmation()
                 error_detail = self._parse_git_error(stderr, stdout)
                 logger.error(f"git pull 失败: {error_detail}")
 
@@ -154,7 +155,7 @@ class UpgradeHandler(CommandHandler):
 
             version_changed, old_ver_str, new_ver_str = self._compare_versions(old_version, new_version)
 
-            session.clear_confirm()
+            await session.context_manager.clear_confirmation()
 
             version_info = ""
             extra_notifications = []
@@ -191,7 +192,7 @@ class UpgradeHandler(CommandHandler):
             return Response.text(success_msg)
 
         except Exception as e:
-            session.clear_confirm()
+            await session.context_manager.clear_confirmation()
             logger.error(f"升级过程异常: {e}")
             return Response.error(str(e), context="执行升级")
 

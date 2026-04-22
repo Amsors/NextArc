@@ -101,7 +101,7 @@ class InfoHandler(CommandHandler):
             if not activities:
                 return Response.text("已报名活动\n\n您目前没有报名任何活动")
 
-            session.set_displayed_activities(
+            await session.context_manager.set_displayed_activities(
                 activities=activities,
                 source="info"
             )

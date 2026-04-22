@@ -60,7 +60,11 @@ class SearchHandler(CommandHandler):
                 logger.error(f"更新活动信息失败: {e}")
                 hint = "部分活动信息可能不是最新"
 
-            session.set_search(keyword, activities)
+            await session.context_manager.set_search_result(keyword, activities)
+            await session.context_manager.set_displayed_activities(
+                activities=activities,
+                source="search",
+            )
 
             title = f'搜索「{keyword}」结果（共{len(activities)}个）'
             if hint:

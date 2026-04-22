@@ -14,7 +14,7 @@ from src.utils.logger import get_logger
 from .service import NotificationService
 
 if TYPE_CHECKING:
-    from src.models import UserSession
+    from src.context import ContextManager
 
 logger = get_logger("notifications.listener")
 
@@ -24,12 +24,15 @@ class NotificationListener:
 
     def __init__(self, notification_service: NotificationService, user_preference_manager=None):
         self._notification_service = notification_service
-        self._user_session: "UserSession | None" = None
+        self._context_manager: "ContextManager | None" = None
         self._user_preference_manager = user_preference_manager
 
-    def set_user_session(self, session: "UserSession") -> None:
-        self._user_session = session
-        logger.debug("已设置 UserSession 引用")
+    def set_context_manager(self, context_manager: "ContextManager") -> None:
+        self._context_manager = context_manager
+        logger.debug("已设置 ContextManager 引用")
+
+    def set_user_session(self, session) -> None:
+        self.set_context_manager(session.context_manager)
 
     async def on_scan_completed(self, event: ScanCompletedEvent) -> None:
         logger.debug(f"收到扫描完成事件: {event.new_db_path.name}")
@@ -101,16 +104,16 @@ class NotificationListener:
             except Exception as e:
                 logger.error(f"发送新活动卡片失败: {e}")
 
-            if self._user_session:
+            if self._context_manager:
                 try:
-                    self._user_session.set_displayed_activities(
+                    await self._context_manager.set_displayed_activities(
                         activities=event.activities,
                         filtered_activities=event.filters_applied,
                         source="new_activities"
                     )
-                    logger.debug(f"已更新 UserSession，保存了 {len(event.activities)} 个新活动")
+                    logger.debug(f"已更新 ContextManager，保存了 {len(event.activities)} 个新活动")
                 except Exception as e:
-                    logger.error(f"更新 UserSession 失败: {e}")
+                    logger.error(f"更新 ContextManager 失败: {e}")
         else:
             logger.debug("没有新活动需要通知，仅发送过滤详情")
 

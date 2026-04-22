@@ -27,6 +27,7 @@ class IgnoreHandler(CommandHandler):
         )
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
+        context_manager = session.context_manager
         if not self._ignore_manager:
             return Response.text("忽略功能未初始化")
 
@@ -42,7 +43,7 @@ class IgnoreHandler(CommandHandler):
             )
 
         if args[0] == "AI" or args[0] == "ai":
-            ai_filtered_activities = session.get_filtered_activities_by_type("ai")
+            ai_filtered_activities = await context_manager.get_filtered_activities_by_type("ai")
 
             if not ai_filtered_activities:
                 return Response.text("没有AI忽略的活动")
@@ -58,7 +59,7 @@ class IgnoreHandler(CommandHandler):
 
         indices_str = " ".join(args).strip()
 
-        displayed_activities = session.get_all_displayed_activities()
+        displayed_activities = await context_manager.get_all_displayed_activities()
 
         if not displayed_activities:
             return Response.text(
@@ -68,7 +69,7 @@ class IgnoreHandler(CommandHandler):
                 "• /search <关键词> - 搜索活动"
             )
 
-        indices, errors = session.parse_displayed_indices(indices_str)
+        indices, errors = await context_manager.parse_displayed_indices(indices_str)
 
         if errors:
             error_msg = "\n".join(f"  • {e}" for e in errors)
@@ -84,7 +85,7 @@ class IgnoreHandler(CommandHandler):
         activity_names = []
 
         for idx in indices:
-            activity = session.get_displayed_activity_by_index(idx)
+            activity = await context_manager.get_displayed_activity_by_index(idx)
             if activity:
                 activity_ids.append(activity.id)
                 activity_names.append(f"[{idx}] {activity.name}")

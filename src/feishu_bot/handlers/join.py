@@ -22,11 +22,12 @@ class JoinHandler(CommandHandler):
         if not self.check_dependencies():
             return Response.text("服务未初始化，请稍后重试")
 
-        if not session.search or session.search.is_expired():
+        search_result = await session.context_manager.get_search_result()
+        if not search_result:
             return Response.text("请先使用 /search 搜索活动\n\n示例：/search 讲座")
 
         if not args:
-            return Response.text(f"用法：{self.get_usage()}\n\n当前搜索结果可用序号：1-{len(session.search.results)}")
+            return Response.text(f"用法：{self.get_usage()}\n\n当前搜索结果可用序号：1-{len(search_result.results)}")
 
         try:
             index = int(args[0])
@@ -35,10 +36,10 @@ class JoinHandler(CommandHandler):
         except ValueError:
             return Response.text("无效的序号，请输入正整数\n\n示例：/join 1")
 
-        activity = session.search.get_result_by_index(index)
+        activity = search_result.get_result_by_index(index)
 
         if not activity:
-            return Response.text(f"序号超出范围，当前搜索结果共 {len(session.search.results)} 个活动")
+            return Response.text(f"序号超出范围，当前搜索结果共 {len(search_result.results)} 个活动")
 
         if activity.applied:
             return Response.text(f"您已经报名了「{activity.name}」")
@@ -47,22 +48,26 @@ class JoinHandler(CommandHandler):
             status_text = activity.status.text if activity.status else "未知"
             return Response.text(f"「{activity.name}」当前状态不可报名\n状态：{status_text}")
 
-        if session.confirm and not session.confirm.is_expired():
+        if await session.context_manager.get_confirmation():
             return Response.text("您有一个待确认的操作，请先回复「确认」或「取消」")
 
-        session.set_confirm("join", activity.id, activity.name)
+        await session.context_manager.set_confirmation("join", activity.id, activity.name)
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation:
+            return Response.text("创建确认操作失败，请稍后重试")
 
-        return Response.text(session.confirm.get_confirm_prompt())
+        return Response.text(confirmation.get_confirm_prompt())
 
     async def execute_join(self, session: UserSession) -> Response:
-        if not session.confirm or session.confirm.operation != "join":
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation or confirmation.operation != "join":
             return Response.text("无效的操作")
 
-        activity_id = session.confirm.activity_id
-        activity_name = session.confirm.activity_name
+        activity_id = confirmation.activity_id
+        activity_name = confirmation.activity_name
 
-        session.clear_confirm()
-        session.clear_search()
+        await session.context_manager.clear_confirmation()
+        await session.clear_search()
 
         logger.info(f"执行报名: {activity_name} ({activity_id})")
 

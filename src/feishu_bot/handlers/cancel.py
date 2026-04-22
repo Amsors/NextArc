@@ -61,21 +61,25 @@ class CancelHandler(CommandHandler):
 
         activity = enrolled[index - 1]
 
-        if session.confirm and not session.confirm.is_expired():
+        if await session.context_manager.get_confirmation():
             return Response.text("您有一个待确认的操作，请先回复「确认」或「取消」")
 
-        session.set_confirm("cancel", activity.id, activity.name)
+        await session.context_manager.set_confirmation("cancel", activity.id, activity.name)
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation:
+            return Response.text("创建确认操作失败，请稍后重试")
 
-        return Response.text(session.confirm.get_confirm_prompt())
+        return Response.text(confirmation.get_confirm_prompt())
 
     async def execute_cancel(self, session: UserSession) -> Response:
-        if not session.confirm or session.confirm.operation != "cancel":
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation or confirmation.operation != "cancel":
             return Response.text("无效的操作")
 
-        activity_id = session.confirm.activity_id
-        activity_name = session.confirm.activity_name
+        activity_id = confirmation.activity_id
+        activity_name = confirmation.activity_name
 
-        session.clear_confirm()
+        await session.context_manager.clear_confirmation()
 
         logger.info(f"执行取消报名: {activity_name} ({activity_id})")
 

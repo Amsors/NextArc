@@ -16,6 +16,7 @@ from src.config.preferences import load_preferences
 from src.core import (
     ActivityQueryService,
     ActivityRepository,
+    ActivityFilterPipeline,
     ActivityScanner,
     ActivityUpdateService,
     AIFilterConfig,
@@ -55,6 +56,7 @@ class NextArcApp:
         self.notification_listener: NotificationListener = None
         self.scanner: ActivityScanner = None
         self.activity_repository: ActivityRepository = None
+        self.filter_pipeline: ActivityFilterPipeline = None
         self.activity_query_service: ActivityQueryService = None
         self.activity_update_service: ActivityUpdateService = None
         self.enrollment_service: EnrollmentService = None
@@ -199,6 +201,17 @@ class NextArcApp:
             else:
                 logger.info("时间筛选: 已禁用")
 
+            self.activity_repository = ActivityRepository()
+            self.filter_pipeline = ActivityFilterPipeline(
+                activity_repository=self.activity_repository,
+                user_preference_manager=self.user_preference_manager,
+                ai_filter=ai_filter,
+                use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
+                ai_user_info=self.settings.ai.user_info,
+                time_filter=self.time_filter,
+                use_time_filter=use_time_filter,
+            )
+
             self.scanner = ActivityScanner(
                 auth_manager=self.auth_manager,
                 db_manager=self.db_manager,
@@ -212,6 +225,8 @@ class NextArcApp:
                 use_time_filter=use_time_filter,
                 user_preference_manager=self.user_preference_manager,
                 version_checker=self.version_checker,
+                filter_pipeline=self.filter_pipeline,
+                ignore_overlap=self.settings.filter.ignore_overlap,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
@@ -222,7 +237,6 @@ class NextArcApp:
                 logger.info("时间筛选: 开启")
             logger.info("数据库筛选: 已启用")
 
-            self.activity_repository = ActivityRepository()
             self.activity_query_service = ActivityQueryService(self.activity_repository)
             self.activity_update_service = ActivityUpdateService(self.auth_manager)
             self.enrollment_service = EnrollmentService(
@@ -291,8 +305,8 @@ class NextArcApp:
                 self.notification_listener.subscribe(self.event_bus)
                 logger.info("通知监听器已订阅事件")
 
-                self.notification_listener.set_user_session(self.bot.user_session)
-                logger.info("已设置 UserSession 引用到通知监听器")
+                self.notification_listener.set_context_manager(self.bot.user_session.context_manager)
+                logger.info("已设置 ContextManager 引用到通知监听器")
 
                 if chat_id:
                     logger.info(f"飞书机器人初始化完成（已配置 chat_id: {chat_id}）")
