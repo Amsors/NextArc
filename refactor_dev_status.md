@@ -2,7 +2,7 @@
 
 ## 已完成范围
 
-按 `refactor_guide.md` 完成阶段 1、2、3、4、5、6、7 的主要重构。
+按 `refactor_guide.md` 完成阶段 1、2、3、4、5、6、7、8 的主要重构。
 
 ## 关键改动
 
@@ -38,11 +38,19 @@
 - `CardActionHandler` 改为构造函数注入应用上下文和 bot getter，不再二次 `set_dependencies`。
 - `NotificationService`、卡片子活动发送和日历同步不再主动读取全局 `get_settings()`。
 - 新增阶段 6/7 回归测试：`tests/test_refactor_stage_6_7.py`。
+- 新增 `src/models/secondclass_mapper.py`，集中 `SecondClass <-> DB row` 转换。
+- 新增 `src/models/secondclass_view.py`，集中展示字段读取和格式化辅助函数。
+- `src/models/activity.py` 收敛为兼容导出层，保留旧导入路径。
+- `SecondClassDB` 快照写入改为复用 mapper，避免写入 row 逻辑继续分散。
+- `ActivityRepository` 新增 row 级读取接口，供 diff 等稳定字段比较场景使用。
+- `DiffEngine` 改为直接比较数据库 row 中的稳定字段，不再为 diff 构造完整 `SecondClass`。
+- mapper 双向覆盖 `place_info`、`participation_form`、`children_id`、`parent_id`；`deep_scaned` 等扫描元数据只保留在数据库 row，不写入 `SecondClass.data`。
+- 新增阶段 8 回归测试：`tests/test_refactor_stage_8.py`。
 
 ## 验证
 
 - `/home/amsors/anaconda3/envs/pyustc/bin/python -m compileall src tests` 通过。
-- `/home/amsors/anaconda3/envs/pyustc/bin/python -m unittest discover -s tests -v` 通过，13 个测试全绿。
+- `/home/amsors/anaconda3/envs/pyustc/bin/python -m unittest discover -s tests -v` 通过，16 个测试全绿。
 - `git diff --check` 通过。
 
 ## 注意

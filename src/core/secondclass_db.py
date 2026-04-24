@@ -5,13 +5,12 @@ import shutil
 import sqlite3
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
 
 from pyustc.young import SecondClass
-from pyustc.young.filter import Department, Label, Module, TimePeriod
 
+from src.models.secondclass_mapper import secondclass_to_db_row
 from src.utils.logger import get_logger
 
 logger = get_logger("secondclass_db")
@@ -287,43 +286,6 @@ class SecondClassDB:
 
                 conn.commit()
 
-    @staticmethod
-    def _timeperiod_to_json(tp: TimePeriod | None) -> dict[str, str] | None:
-        if tp is None:
-            return None
-        return {
-            "start": tp.start.strftime("%Y-%m-%d %H:%M:%S"),
-            "end": tp.end.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-
-    @staticmethod
-    def _datetime_to_json(dt: datetime) -> dict[str, str]:
-        return {
-            "datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-
-    @staticmethod
-    def _module_to_json(module: Module | None) -> dict[str, str] | None:
-        if module is None:
-            return None
-        return {"value": module.value, "text": module.text}
-
-    @staticmethod
-    def _department_to_json(dept: Department | None) -> dict[str, Any] | None:
-        if dept is None:
-            return None
-        return {"id": dept.id, "name": dept.name, "level": dept.level}
-
-    @staticmethod
-    def _labels_to_json(labels: list[Label] | None) -> list[dict[str, str]] | None:
-        if labels is None:
-            return None
-        return [{"id": label.id, "name": label.name} for label in labels]
-
-    @staticmethod
-    def _apply_num_to_json(apply_num: int | None) -> dict[str, Any]:
-        return {"value": apply_num, "is_none": apply_num is None}
-
     def _secondclass_to_row(
             self,
             sc: SecondClass,
@@ -333,35 +295,14 @@ class SecondClassDB:
             deep_scaned: bool = False,
             deep_scaned_time: int | None = None,
     ) -> dict[str, Any]:
-        timestamp = scan_timestamp or int(time.time())
-        status_code = sc.status.code if sc.status else None
-
-        return {
-            "id": sc.id,
-            "name": sc.name,
-            "status": status_code,
-            "create_time": json.dumps(self._datetime_to_json(sc.create_time)) if sc.create_time else None,
-            "apply_time": json.dumps(self._timeperiod_to_json(sc.apply_time)) if sc.apply_time else None,
-            "hold_time": json.dumps(self._timeperiod_to_json(sc.hold_time)) if sc.hold_time else None,
-            "tel": sc.tel,
-            "valid_hour": sc.valid_hour if sc.valid_hour is not None else None,
-            "apply_num": sc.apply_num if sc.apply_num is not None else None,
-            "apply_limit": sc.apply_limit if sc.apply_limit is not None else None,
-            "applied": 1 if sc.applied else 0,
-            "need_sign_info": 1 if sc.need_sign_info else 0,
-            "module": json.dumps(self._module_to_json(sc.module)),
-            "department": json.dumps(self._department_to_json(sc.department)),
-            "labels": json.dumps(self._labels_to_json(sc.labels)),
-            "conceive": sc.conceive,
-            "is_series": 1 if sc.is_series else 0,
-            "place_info": sc.place_info if sc.place_info is not None else None,
-            "children_id": json.dumps(children_ids) if children_ids is not None else None,
-            "parent_id": parent_id,
-            "scan_timestamp": timestamp,
-            "deep_scaned": deep_scaned,
-            "deep_scaned_time": deep_scaned_time or None,
-            "participation_form": sc.participation_form.code_str if sc.participation_form else None,
-        }
+        return secondclass_to_db_row(
+            sc,
+            children_ids=children_ids,
+            parent_id=parent_id,
+            scan_timestamp=scan_timestamp,
+            deep_scaned=deep_scaned,
+            deep_scaned_time=deep_scaned_time,
+        )
 
     def _create_backup(self) -> Path | None:
         if not self.db_path.exists():

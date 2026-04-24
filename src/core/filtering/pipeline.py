@@ -7,7 +7,7 @@ from pyustc.young import SecondClass
 from src.core.enrolled_filter import EnrolledFilter
 from src.core.overlay_filter import OverlayFilter
 from src.core.repositories import ActivityRepository
-from src.models.activity import get_status_text
+from src.models.secondclass_view import get_status_text
 from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
 

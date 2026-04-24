@@ -9,14 +9,18 @@ from pyustc.young import SecondClass, ParticipationForm
 from src.core import FilteredActivity
 from src.models import DiffResult
 from src.utils.logger import get_logger
-from src.models.activity import (
+from src.models.secondclass_view import (
     format_secondclass_for_list,
-    get_display_time,
-    get_status_text,
     get_apply_progress,
-    get_module_name,
+    get_conceive_text,
     get_department_name,
-    get_labels_text, get_conceive_text, get_place_info, get_participation_form, get_description_text
+    get_description_text,
+    get_display_time,
+    get_labels_text,
+    get_module_name,
+    get_participation_form,
+    get_place_info,
+    get_status_text,
 )
 
 logger = get_logger("utils.formatter")

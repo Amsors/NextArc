@@ -8,10 +8,12 @@ import aiosqlite
 from pyustc.young import SecondClass, Status
 
 from src.core.overlay_filter import EnrolledActivityTime
-from src.models.activity import secondclass_from_db_row
+from src.models.secondclass_mapper import secondclass_from_db_row
 from src.utils.logger import get_logger
 
 logger = get_logger("repository.activity")
+
+ACTIVITY_TABLES = {"all_secondclass", "enrolled_secondclass"}
 
 
 class ActivityRepository:
@@ -56,6 +58,12 @@ class ActivityRepository:
 
     async def list_enrolled(self, db_path: Path) -> list[SecondClass]:
         return await self._list_from_table(db_path, "enrolled_secondclass", "ORDER BY name")
+
+    async def list_all_rows(self, db_path: Path) -> dict[str, dict]:
+        """返回 all_secondclass 的原始数据库行，供 diff 等 row 级用例使用。"""
+
+        rows = await self._query_rows(db_path, "SELECT * FROM all_secondclass", [])
+        return {str(row["id"]): row for row in rows}
 
     async def list_enrolled_ids(self, db_path: Path) -> set[str]:
         if not db_path.exists():
@@ -129,7 +137,7 @@ class ActivityRepository:
         return None
 
     async def _count(self, db_path: Path, table: str) -> int:
-        if table not in {"all_secondclass", "enrolled_secondclass"}:
+        if table not in ACTIVITY_TABLES:
             raise ValueError(f"Invalid activity table: {table}")
         if not db_path.exists():
             return 0
@@ -140,7 +148,7 @@ class ActivityRepository:
                 return row[0] if row else 0
 
     async def _list_from_table(self, db_path: Path, table: str, suffix: str = "") -> list[SecondClass]:
-        if table not in {"all_secondclass", "enrolled_secondclass"}:
+        if table not in ACTIVITY_TABLES:
             raise ValueError(f"Invalid activity table: {table}")
         return await self._query_activities(db_path, f"SELECT * FROM {table} {suffix}".strip(), [])
 
@@ -161,6 +169,24 @@ class ActivityRepository:
                 async for row in cursor:
                     activities.append(secondclass_from_db_row(dict(row)))
         return activities
+
+    async def _query_rows(
+        self,
+        db_path: Path,
+        query: str,
+        params: list[str | int | float],
+    ) -> list[dict]:
+        if not db_path.exists():
+            logger.warning(f"数据库不存在: {db_path}")
+            return []
+
+        rows: list[dict] = []
+        async with aiosqlite.connect(db_path) as conn:
+            conn.row_factory = aiosqlite.Row
+            async with conn.execute(query, params) as cursor:
+                async for row in cursor:
+                    rows.append(dict(row))
+        return rows
 
     @staticmethod
     def _parse_enrolled_time_range(
