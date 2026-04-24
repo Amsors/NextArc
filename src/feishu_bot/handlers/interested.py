@@ -1,6 +1,5 @@
 """感兴趣指令处理器"""
 
-from src.core import UserPreferenceManager
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -10,12 +9,6 @@ logger = get_logger("feishu.handler.interested")
 
 
 class InterestedHandler(CommandHandler):
-    _user_preference_manager: UserPreferenceManager = None
-
-    @classmethod
-    def set_user_preference_manager(cls, manager: UserPreferenceManager) -> None:
-        cls._user_preference_manager = manager
-
     @property
     def command(self) -> str:
         return "interested"

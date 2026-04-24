@@ -11,6 +11,7 @@ from .filter import SecondClassFilter
 from .filtering import ActivityFilterPipeline, FilterContext, FilterPipelineResult
 from .overlay_filter import OverlayFilter
 from .repositories import ActivityRepository, PreferenceKind, PreferenceRepository
+from .scanning import ActivitySyncService, ScanCoordinator, ScanDiffService, ScanOptions, ScanResult
 from .scanner import ActivityScanner
 from .services import ActivityQueryService, ActivityUpdateService, EnrollmentService
 from .time_filter import TimeFilter
@@ -28,6 +29,11 @@ __all__ = [
     "PreferenceKind",
     "PreferenceRepository",
     "ActivityScanner",
+    "ActivitySyncService",
+    "ScanCoordinator",
+    "ScanDiffService",
+    "ScanOptions",
+    "ScanResult",
     "ActivityQueryService",
     "ActivityUpdateService",
     "EnrollmentService",

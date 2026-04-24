@@ -50,10 +50,12 @@ class EnrollmentService:
         auth_manager: "AuthManager",
         app_id: str = "",
         app_secret: str = "",
+        calendar_sync_enabled: bool = True,
     ):
         self.auth_manager = auth_manager
         self.app_id = app_id
         self.app_secret = app_secret
+        self.calendar_sync_enabled = calendar_sync_enabled
 
     async def join_activity(
         self,
@@ -133,6 +135,7 @@ class EnrollmentService:
                     app_secret=self.app_secret,
                     user_id=user_id,
                     sc=activity,
+                    enabled=self.calendar_sync_enabled,
                 )
 
             logger.info(f"报名成功: {display_name}")

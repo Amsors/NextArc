@@ -5,60 +5,27 @@ from typing import TYPE_CHECKING
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
-from .handlers import get_all_handlers, IgnoreHandler
+from .handlers import get_all_handlers
 from .handlers.cancel import CancelHandler
 from .handlers.join import JoinHandler
 from .handlers.upgrade import UpgradeHandler
 
 if TYPE_CHECKING:
-    from src.core import ActivityScanner, AuthManager, DatabaseManager
-    from src.core.services import ActivityQueryService, ActivityUpdateService, EnrollmentService
-    from src.core.user_preference_manager import UserPreferenceManager
+    from src.app import AppContext
 
 logger = get_logger("feishu.router")
 
 
 class MessageRouter:
-    def __init__(self):
-        self.handlers = get_all_handlers()
+    def __init__(self, app_context: "AppContext"):
+        self.app_context = app_context
+        self.handlers = get_all_handlers(app_context)
 
         self._confirm_handlers = {
-            "cancel": CancelHandler(),
-            "join": JoinHandler(),
-            "upgrade": UpgradeHandler(),
+            "cancel": CancelHandler(app_context),
+            "join": JoinHandler(app_context),
+            "upgrade": UpgradeHandler(app_context),
         }
-
-    def set_dependencies(
-            self,
-            scanner: "ActivityScanner",
-            auth_manager: "AuthManager",
-            db_manager: "DatabaseManager",
-            ignore_manager: "UserPreferenceManager | None" = None,
-            activity_query_service: "ActivityQueryService | None" = None,
-            activity_update_service: "ActivityUpdateService | None" = None,
-            enrollment_service: "EnrollmentService | None" = None,
-    ):
-        from .handlers.base import CommandHandler
-
-        CommandHandler.set_dependencies(
-            scanner,
-            auth_manager,
-            db_manager,
-            activity_query_service,
-            activity_update_service,
-            enrollment_service,
-        )
-
-        for handler in self._confirm_handlers.values():
-            handler._scanner = scanner
-            handler._auth_manager = auth_manager
-            handler._db_manager = db_manager
-            handler._activity_query_service = activity_query_service
-            handler._activity_update_service = activity_update_service
-            handler._enrollment_service = enrollment_service
-
-        if ignore_manager:
-            IgnoreHandler.set_ignore_manager(ignore_manager)
 
     async def handle_message(self, text: str, session: UserSession) -> Response:
         text = text.strip()

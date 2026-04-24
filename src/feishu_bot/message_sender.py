@@ -16,8 +16,9 @@ DEFAULT_MAX_ACTIVITIES_PER_CARD = 20
 
 
 class MessageSender:
-    def __init__(self, bot=None):
+    def __init__(self, bot=None, max_activities_per_card: int = DEFAULT_MAX_ACTIVITIES_PER_CARD):
         self._bot = bot
+        self._max_activities_per_card = max_activities_per_card
 
     def set_bot(self, bot):
         self._bot = bot
@@ -70,13 +71,7 @@ class MessageSender:
             )
             return await self.send_card(card_content)
 
-        max_per_card = DEFAULT_MAX_ACTIVITIES_PER_CARD
-        try:
-            from src.config import get_settings
-            settings = get_settings()
-            max_per_card = settings.feishu.max_activities_per_card
-        except Exception as e:
-            logger.warning(f"获取配置失败，使用默认值 {DEFAULT_MAX_ACTIVITIES_PER_CARD}: {e}")
+        max_per_card = self._max_activities_per_card
 
         if len(activities) <= max_per_card:
             card_content = build_activity_card(

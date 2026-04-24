@@ -2,7 +2,7 @@
 
 from pyustc.young import SecondClass
 
-from src.core import FilterContext, UserPreferenceManager
+from src.core import FilterContext
 from src.core.repositories import ActivityRepository
 from src.core.services import ActivityQueryService
 from src.models import UserSession
@@ -14,12 +14,6 @@ logger = get_logger("feishu.handler.valid")
 
 
 class ValidHandler(CommandHandler):
-    _user_preference_manager: UserPreferenceManager = None
-
-    @classmethod
-    def set_ignore_manager(cls, user_preference_manager: UserPreferenceManager) -> None:
-        cls._user_preference_manager = user_preference_manager
-
     @property
     def command(self) -> str:
         return "valid"
@@ -167,8 +161,7 @@ class ValidHandler(CommandHandler):
 
             lines.append("对活动不感兴趣？发送「不感兴趣 序号」或「不感兴趣 全部」")
 
-            from src.config import get_settings
-            feishu_config = get_settings().feishu
+            feishu_config = self._settings.feishu
             card_ai_reasons = ai_keep_reasons if feishu_config.send_ai_filter_detail.kept else None
             logger.info(f"/valid 卡片配置: kept={feishu_config.send_ai_filter_detail.kept}, "
                        f"ai_keep_reasons_keys={list(card_ai_reasons.keys()) if card_ai_reasons else []}")

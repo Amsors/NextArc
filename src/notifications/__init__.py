@@ -4,14 +4,17 @@
 """
 
 from .feishu_service import FeishuNotificationService
-from .listener import NotificationListener
+from .listener import NotificationDeliveryError, NotificationListener, NotificationRuntimeConfig
 from .response import Response, ResponseType
-from .service import NotificationService
+from .service import CardDisplayConfig, NotificationService
 
 __all__ = [
     "Response",
     "ResponseType",
+    "CardDisplayConfig",
     "NotificationService",
     "FeishuNotificationService",
     "NotificationListener",
+    "NotificationRuntimeConfig",
+    "NotificationDeliveryError",
 ]

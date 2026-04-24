@@ -1,6 +1,7 @@
 """通知服务抽象接口"""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .response import Response, ResponseType
@@ -11,8 +12,18 @@ if TYPE_CHECKING:
 DEFAULT_MAX_ACTIVITIES_PER_CARD = 20
 
 
+@dataclass(frozen=True)
+class CardDisplayConfig:
+    """消息卡片展示配置。"""
+
+    max_activities_per_card: int = DEFAULT_MAX_ACTIVITIES_PER_CARD
+
+
 class NotificationService(ABC):
     """通知服务抽象接口，所有通知渠道的实现都需要继承此类"""
+
+    def __init__(self, card_config: CardDisplayConfig | None = None):
+        self.card_config = card_config or CardDisplayConfig()
 
     @abstractmethod
     async def send_text(self, message: str) -> bool:
@@ -77,13 +88,7 @@ class NotificationService(ABC):
             )
             return await self.send_card(card_content)
 
-        max_per_card = DEFAULT_MAX_ACTIVITIES_PER_CARD
-        try:
-            from src.config import get_settings
-            settings = get_settings()
-            max_per_card = settings.feishu.max_activities_per_card
-        except Exception:
-            pass
+        max_per_card = self.card_config.max_activities_per_card
 
         if len(activities) <= max_per_card:
             card_content = build_activity_card(

@@ -1,6 +1,5 @@
 """不感兴趣指令处理器"""
 
-from src.core import UserPreferenceManager
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -10,12 +9,6 @@ logger = get_logger("feishu.handler.ignore")
 
 
 class IgnoreHandler(CommandHandler):
-    _ignore_manager: UserPreferenceManager = None
-
-    @classmethod
-    def set_ignore_manager(cls, ignore_manager: UserPreferenceManager) -> None:
-        cls._ignore_manager = ignore_manager
-
     @property
     def command(self) -> str:
         return "ignore"

@@ -28,6 +28,7 @@ class CheckHandler(CommandHandler):
         notify_new_activities = False
         notify_enrolled_change = False
         no_filter = False
+        wait_for_notifications = False
 
         if args:
             if "深度" in args:
@@ -37,6 +38,8 @@ class CheckHandler(CommandHandler):
                 notify_enrolled_change = True
             if "对比差异" in args:
                 notify_diff = True
+            if "等待通知" in args:
+                wait_for_notifications = True
 
         try:
             result = await self._scanner.scan(
@@ -45,6 +48,7 @@ class CheckHandler(CommandHandler):
                 notify_enrolled_change=notify_enrolled_change,
                 notify_new_activities=notify_new_activities,
                 no_filter=no_filter,
+                wait_for_notifications=wait_for_notifications,
             )
 
             if result["success"]:

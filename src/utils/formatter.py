@@ -222,6 +222,13 @@ def format_scan_result(result: dict) -> str:
         diff = result["diff"]
         lines.append(f"差异：{diff.get_summary()}")
 
+    notification_errors = result.get("notification_errors") or []
+    if notification_errors:
+        lines.append("")
+        lines.append("通知错误：")
+        for error in notification_errors:
+            lines.append(f"  {error}")
+
     return "\n".join(lines)
 
 

@@ -1,7 +1,8 @@
 """卡片交互处理器"""
 
 import traceback
-from typing import TYPE_CHECKING, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from pyustc.young import Status
 
@@ -10,6 +11,7 @@ from src.core.services import ActivityUpdateService, EnrollmentService, Enrollme
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from src.app import AppContext
     from src.core import UserPreferenceManager, AuthManager
     from src.feishu_bot import FeishuBot
 
@@ -17,41 +19,38 @@ logger = get_logger("feishu.card_handler")
 
 
 class CardActionHandler:
-    def __init__(self):
-        self._user_preference_manager: Optional["UserPreferenceManager"] = None
-        self._auth_manager: Optional["AuthManager"] = None
-        self._bot: Optional["FeishuBot"] = None
-        self._activity_update_service: Optional[ActivityUpdateService] = None
-        self._enrollment_service: Optional[EnrollmentService] = None
+    def __init__(
+        self,
+        app_context: "AppContext",
+        bot_getter: Callable[[], "FeishuBot | None"] | None = None,
+    ):
+        self.app_context = app_context
+        self._bot_getter = bot_getter or (lambda: None)
 
-    def set_dependencies(
-            self,
-            user_preference_manager: "UserPreferenceManager",
-            auth_manager: "AuthManager",
-            bot: "FeishuBot",
-            activity_update_service: ActivityUpdateService | None = None,
-            enrollment_service: EnrollmentService | None = None,
-    ) -> None:
-        self._user_preference_manager = user_preference_manager
-        self._auth_manager = auth_manager
-        self._bot = bot
-        self._activity_update_service = activity_update_service
-        self._enrollment_service = enrollment_service
+    @property
+    def _user_preference_manager(self) -> "UserPreferenceManager | None":
+        return self.app_context.preference_manager
+
+    @property
+    def _auth_manager(self) -> "AuthManager | None":
+        return self.app_context.auth_manager
+
+    @property
+    def _bot(self) -> "FeishuBot | None":
+        return self._bot_getter()
+
+    @property
+    def _activity_update_service(self) -> ActivityUpdateService:
+        return self.app_context.activity_update_service
+
+    @property
+    def _enrollment_service(self) -> EnrollmentService:
+        return self.app_context.enrollment_service
 
     def _get_activity_update_service(self) -> ActivityUpdateService:
-        if self._activity_update_service is None:
-            self._activity_update_service = ActivityUpdateService(self._auth_manager)
         return self._activity_update_service
 
     def _get_enrollment_service(self) -> EnrollmentService:
-        if self._enrollment_service is None:
-            app_id = self._bot.app_id if self._bot else ""
-            app_secret = self._bot.app_secret if self._bot else ""
-            self._enrollment_service = EnrollmentService(
-                self._auth_manager,
-                app_id=app_id,
-                app_secret=app_secret,
-            )
         return self._enrollment_service
 
     async def handle(self, action_value: dict, open_message_id: str) -> dict:
@@ -338,18 +337,12 @@ class CardActionHandler:
                 logger.warning(f"子活动深度更新失败 {update_result.failed_count} 个")
 
             from src.utils.formatter import build_activity_card, CardButtonConfig
-            from src.config import get_settings
 
             ignored_ids = set()
             if self._user_preference_manager:
                 ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
 
-            max_per_card = 20
-            try:
-                settings = get_settings()
-                max_per_card = settings.feishu.max_activities_per_card
-            except Exception:
-                pass
+            max_per_card = self.app_context.settings.feishu.max_activities_per_card
 
             button_config = CardButtonConfig()
 
