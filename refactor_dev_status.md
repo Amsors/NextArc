@@ -2,7 +2,7 @@
 
 ## 已完成范围
 
-按 `refactor_guide.md` 完成阶段 1、2、3、4、5、6、7、8 的主要重构。
+按 `refactor_guide.md` 完成阶段 1、2、3、4、5、6、7、8、10 的主要重构。阶段 9 尚未开发。
 
 ## 关键改动
 
@@ -46,11 +46,19 @@
 - `DiffEngine` 改为直接比较数据库 row 中的稳定字段，不再为 diff 构造完整 `SecondClass`。
 - mapper 双向覆盖 `place_info`、`participation_form`、`children_id`、`parent_id`；`deep_scaned` 等扫描元数据只保留在数据库 row，不写入 `SecondClass.data`。
 - 新增阶段 8 回归测试：`tests/test_refactor_stage_8.py`。
+- 新增 `src/feishu_bot/card_builder.py`，集中活动列表飞书卡片、按钮、分页卡片构建逻辑。
+- `src/utils/formatter.py` 不再承载卡片 schema，也不再兼容导出卡片 builder。
+- 新增 `src/notifications/builders.py`，将筛选详情、新活动卡片请求、已报名变更、版本更新通知文案从监听器中拆出。
+- `NotificationService` 改为只通过 `ActivityListCardRequest` 触发活动卡片构建并负责发送，`send_card()` 直接发送既有卡片仍可用。
+- `Response.activity_list()` 不再提前构建卡片，只携带 `ActivityListCardRequest` 和非卡片构建 metadata，避免 `send_response()` 二次构建导致配置或分页规则不一致。
+- 移除未使用的 `MessageSender` 兼容层。
+- 移除 `send_response()` 中旧 `metadata["activities"]` fallback 和 `card_builder.build_activity_card(...)` 顶层兼容函数。
+- 新增阶段 10 回归测试：`tests/test_refactor_stage_10.py`。
 
 ## 验证
 
 - `/home/amsors/anaconda3/envs/pyustc/bin/python -m compileall src tests` 通过。
-- `/home/amsors/anaconda3/envs/pyustc/bin/python -m unittest discover -s tests -v` 通过，16 个测试全绿。
+- `/home/amsors/anaconda3/envs/pyustc/bin/python -m unittest discover -s tests -v` 通过，20 个测试全绿。
 - `git diff --check` 通过。
 
 ## 注意

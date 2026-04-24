@@ -8,6 +8,12 @@ from pyustc.young import Status
 
 from src.core import SecondClassFilter
 from src.core.services import ActivityUpdateService, EnrollmentService, EnrollmentStatus
+from src.feishu_bot.card_builder import (
+    ActivityCardBuilder,
+    ActivityCardDisplayConfig,
+    ActivityListCardRequest,
+    CardButtonConfig,
+)
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -336,47 +342,28 @@ class CardActionHandler:
             if update_result.failed:
                 logger.warning(f"子活动深度更新失败 {update_result.failed_count} 个")
 
-            from src.utils.formatter import build_activity_card, CardButtonConfig
-
             ignored_ids = set()
             if self._user_preference_manager:
                 ignored_ids = await self._user_preference_manager.get_all_ignored_ids()
 
-            max_per_card = self.app_context.settings.feishu.max_activities_per_card
-
-            button_config = CardButtonConfig()
-
-            total = len(children)
-            if total <= max_per_card:
-                card_content = build_activity_card(
-                    children,
+            card_builder = ActivityCardBuilder()
+            cards = card_builder.build_activity_cards(
+                ActivityListCardRequest(
+                    activities=children,
                     title=f'系列活动「{activity_name}」的子活动',
                     ignored_ids=ignored_ids,
-                    button_config=button_config
-                )
+                    button_config=CardButtonConfig(),
+                ),
+                ActivityCardDisplayConfig(
+                    max_activities_per_card=self.app_context.settings.feishu.max_activities_per_card,
+                ),
+            )
+            for index, card_content in enumerate(cards):
                 await self._bot.send_card(card_content)
-            else:
-                batches = (total + max_per_card - 1) // max_per_card
-                for batch_idx in range(batches):
-                    start = batch_idx * max_per_card
-                    end = min(start + max_per_card, total)
-                    batch_children = children[start:end]
-                    start_index = start + 1
 
-                    batch_title = f'系列活动「{activity_name}」的子活动（{batch_idx + 1}/{batches}）'
-
-                    card_content = build_activity_card(
-                        batch_children,
-                        title=batch_title,
-                        ignored_ids=ignored_ids,
-                        start_index=start_index,
-                        button_config=button_config
-                    )
-                    await self._bot.send_card(card_content)
-
-                    if batch_idx < batches - 1:
-                        import asyncio
-                        await asyncio.sleep(0.5)
+                if index < len(cards) - 1:
+                    import asyncio
+                    await asyncio.sleep(0.5)
 
             logger.info(f"成功发送系列活动「{activity_name}」的 {len(children)} 个子活动")
 

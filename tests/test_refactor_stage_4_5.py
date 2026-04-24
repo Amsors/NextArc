@@ -137,7 +137,7 @@ class ActivityFilterPipelineTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn("感兴趣白名单已恢复 1 个活动", result.summaries)
 
     async def test_ignore_overlap_controls_overlay_filter_behavior(self) -> None:
-        now = datetime.now() + timedelta(days=1)
+        now = datetime(2026, 4, 25, 9, 0, 0)
         enrolled_time = {
             "start": now.strftime("%Y-%m-%d %H:%M:%S"),
             "end": (now + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S"),

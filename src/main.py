@@ -30,6 +30,7 @@ from src.core.events import EventBus
 from src.core.time_filter import TimeFilter
 from src.core.user_preference_manager import UserPreferenceManager
 from src.feishu_bot import FeishuBot, CardActionHandler
+from src.feishu_bot.card_builder import ActivityCardBuilder
 from src.feishu_bot.message_router import MessageRouter
 from src.notifications import (
     FeishuNotificationService,
@@ -65,6 +66,7 @@ class NextArcApp:
         self.router: MessageRouter = None
         self.time_filter: TimeFilter = None
         self.card_handler: CardActionHandler = None
+        self.card_builder: ActivityCardBuilder = None
         self.version_checker = None
         self._should_notify_file_auth_deprecation = False
         self._shutdown_event = asyncio.Event()
@@ -248,6 +250,7 @@ class NextArcApp:
                 calendar_sync_enabled=self.settings.feishu.calendar_sync.enabled,
             )
             self.context_manager = ContextManager()
+            self.card_builder = ActivityCardBuilder()
             logger.info("活动查询、深度更新和报名服务初始化完成")
 
             self.app_context = AppContext(
@@ -293,6 +296,7 @@ class NextArcApp:
                 self.notification_service = FeishuNotificationService(
                     self.bot,
                     card_config=build_card_display_config(self.settings),
+                    card_builder=self.card_builder,
                 )
                 logger.info("通知服务初始化完成")
 

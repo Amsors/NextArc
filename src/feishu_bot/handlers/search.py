@@ -5,9 +5,9 @@ from pyustc.young import SecondClass
 
 from src.core.repositories import ActivityRepository
 from src.core.services import ActivityQueryService
+from src.feishu_bot.card_builder import CardButtonConfig
 from src.models import UserSession
 from src.notifications import Response
-from src.utils.formatter import CardButtonConfig
 from src.utils.logger import get_logger
 from .base import CommandHandler
 

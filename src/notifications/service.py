@@ -1,29 +1,34 @@
 """通知服务抽象接口"""
 
+import asyncio
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from src.feishu_bot.card_builder import (
+    ActivityCardBuilder,
+    ActivityCardDisplayConfig,
+    ActivityListCardRequest,
+)
 from .response import Response, ResponseType
 
 if TYPE_CHECKING:
-    from src.utils.formatter import CardButtonConfig
+    from src.feishu_bot.card_builder import CardButtonConfig
 
 DEFAULT_MAX_ACTIVITIES_PER_CARD = 20
-
-
-@dataclass(frozen=True)
-class CardDisplayConfig:
-    """消息卡片展示配置。"""
-
-    max_activities_per_card: int = DEFAULT_MAX_ACTIVITIES_PER_CARD
+CARD_BATCH_SEND_INTERVAL_SECONDS = 0.5
+CardDisplayConfig = ActivityCardDisplayConfig
 
 
 class NotificationService(ABC):
     """通知服务抽象接口，所有通知渠道的实现都需要继承此类"""
 
-    def __init__(self, card_config: CardDisplayConfig | None = None):
+    def __init__(
+        self,
+        card_config: CardDisplayConfig | None = None,
+        card_builder: ActivityCardBuilder | None = None,
+    ):
         self.card_config = card_config or CardDisplayConfig()
+        self.card_builder = card_builder or ActivityCardBuilder()
 
     @abstractmethod
     async def send_text(self, message: str) -> bool:
@@ -41,17 +46,11 @@ class NotificationService(ABC):
         if response.type == ResponseType.TEXT:
             return await self.send_text(response.content)
         elif response.type == ResponseType.CARD:
-            activities = response.metadata.get("activities")
-            if activities is not None and isinstance(activities, list):
-                title = response.metadata.get("title", "活动列表")
-                button_config = response.metadata.get("button_config")
-                ai_reasons = response.metadata.get("ai_reasons")
-                overlap_reasons = response.metadata.get("overlap_reasons")
-                return await self.send_activity_list_card(
-                    activities, title, button_config=button_config,
-                    ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
-                )
-            else:
+            activity_card_request = response.metadata.get("activity_card_request")
+            if isinstance(activity_card_request, ActivityListCardRequest):
+                return await self.send_activity_list_card(activity_card_request)
+
+            if isinstance(response.content, dict):
                 return await self.send_card(response.content)
 
         return True
@@ -71,7 +70,7 @@ class NotificationService(ABC):
 
     async def send_activity_list_card(
             self,
-            activities: list,
+            activities: list | ActivityListCardRequest,
             title: str = "活动列表",
             ignored_ids: set[str] | None = None,
             button_config: "CardButtonConfig | None" = None,
@@ -79,52 +78,27 @@ class NotificationService(ABC):
             overlap_reasons: dict[str, str] | None = None,
     ) -> bool:
         """发送活动列表卡片，当活动数量超过限制时自动分批发送"""
-        from src.utils.formatter import build_activity_card
-
-        if not activities:
-            card_content = build_activity_card(
-                activities, title, ignored_ids,
-                button_config=button_config, ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
+        if isinstance(activities, ActivityListCardRequest):
+            request = activities
+        else:
+            request = ActivityListCardRequest(
+                activities=activities,
+                title=title,
+                ignored_ids=ignored_ids or set(),
+                button_config=button_config,
+                ai_reasons=ai_reasons or {},
+                overlap_reasons=overlap_reasons or {},
             )
-            return await self.send_card(card_content)
 
-        max_per_card = self.card_config.max_activities_per_card
-
-        if len(activities) <= max_per_card:
-            card_content = build_activity_card(
-                activities, title, ignored_ids,
-                button_config=button_config, ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
-            )
-            return await self.send_card(card_content)
-
-        total = len(activities)
-        batches = (total + max_per_card - 1) // max_per_card
+        cards = self.card_builder.build_activity_cards(request, self.card_config)
 
         all_success = True
-        for batch_idx in range(batches):
-            start = batch_idx * max_per_card
-            end = min(start + max_per_card, total)
-            batch_activities = activities[start:end]
-            start_index = start + 1
-
-            batch_title = f"{title}（{batch_idx + 1}/{batches}）" if batches > 1 else title
-
-            card_content = build_activity_card(
-                batch_activities,
-                batch_title,
-                ignored_ids,
-                start_index=start_index,
-                button_config=button_config,
-                ai_reasons=ai_reasons,
-                overlap_reasons=overlap_reasons,
-            )
-
+        for index, card_content in enumerate(cards):
             success = await self.send_card(card_content)
             if not success:
                 all_success = False
 
-            if batch_idx < batches - 1:
-                import asyncio
-                await asyncio.sleep(0.5)
+            if index < len(cards) - 1:
+                await asyncio.sleep(CARD_BATCH_SEND_INTERVAL_SECONDS)
 
         return all_success

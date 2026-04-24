@@ -9,9 +9,15 @@ from src.core.events.scan_events import (
     EnrolledActivityChangedEvent,
 )
 from src.core.events.version_events import VersionUpdateEvent
-from src.utils.formatter import format_db_filtered_result, \
-    format_ai_filtered_result, format_time_filtered_result, format_enrolled_filtered_result, format_overlay_filtered_result
 from src.utils.logger import get_logger
+from .builders import (
+    EnrolledActivityChangeNotificationBuilder,
+    FilterDetailBuildConfig,
+    FilterDetailNotificationBuilder,
+    NewActivitiesCardBuildConfig,
+    NewActivitiesNotificationBuilder,
+    VersionNotificationBuilder,
+)
 from .service import NotificationService
 
 if TYPE_CHECKING:
@@ -46,11 +52,19 @@ class NotificationListener:
         user_preference_manager=None,
         context_manager: "ContextManager | None" = None,
         runtime_config: NotificationRuntimeConfig | None = None,
+        filter_detail_builder: FilterDetailNotificationBuilder | None = None,
+        new_activities_builder: NewActivitiesNotificationBuilder | None = None,
+        enrolled_change_builder: EnrolledActivityChangeNotificationBuilder | None = None,
+        version_builder: VersionNotificationBuilder | None = None,
     ):
         self._notification_service = notification_service
         self._context_manager = context_manager
         self._user_preference_manager = user_preference_manager
         self._runtime_config = runtime_config or NotificationRuntimeConfig()
+        self._filter_detail_builder = filter_detail_builder or FilterDetailNotificationBuilder()
+        self._new_activities_builder = new_activities_builder or NewActivitiesNotificationBuilder()
+        self._enrolled_change_builder = enrolled_change_builder or EnrolledActivityChangeNotificationBuilder()
+        self._version_builder = version_builder or VersionNotificationBuilder()
 
     async def on_scan_completed(self, event: ScanCompletedEvent) -> None:
         logger.debug(f"收到扫描完成事件: {event.new_db_path.name}")
@@ -60,7 +74,6 @@ class NotificationListener:
 
         logger.debug(f"新活动事件 ai_keep_reasons: {event.ai_keep_reasons}")
 
-        message_parts = []
         send_errors: list[str] = []
         notify_filtered_activities = self._runtime_config.notify_filtered_activities
         include_filtered_ai_reasons = self._runtime_config.show_filtered_ai_reasons
@@ -72,27 +85,14 @@ class NotificationListener:
             notify_filtered_activities,
         )
 
-        if notify_filtered_activities:
-            if event.enrolled_filtered_count > 0:
-                message_parts.append(format_enrolled_filtered_result(event.filters_applied.get("enrolled", [])))
-
-            if event.db_filtered_count > 0:
-                message_parts.append(format_db_filtered_result(event.filters_applied.get("db", [])))
-
-            if event.ai_filtered_count > 0:
-                message_parts.append(format_ai_filtered_result(
-                    event.filters_applied.get("ai", []),
-                    include_reasons=include_filtered_ai_reasons,
-                ))
-
-            if event.time_filtered_count > 0:
-                message_parts.append(format_time_filtered_result(event.filters_applied.get("time", [])))
-
-            if event.overlay_filtered_count > 0:
-                message_parts.append(format_overlay_filtered_result(event.filters_applied.get("overlay", [])))
-
-        if message_parts:
-            filter_message = "\n".join(message_parts)
+        filter_message = self._filter_detail_builder.build(
+            event,
+            FilterDetailBuildConfig(
+                enabled=notify_filtered_activities,
+                include_ai_reasons=include_filtered_ai_reasons,
+            ),
+        )
+        if filter_message:
             try:
                 success = await self._notification_service.send_text(filter_message)
                 if not success:
@@ -110,22 +110,17 @@ class NotificationListener:
                     except Exception as e:
                         logger.warning(f"获取忽略列表失败: {e}")
 
-                from src.utils.formatter import CardButtonConfig
-                button_config = CardButtonConfig(
-                    show_ignore_button=True,
-                    show_interested_button=True,
-                    show_join_button=True,
-                    show_children_button=True
-                )
-
-                success = await self._notification_service.send_activity_list_card(
-                    event.activities,
-                    f"有 {event.final_count} 个你可能感兴趣的活动",
+                card_request = self._new_activities_builder.build(
+                    event,
                     ignored_ids=ignored_ids,
-                    button_config=button_config,
-                    ai_reasons=event.ai_keep_reasons if include_kept_ai_reasons else None,
-                    overlap_reasons=event.overlap_reasons if event.overlap_reasons else None,
+                    config=NewActivitiesCardBuildConfig(
+                        include_ai_reasons=include_kept_ai_reasons,
+                        include_overlap_reasons=bool(event.overlap_reasons),
+                    ),
                 )
+                success = True
+                if card_request is not None:
+                    success = await self._notification_service.send_activity_list_card(card_request)
                 if success:
                     logger.info(f"已发送新活动卡片: {event.final_count} 个活动")
                 else:
@@ -157,12 +152,8 @@ class NotificationListener:
         logger.info(f"收到已报名活动变更事件: {event.change_count} 处变更")
 
         send_errors: list[str] = []
-        for change in event.changes:
-            message = (
-                f"已报名活动有更新\n\n"
-                f"{change.activity_name}\n"
-                f"{change.format(1)}"
-            )
+        messages = self._enrolled_change_builder.build(event)
+        for change, message in zip(event.changes, messages):
             try:
                 success = await self._notification_service.send_text(message)
                 if success:
@@ -182,29 +173,12 @@ class NotificationListener:
 
         logger.info(f"收到版本更新事件: 落后 {event.commits_behind} 个 commit")
 
-        lines = [
-            "NextArc 有新版本更新",
-            "",
-            f"当前版本: `{event.current_sha[:7]}`",
-            f"最新版本: `{event.latest_sha[:7]}`",
-            f"共 {event.commits_behind} 个新提交：",
-            "",
-        ]
-
-        # 只列出前 5 个 commit
-        for i, commit in enumerate(event.new_commits[:5], 1):
-            message_first_line = commit.message.split("\n")[0][:50]
-            lines.append(f"{i}. {message_first_line} {commit.date}")
-            lines.append("")
-
-        if len(event.new_commits) > 5:
-            lines.append(f"... 还有 {len(event.new_commits) - 5} 个提交")
-            lines.append("")
-
-        lines.append("向机器人发送 /upgrade 或 升级 即可进行更新")
+        message = self._version_builder.build(event)
+        if not message:
+            return
 
         try:
-            success = await self._notification_service.send_text("\n".join(lines))
+            success = await self._notification_service.send_text(message)
             if success:
                 logger.info("已发送版本更新通知")
             else:

@@ -1,14 +1,14 @@
 """应用上下文辅助构造函数。"""
 
 from src.config.settings import Settings
+from src.feishu_bot.card_builder import ActivityCardDisplayConfig
 from src.notifications.listener import NotificationRuntimeConfig
-from src.notifications.service import CardDisplayConfig
 
 
-def build_card_display_config(settings: Settings) -> CardDisplayConfig:
+def build_card_display_config(settings: Settings) -> ActivityCardDisplayConfig:
     """从主配置提取卡片展示配置。"""
 
-    return CardDisplayConfig(max_activities_per_card=settings.feishu.max_activities_per_card)
+    return ActivityCardDisplayConfig(max_activities_per_card=settings.feishu.max_activities_per_card)
 
 
 def build_notification_runtime_config(settings: Settings) -> NotificationRuntimeConfig:
