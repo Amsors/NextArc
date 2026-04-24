@@ -6,6 +6,8 @@
 
 [请查看文档](./docs/change_log.md)
 
+[更换上游仓库为校内gitlab](./docs/set_another_upsteam.md)
+
 ## 项目介绍
 
 **NextArc** 是一款专为科大学生设计的第二课堂活动监控与辅助报名系统。解决第二课堂活动信息获取不及时、热门活动报名困难等问题。
