@@ -20,7 +20,7 @@ class SearchHandler(CommandHandler):
         return "search"
 
     def get_usage(self) -> str:
-        return "/search <关键词> - 搜索标题含关键词的活动"
+        return "/search <关键词> - 搜索活动关键词"
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
         if not self.check_dependencies():

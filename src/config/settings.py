@@ -116,6 +116,13 @@ class DatabaseConfig(BaseModel):
         return self.data_dir / "user_preference.db"
 
 
+class SearchConfig(BaseModel):
+    mode: Literal["name_like", "full_text"] = Field(
+        default="name_like",
+        description="活动搜索模式：name_like 保持旧的标题子串搜索；full_text 使用 SQLite FTS5 trigram 扩展搜索字段"
+    )
+
+
 class LogFileConfig(BaseModel):
     enabled: bool = Field(default=False, description="是否启用文件日志")
     path: Path = Field(default=Path("./logs/nextarc.log"), description="日志文件路径")
@@ -262,6 +269,7 @@ class Settings(BaseSettings):
     version_check: VersionCheckConfig = VersionCheckConfig()
     feishu: FeishuConfig = FeishuConfig()
     database: DatabaseConfig = DatabaseConfig()
+    search: SearchConfig = SearchConfig()
     logging: LogConfig = LogConfig()
     ai: AIConfig = AIConfig()
 

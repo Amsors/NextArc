@@ -206,6 +206,14 @@ database:
   # 例如 "./custom/preferences.db" 表示 {项目根目录}/custom/preferences.db
   preference_db_path: "./data/user_preference.db"
 
+search:
+  # 活动搜索模式，默认保持旧行为：只对标题做中文子串搜索
+  # 可选值：
+  #   name_like: 兼容旧 /search <关键词> 行为
+  #   full_text: 显式启用 SQLite FTS5 trigram，搜索标题、组织单位、标签、活动构想、地点
+  # 如果运行环境不支持 FTS5 trigram，会自动回退到 name_like
+  mode: "name_like"
+
 logging:
   # 日志级别: DEBUG, INFO, WARNING, ERROR
   # 默认 INFO，如果需要调试信息，请设置为 DEBUG

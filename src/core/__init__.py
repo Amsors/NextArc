@@ -10,7 +10,7 @@ from .enrolled_filter import EnrolledFilter
 from .filter import SecondClassFilter
 from .filtering import ActivityFilterPipeline, FilterContext, FilterPipelineResult
 from .overlay_filter import OverlayFilter
-from .repositories import ActivityRepository, PreferenceKind, PreferenceRepository
+from .repositories import ActivityRepository, PreferenceKind, PreferenceRepository, SearchMode
 from .scanning import ActivitySyncService, ScanCoordinator, ScanDiffService, ScanOptions, ScanResult
 from .scanner import ActivityScanner
 from .services import ActivityQueryService, ActivityUpdateService, EnrollmentService
@@ -26,6 +26,7 @@ __all__ = [
     "EnrolledFilter",
     "OverlayFilter",
     "ActivityRepository",
+    "SearchMode",
     "PreferenceKind",
     "PreferenceRepository",
     "ActivityScanner",

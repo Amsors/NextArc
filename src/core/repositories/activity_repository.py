@@ -1,23 +1,36 @@
 """活动快照数据库只读查询。"""
 
 import json
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import aiosqlite
 from pyustc.young import SecondClass, Status
 
 from src.core.overlay_filter import EnrolledActivityTime
+from src.core.search_index import (
+    FTS_TABLE,
+    has_full_text_search_index,
+    keyword_can_use_trigram,
+    quote_fts_query,
+    rebuild_full_text_search_index_async,
+)
 from src.models.secondclass_mapper import secondclass_from_db_row
 from src.utils.logger import get_logger
 
 logger = get_logger("repository.activity")
 
 ACTIVITY_TABLES = {"all_secondclass", "enrolled_secondclass"}
+SearchMode = Literal["name_like", "full_text"]
 
 
 class ActivityRepository:
     """集中封装活动快照 SQLite 查询。"""
+
+    def __init__(self, search_mode: SearchMode = "name_like"):
+        self.search_mode = search_mode
 
     async def count_all(self, db_path: Path) -> int:
         return await self._count(db_path, "all_secondclass")
@@ -38,12 +51,65 @@ class ActivityRepository:
         """
         return await self._query_activities(db_path, query, valid_status_codes)
 
+    async def search(self, db_path: Path, keyword: str, mode: SearchMode | None = None) -> list[SecondClass]:
+        """按配置模式搜索活动，默认保持旧的标题子串匹配。"""
+
+        normalized_keyword = keyword.strip()
+        if not normalized_keyword:
+            return []
+
+        search_mode = mode or self.search_mode
+        if search_mode == "full_text":
+            activities = await self._search_full_text(db_path, normalized_keyword)
+            if activities is not None:
+                logger.debug(f"FTS 搜索关键词 {normalized_keyword!r} 命中 {len(activities)} 个活动")
+                return activities
+
+        return await self.search_by_name(db_path, normalized_keyword)
+
     async def search_by_name(self, db_path: Path, keyword: str) -> list[SecondClass]:
-        keyword_lower = keyword.lower()
+        keyword_lower = keyword.strip().lower()
+        if not keyword_lower:
+            return []
+
         query = "SELECT * FROM all_secondclass WHERE LOWER(name) LIKE ? ORDER BY name"
         activities = await self._query_activities(db_path, query, [f"%{keyword_lower}%"])
         logger.debug(f"搜索关键词 {keyword_lower!r} 命中 {len(activities)} 个活动")
         return activities
+
+    async def _search_full_text(self, db_path: Path, keyword: str) -> list[SecondClass] | None:
+        if not keyword_can_use_trigram(keyword):
+            logger.debug(f"关键词 {keyword!r} 少于 trigram 最小长度，回退到标题 LIKE 搜索")
+            return None
+
+        if not db_path.exists():
+            logger.warning(f"数据库不存在: {db_path}")
+            return []
+
+        try:
+            async with aiosqlite.connect(db_path) as conn:
+                conn.row_factory = aiosqlite.Row
+                if not await has_full_text_search_index(conn):
+                    if not await rebuild_full_text_search_index_async(conn):
+                        logger.warning("当前 SQLite 不支持 FTS5 trigram，回退到标题 LIKE 搜索")
+                        return None
+                    await conn.commit()
+
+                query = f"""
+                    SELECT a.*
+                    FROM {FTS_TABLE} f
+                    JOIN all_secondclass a ON a.id = f.id
+                    WHERE {FTS_TABLE} MATCH ?
+                    ORDER BY bm25({FTS_TABLE}), a.name
+                """
+                activities: list[SecondClass] = []
+                async with conn.execute(query, [quote_fts_query(keyword)]) as cursor:
+                    async for row in cursor:
+                        activities.append(secondclass_from_db_row(dict(row)))
+                return activities
+        except sqlite3.Error as e:
+            logger.warning(f"FTS 搜索失败，回退到标题 LIKE 搜索: {e}")
+            return None
 
     async def get_by_ids(self, db_path: Path, activity_ids: list[str]) -> list[SecondClass]:
         if not activity_ids:

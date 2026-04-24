@@ -2,7 +2,7 @@
 
 ## 已完成范围
 
-按 `refactor_guide.md` 完成阶段 1、2、3、4、5、6、7、8、10 的主要重构。阶段 9 尚未开发。
+按 `refactor_guide.md` 完成阶段 1、2、3、4、5、6、7、8、9、10 的主要重构。
 
 ## 关键改动
 
@@ -54,11 +54,17 @@
 - 移除未使用的 `MessageSender` 兼容层。
 - 移除 `send_response()` 中旧 `metadata["activities"]` fallback 和 `card_builder.build_activity_card(...)` 顶层兼容函数。
 - 新增阶段 10 回归测试：`tests/test_refactor_stage_10.py`。
+- `SecondClassDB` 为 `all_secondclass` 创建 `status`、`name`、`scan_timestamp`、`parent_id` 基础索引。
+- 新增 `src/core/search_index.py`，集中 SQLite FTS5 trigram 能力探测、FTS 表创建和重建。
+- `ActivityRepository.search(...)` 支持 `name_like` 与 `full_text` 两种模式，默认继续保持标题中文子串搜索；`full_text` 不可用或关键词过短时自动回退。
+- 快照写入 `all_secondclass` 时同步维护 FTS 表，旧数据库在首次 full_text 搜索时可自动创建并重建。
+- 新增 `search.mode` 配置项，显式开启 full_text 时搜索标题、组织单位、标签、活动构想和地点。
+- 新增阶段 9 回归测试：`tests/test_refactor_stage_9.py`。
 
 ## 验证
 
 - `/home/amsors/anaconda3/envs/pyustc/bin/python -m compileall src tests` 通过。
-- `/home/amsors/anaconda3/envs/pyustc/bin/python -m unittest discover -s tests -v` 通过，20 个测试全绿。
+- `/home/amsors/anaconda3/envs/pyustc/bin/python -m unittest discover -s tests -v` 通过，25 个测试全绿。
 - `git diff --check` 通过。
 
 ## 注意

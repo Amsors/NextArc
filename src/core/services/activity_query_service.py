@@ -5,7 +5,7 @@ from pathlib import Path
 from pyustc.young import SecondClass
 
 from src.core.filter import SecondClassFilter
-from src.core.repositories import ActivityRepository
+from src.core.repositories import ActivityRepository, SearchMode
 
 
 class ActivityQueryService:
@@ -17,8 +17,13 @@ class ActivityQueryService:
     async def list_valid_activities(self, db_path: Path) -> list[SecondClass]:
         return await self.activity_repository.list_valid(db_path)
 
-    async def search_activities(self, db_path: Path, keyword: str) -> list[SecondClass]:
-        return await self.activity_repository.search_by_name(db_path, keyword)
+    async def search_activities(
+        self,
+        db_path: Path,
+        keyword: str,
+        mode: SearchMode | None = None,
+    ) -> list[SecondClass]:
+        return await self.activity_repository.search(db_path, keyword, mode=mode)
 
     async def list_enrolled_activities(
         self,

@@ -204,7 +204,7 @@ class NextArcApp:
             else:
                 logger.info("时间筛选: 已禁用")
 
-            self.activity_repository = ActivityRepository()
+            self.activity_repository = ActivityRepository(search_mode=self.settings.search.mode)
             self.activity_query_service = ActivityQueryService(self.activity_repository)
             self.activity_update_service = ActivityUpdateService(self.auth_manager)
             self.filter_pipeline = ActivityFilterPipeline(

@@ -10,6 +10,7 @@ from typing import Any, Self
 
 from pyustc.young import SecondClass
 
+from src.core.search_index import ensure_base_search_indexes, rebuild_full_text_search_index
 from src.models.secondclass_mapper import secondclass_to_db_row
 from src.utils.logger import get_logger
 
@@ -284,6 +285,7 @@ class SecondClassDB:
                     )
                 """)
 
+                ensure_base_search_indexes(conn)
                 conn.commit()
 
     def _secondclass_to_row(
@@ -436,6 +438,11 @@ class SecondClassDB:
                         """,
                         rows_to_insert,
                     )
+
+                    if rebuild_full_text_search_index(conn):
+                        logger.debug("已同步 all_secondclass FTS 搜索索引")
+                    else:
+                        logger.debug("SQLite FTS5 trigram 不可用，跳过 FTS 搜索索引")
 
                     conn.commit()
 
