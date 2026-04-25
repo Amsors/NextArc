@@ -42,6 +42,7 @@ class ScanCoordinator:
         activity_repository: ActivityRepository | None = None,
         use_ai_filter: bool = False,
         ignore_overlap: bool = False,
+        notify_enrolled_change_enabled: bool = False,
     ):
         self.db_manager = db_manager
         self.sync_service = sync_service
@@ -52,6 +53,7 @@ class ScanCoordinator:
         self.activity_update_service = activity_update_service
         self.use_ai_filter = use_ai_filter
         self.ignore_overlap = ignore_overlap
+        self.notify_enrolled_change_enabled = notify_enrolled_change_enabled
 
     async def scan(self, options: ScanOptions) -> ScanResult:
         logger.info("=" * 50)
@@ -111,17 +113,18 @@ class ScanCoordinator:
         result.diff = diff
         logger.info(f"差异对比: {diff.get_summary()}")
 
-        enrolled_changes = await self.diff_service.get_enrolled_changes(diff, new_db_path)
-        result.enrolled_changes = enrolled_changes
+        if options.notify_enrolled_change and self.notify_enrolled_change_enabled:
+            enrolled_changes = await self.diff_service.get_enrolled_changes(diff, new_db_path)
+            result.enrolled_changes = enrolled_changes
 
-        if enrolled_changes:
-            logger.info(f"已报名活动有 {len(enrolled_changes)} 处变更")
-            if options.notify_enrolled_change and self.event_bus:
-                publish_result = await self.event_bus.publish(
-                    EnrolledActivityChangedEvent(changes=enrolled_changes)
-                )
-                if options.wait_for_notifications:
-                    result.notification_errors.extend(publish_result.error_messages)
+            if enrolled_changes:
+                logger.info(f"已报名活动有 {len(enrolled_changes)} 处变更")
+                if self.event_bus:
+                    publish_result = await self.event_bus.publish(
+                        EnrolledActivityChangedEvent(changes=enrolled_changes)
+                    )
+                    if options.wait_for_notifications:
+                        result.notification_errors.extend(publish_result.error_messages)
 
         if options.notify_new_activities and diff.added and self.event_bus:
             if options.wait_for_notifications:

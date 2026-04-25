@@ -230,6 +230,7 @@ class NextArcApp:
                 activity_update_service=self.activity_update_service,
                 use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
                 ignore_overlap=self.settings.filter.ignore_overlap,
+                notify_enrolled_change_enabled=self.settings.monitor.notify_enrolled_change,
             )
 
             self.scanner = ActivityScanner(
@@ -237,10 +238,12 @@ class NextArcApp:
                 event_bus=self.event_bus,
                 interval_minutes=self.settings.monitor.interval_minutes,
                 notify_new_activities=self.settings.monitor.notify_new_activities,
+                notify_enrolled_change=self.settings.monitor.notify_enrolled_change,
                 version_checker=self.version_checker,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
+            logger.info(f"已报名活动变更通知: {'开启' if self.settings.monitor.notify_enrolled_change else '关闭'}")
             logger.info(f"筛选活动通知: {'开启' if self.settings.monitor.notify_filtered_activities else '关闭'}")
             if self.settings.monitor.use_ai_filter and self.settings.ai.enabled and ai_filter:
                 logger.info(f"AI 筛选: 开启，模型: {self.settings.ai.model}")

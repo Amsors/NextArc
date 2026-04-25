@@ -105,22 +105,15 @@ class NewActivitiesNotificationBuilder:
 class EnrolledActivityChangeNotificationBuilder:
     """构建已报名活动变更通知。"""
 
-    def build(self, event: EnrolledActivityChangedEvent) -> list[str]:
-        """将已报名活动变更事件转换为文本消息列表。"""
+    def build(self, event: EnrolledActivityChangedEvent) -> str:
+        """将已报名活动变更事件转换为单条文本消息。"""
 
-        messages = []
-        for change in event.changes:
-            messages.append(
-                "\n".join(
-                    [
-                        "已报名活动有更新",
-                        "",
-                        change.activity_name,
-                        change.format(1),
-                    ]
-                )
-            )
-        return messages
+        lines = [f"已报名活动有更新（共 {event.change_count} 个）", ""]
+        for index, change in enumerate(event.changes, 1):
+            if index > 1:
+                lines.append("")
+            lines.append(change.format(index))
+        return "\n".join(lines)
 
 
 class VersionNotificationBuilder:

@@ -157,21 +157,18 @@ class NotificationListener:
 
         logger.info(f"收到已报名活动变更事件: {event.change_count} 处变更")
 
-        send_errors: list[str] = []
-        messages = self._enrolled_change_builder.build(event)
-        for change, message in zip(event.changes, messages):
-            try:
-                success = await self._notification_service.send_text(message)
-                if success:
-                    logger.info(f"已发送变更通知: {change.activity_name}")
-                else:
-                    send_errors.append(f"发送变更通知失败: {change.activity_name}")
-            except Exception as e:
-                logger.error(f"发送变更通知失败: {e}")
-                send_errors.append(f"发送变更通知异常: {change.activity_name}: {e}")
-
-        if send_errors:
-            raise NotificationDeliveryError(send_errors)
+        message = self._enrolled_change_builder.build(event)
+        try:
+            success = await self._notification_service.send_text(message)
+            if success:
+                logger.info(f"已发送已报名活动变更通知: {event.change_count} 个活动")
+                return
+            raise NotificationDeliveryError(["发送已报名活动变更通知失败"])
+        except Exception as e:
+            logger.error(f"发送已报名活动变更通知失败: {e}")
+            if isinstance(e, NotificationDeliveryError):
+                raise
+            raise NotificationDeliveryError([f"发送已报名活动变更通知异常: {e}"]) from e
 
     async def on_version_update(self, event: VersionUpdateEvent) -> None:
         if not event.new_commits:

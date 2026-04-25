@@ -29,12 +29,14 @@ class ActivityScanner:
             event_bus: Optional["EventBus"] = None,
             interval_minutes: int = 15,
             notify_new_activities: bool = True,
+            notify_enrolled_change: bool = False,
             version_checker: Optional["VersionChecker"] = None,
     ):
         self.coordinator = coordinator
         self.event_bus = event_bus
         self.interval = interval_minutes
         self.notify_new_activities = notify_new_activities
+        self.notify_enrolled_change = notify_enrolled_change
         self.version_checker = version_checker
         self.scheduler = AsyncIOScheduler()
         self.version_scheduler = VersionScheduler(
@@ -100,7 +102,7 @@ class ActivityScanner:
                 "notify_diff": False,
                 "notify_new_activities": self.notify_new_activities,
                 "no_filter": False,
-                "notify_enrolled_change": True,
+                "notify_enrolled_change": self.notify_enrolled_change,
             }
         )
 

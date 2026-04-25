@@ -7,12 +7,12 @@ from types import SimpleNamespace
 from pyustc.young import SecondClass, Status
 
 from src.core.events import EventBus
-from src.core.events.scan_events import NewActivitiesFoundEvent
+from src.core.events.scan_events import EnrolledActivityChangedEvent, NewActivitiesFoundEvent
 from src.core.scanning import ScanCoordinator, ScanOptions, SyncResult
 from src.core.services import ActivityUpdateResult
 from src.feishu_bot.handlers import get_all_handlers
 from src.feishu_bot.handlers.base import CommandHandler
-from src.models.diff_result import ActivityChange, DiffResult
+from src.models.diff_result import ActivityChange, DiffResult, FieldChange
 from src.notifications.listener import NotificationDeliveryError, NotificationListener
 from src.notifications.service import NotificationService
 from src.core.filtering import FilterPipelineResult
@@ -70,6 +70,15 @@ class FakeDiffService:
         return []
 
 
+class TrackingEnrolledDiffService(FakeDiffService):
+    def __init__(self) -> None:
+        self.get_enrolled_changes_called = False
+
+    async def get_enrolled_changes(self, diff: DiffResult, new_db_path: Path) -> list:
+        self.get_enrolled_changes_called = True
+        return []
+
+
 class FakeActivityUpdateService:
     async def update_activities(
         self,
@@ -91,6 +100,18 @@ class FailingNotificationService(NotificationService):
 
     async def send_card(self, card_content: dict) -> bool:
         return False
+
+
+class RecordingNotificationService(NotificationService):
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+
+    async def send_text(self, message: str) -> bool:
+        self.messages.append(message)
+        return True
+
+    async def send_card(self, card_content: dict) -> bool:
+        return True
 
 
 class EventBusResultTest(unittest.IsolatedAsyncioTestCase):
@@ -144,6 +165,33 @@ class EventBusResultTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.notification_errors)
         self.assertIn("notification failed", result.notification_errors[0])
 
+    async def test_enrolled_change_detection_respects_global_config(self) -> None:
+        diff_service = TrackingEnrolledDiffService()
+        coordinator = ScanCoordinator(
+            db_manager=FakeDBManager(),
+            sync_service=FakeSyncService(),
+            diff_service=diff_service,
+            event_bus=EventBus(),
+            filter_pipeline=PassThroughPipeline(),
+            activity_update_service=FakeActivityUpdateService(),
+            notify_enrolled_change_enabled=False,
+        )
+
+        result = await coordinator.scan(
+            ScanOptions(
+                deep_update=False,
+                notify_diff=False,
+                notify_enrolled_change=True,
+                notify_new_activities=False,
+                no_filter=False,
+                wait_for_notifications=True,
+            )
+        )
+
+        self.assertTrue(result.success)
+        self.assertFalse(diff_service.get_enrolled_changes_called)
+        self.assertEqual(result.enrolled_changes, [])
+
 
 class NotificationListenerTest(unittest.IsolatedAsyncioTestCase):
     async def test_listener_raises_when_card_send_returns_false(self) -> None:
@@ -157,6 +205,41 @@ class NotificationListenerTest(unittest.IsolatedAsyncioTestCase):
                     filters_applied={},
                 )
             )
+
+    async def test_enrolled_change_notification_is_single_message_without_duplicate_title(self) -> None:
+        service = RecordingNotificationService()
+        listener = NotificationListener(service)
+
+        await listener.on_enrolled_activity_changed(
+            EnrolledActivityChangedEvent(
+                changes=[
+                    ActivityChange(
+                        activity_id="a1",
+                        activity_name="活动一",
+                        change_type="modified",
+                        field_changes=[
+                            FieldChange(field_name="hold_time", old_value="旧时间", new_value="新时间")
+                        ],
+                    ),
+                    ActivityChange(
+                        activity_id="a2",
+                        activity_name="活动二",
+                        change_type="modified",
+                        field_changes=[
+                            FieldChange(field_name="place_info", old_value="旧地点", new_value="新地点")
+                        ],
+                    ),
+                ]
+            )
+        )
+
+        self.assertEqual(len(service.messages), 1)
+        message = service.messages[0]
+        self.assertIn("已报名活动有更新（共 2 个）", message)
+        self.assertIn("[1] 活动一", message)
+        self.assertIn("[2] 活动二", message)
+        self.assertEqual(message.count("活动一"), 1)
+        self.assertEqual(message.count("活动二"), 1)
 
 
 class HandlerInjectionTest(unittest.TestCase):
