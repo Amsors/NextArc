@@ -128,9 +128,3 @@ class OverlayFilter:
                     time_str += f" ~ {enrolled.end.strftime('%H:%M')}"
             lines.append(f"• {enrolled.name}（{time_str}）")
         return "\n".join(lines)
-
-    @staticmethod
-    async def get_enrolled_time_ranges_from_db(db_path) -> list[EnrolledActivityTime]:
-        from src.core.repositories import ActivityRepository
-
-        return await ActivityRepository().list_enrolled_time_ranges(db_path)

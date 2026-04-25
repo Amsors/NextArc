@@ -74,8 +74,7 @@ class JoinHandler(CommandHandler):
         try:
             enrollment_service = self._enrollment_service
             if enrollment_service is None:
-                from src.core.services import EnrollmentService
-                enrollment_service = EnrollmentService(self._auth_manager)
+                return Response.text("报名服务未初始化，请稍后重试")
 
             result = await enrollment_service.join_activity(
                 activity_id,

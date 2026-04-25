@@ -1,10 +1,10 @@
 """活动查询用例服务。"""
 
+from collections.abc import Collection
 from pathlib import Path
 
-from pyustc.young import SecondClass
+from pyustc.young import SecondClass, Status
 
-from src.core.filter import SecondClassFilter
 from src.core.repositories import ActivityRepository, SearchMode
 
 
@@ -28,11 +28,12 @@ class ActivityQueryService:
     async def list_enrolled_activities(
         self,
         db_path: Path,
-        activity_filter: SecondClassFilter | None = None,
+        excluded_statuses: Collection[Status] | None = None,
     ) -> list[SecondClass]:
         activities = await self.activity_repository.list_enrolled(db_path)
-        if activity_filter:
-            return activity_filter(activities)
+        if excluded_statuses:
+            excluded = set(excluded_statuses)
+            return [activity for activity in activities if activity.status not in excluded]
         return activities
 
     async def get_activities_by_ids(self, db_path: Path, activity_ids: list[str]) -> list[SecondClass]:

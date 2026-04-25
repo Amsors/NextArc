@@ -21,7 +21,6 @@ from .result import ScanOptions, ScanResult
 from .sync_service import ActivitySyncService
 
 if TYPE_CHECKING:
-    from src.core.auth_manager import AuthManager
     from src.core.db_manager import DatabaseManager
     from src.core.events import EventBus, EventPublishResult
 
@@ -37,11 +36,10 @@ class ScanCoordinator:
         db_manager: "DatabaseManager",
         sync_service: ActivitySyncService,
         diff_service: ScanDiffService,
+        filter_pipeline: ActivityFilterPipeline,
+        activity_update_service: ActivityUpdateService,
         event_bus: "EventBus | None" = None,
-        filter_pipeline: ActivityFilterPipeline | None = None,
         activity_repository: ActivityRepository | None = None,
-        activity_update_service: ActivityUpdateService | None = None,
-        auth_manager: "AuthManager | None" = None,
         use_ai_filter: bool = False,
         ignore_overlap: bool = False,
     ):
@@ -50,11 +48,8 @@ class ScanCoordinator:
         self.diff_service = diff_service
         self.event_bus = event_bus
         self.activity_repository = activity_repository or ActivityRepository()
-        self.filter_pipeline = filter_pipeline or ActivityFilterPipeline(
-            activity_repository=self.activity_repository,
-        )
+        self.filter_pipeline = filter_pipeline
         self.activity_update_service = activity_update_service
-        self.auth_manager = auth_manager
         self.use_ai_filter = use_ai_filter
         self.ignore_overlap = ignore_overlap
 
@@ -189,7 +184,7 @@ class ScanCoordinator:
             return None
 
         new_activity_ids = [change.activity_id for change in diff.added]
-        activities = await self.get_activity_list_by_id(new_activity_ids)
+        activities = await self._get_activity_list_by_id(new_activity_ids)
 
         latest_db = self.db_manager.get_latest_db() or self.db_manager.get_new_db_path()
         filter_result = await self.filter_pipeline.apply(
@@ -232,7 +227,7 @@ class ScanCoordinator:
         logger.info(f"已发布新活动事件: {len(activities)} 个新活动{summary_suffix}")
         return publish_result
 
-    async def get_activity_list_by_id(
+    async def _get_activity_list_by_id(
         self,
         activity_ids: list[str],
         max_concurrent: int = 5,
@@ -240,13 +235,7 @@ class ScanCoordinator:
         logger.info(f"开始获取 {len(activity_ids)} 个活动的详情，并发数: {max_concurrent}...")
 
         sc_instances = [SecondClass(aid, {}) for aid in activity_ids]
-        update_service = self.activity_update_service
-        if update_service is None:
-            if self.auth_manager is None:
-                raise RuntimeError("ActivityUpdateService 或 AuthManager 未初始化")
-            update_service = ActivityUpdateService(self.auth_manager, max_concurrent=max_concurrent)
-
-        update_result = await update_service.update_activities(
+        update_result = await self.activity_update_service.update_activities(
             sc_instances,
             max_concurrent=max_concurrent,
             continue_on_error=True,

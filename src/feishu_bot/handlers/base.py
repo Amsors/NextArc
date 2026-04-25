@@ -17,7 +17,7 @@ logger = get_logger("feishu.handler")
 
 
 class CommandHandler(ABC):
-    def __init__(self, app_context: "AppContext | None" = None):
+    def __init__(self, app_context: "AppContext"):
         self.app_context = app_context
 
     @property
@@ -49,16 +49,10 @@ class CommandHandler(ABC):
         return self._get_context_attr("preference_manager")
 
     @property
-    def _ignore_manager(self) -> "UserPreferenceManager | None":
-        return self._user_preference_manager
-
-    @property
     def _settings(self) -> Any:
         return self._get_context_attr("settings")
 
     def _get_context_attr(self, name: str) -> Any:
-        if self.app_context is None:
-            return None
         return getattr(self.app_context, name, None)
 
     @property

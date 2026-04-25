@@ -21,7 +21,8 @@ class IgnoreHandler(CommandHandler):
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
         context_manager = session.context_manager
-        if not self._ignore_manager:
+        preference_manager = self._user_preference_manager
+        if not preference_manager:
             return Response.text("忽略功能未初始化")
 
         if not args:
@@ -43,7 +44,7 @@ class IgnoreHandler(CommandHandler):
 
             ai_filtered_activities_ids = [activity.activity_id for activity in ai_filtered_activities]
 
-            success_count, failed_count = await self._ignore_manager.add_ignored_activities(ai_filtered_activities_ids)
+            success_count, failed_count = await preference_manager.add_ignored_activities(ai_filtered_activities_ids)
 
             if failed_count != 0:
                 return Response.text(f"添加失败，{failed_count}个活动未添加, {success_count}个活动成功添加")
@@ -86,7 +87,7 @@ class IgnoreHandler(CommandHandler):
         if not activity_ids:
             return Response.text("无法获取活动信息，请重试")
 
-        success_count, failed_count = await self._ignore_manager.add_ignored_activities(activity_ids)
+        success_count, failed_count = await preference_manager.add_ignored_activities(activity_ids)
 
         if success_count == 0:
             return Response.text("添加失败，请稍后重试")

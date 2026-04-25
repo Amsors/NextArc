@@ -3,8 +3,6 @@
 from pyustc.young import SecondClass
 
 from src.core import FilterContext
-from src.core.repositories import ActivityRepository
-from src.core.services import ActivityQueryService
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -64,6 +62,8 @@ class ValidHandler(CommandHandler):
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update 或 /valid 重新扫描")
+        if not self._activity_query_service:
+            return Response.text("活动查询服务未初始化，请稍后重试")
 
         try:
             activities = await self._get_valid_activities(latest_db)
@@ -71,8 +71,7 @@ class ValidHandler(CommandHandler):
             if deep_update:
                 update_service = self._activity_update_service
                 if update_service is None:
-                    from src.core.services import ActivityUpdateService
-                    update_service = ActivityUpdateService(self._auth_manager)
+                    return Response.text("活动更新服务未初始化，请稍后重试")
 
                 update_result = await update_service.update_activities(
                     activities,
@@ -89,7 +88,7 @@ class ValidHandler(CommandHandler):
                 return Response.text("\n".join(lines))
 
             original_count = len(activities)
-            pipeline = self._scanner.filter_pipeline
+            pipeline = self.app_context.filter_pipeline
             pipeline_result = await pipeline.apply(
                 activities,
                 FilterContext(
@@ -98,7 +97,7 @@ class ValidHandler(CommandHandler):
                     include_interested_restore=not show_all,
                     use_ai_cache=not ai_filter_again,
                     force_ai_review=ai_filter_again,
-                    ignore_overlap=self._scanner.ignore_overlap,
+                    ignore_overlap=self._settings.filter.ignore_overlap,
                     source="valid",
                     apply_enrolled_filter=not show_all,
                 ),
@@ -150,14 +149,7 @@ class ValidHandler(CommandHandler):
             lines.append("（使用折叠面板展示，点击活动名称查看详情）")
 
             if not show_all:
-                has_filter = (
-                        self._scanner.use_ai_filter or
-                        self._scanner.use_time_filter or
-                        self._user_preference_manager or
-                        True
-                )
-                if has_filter:
-                    lines.append("发送「/valid 全部」查看所有活动（不进行筛选）")
+                lines.append("发送「/valid 全部」查看所有活动（不进行筛选）")
 
             lines.append("对活动不感兴趣？发送「不感兴趣 序号」或「不感兴趣 全部」")
 
@@ -182,7 +174,6 @@ class ValidHandler(CommandHandler):
             return Response.error(str(e), context="查询可报名活动")
 
     async def _get_valid_activities(self, db_path) -> list[SecondClass]:
-        service = self._activity_query_service or ActivityQueryService(ActivityRepository())
-        activities = await service.list_valid_activities(db_path)
+        activities = await self._activity_query_service.list_valid_activities(db_path)
         logger.debug(f"从数据库获取到 {len(activities)} 个可报名活动")
         return activities

@@ -51,9 +51,3 @@ class EnrolledFilter:
         logger.info(f"已报名筛选完成：{len(passed)} 个通过，{len(filtered)} 个已报名被过滤")
 
         return passed, filtered
-
-    @staticmethod
-    async def get_enrolled_ids_from_db(db_path) -> set[str]:
-        from src.core.repositories import ActivityRepository
-
-        return await ActivityRepository().list_enrolled_ids(db_path)

@@ -2,7 +2,7 @@
 
 ## 已完成范围
 
-按 `refactor_guide.md` 完成阶段 1、2、3、4、5、6、7、8、9、10 的主要重构。
+按 `refactor_guide.md` 完成阶段 1、2、3、4、5、6、7、8、9、10、11 的主要重构。
 
 ## 关键改动
 
@@ -60,6 +60,13 @@
 - 快照写入 `all_secondclass` 时同步维护 FTS 表，旧数据库在首次 full_text 搜索时可自动创建并重建。
 - 新增 `search.mode` 配置项，显式开启 full_text 时搜索标题、组织单位、标签、活动构想和地点。
 - 新增阶段 9 回归测试：`tests/test_refactor_stage_9.py`。
+- 删除旧 `IgnoreManager` 模块，偏好相关操作统一由 `UserPreferenceManager`/`PreferenceRepository` 承担。
+- 删除旧 `SecondClassFilter` 辅助，已报名列表和子活动状态过滤改为在查询服务或调用点显式传入状态集合。
+- 删除 `EnrolledFilter.get_enrolled_ids_from_db()`、`OverlayFilter.get_enrolled_time_ranges_from_db()` 等旧数据库访问静态包装。
+- `ActivityScanner` 不再装配扫描底层依赖，只接收 `ScanCoordinator` 并负责定时任务生命周期。
+- `ScanCoordinator` 不再在缺少 `ActivityUpdateService` 时自行创建服务。
+- Handler 中移除缺少依赖时临时构造 service 的 fallback。
+- README 和 AGENTS 已更新为当前 AppContext、repository/service、pipeline、context 架构与扩展流程。
 
 ## 验证
 

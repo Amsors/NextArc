@@ -3,8 +3,6 @@ import traceback
 
 from pyustc.young import SecondClass
 
-from src.core.repositories import ActivityRepository
-from src.core.services import ActivityQueryService
 from src.feishu_bot.card_builder import CardButtonConfig
 from src.models import UserSession
 from src.notifications import Response
@@ -35,6 +33,8 @@ class SearchHandler(CommandHandler):
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
+        if not self._activity_query_service:
+            return Response.text("活动查询服务未初始化，请稍后重试")
 
         try:
             activities = await self._search_activities(latest_db, keyword)
@@ -45,8 +45,7 @@ class SearchHandler(CommandHandler):
             try:
                 update_service = self._activity_update_service
                 if update_service is None:
-                    from src.core.services import ActivityUpdateService
-                    update_service = ActivityUpdateService(self._auth_manager)
+                    return Response.text("活动更新服务未初始化，请稍后重试")
 
                 update_result = await update_service.update_activities(
                     activities,
@@ -89,8 +88,7 @@ class SearchHandler(CommandHandler):
             return Response.error(str(e), context="搜索活动")
 
     async def _search_activities(self, db_path, keyword: str) -> list[SecondClass]:
-        service = self._activity_query_service or ActivityQueryService(ActivityRepository())
-        activities = await service.search_activities(db_path, keyword)
+        activities = await self._activity_query_service.search_activities(db_path, keyword)
 
         logger.debug(f"搜索结果: {len(activities)} 个活动")
         return activities

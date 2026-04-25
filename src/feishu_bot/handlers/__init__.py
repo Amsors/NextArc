@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from src.app import AppContext
 
 
-def get_all_handlers(app_context: "AppContext | None" = None) -> Dict[str, CommandHandler]:
+def get_all_handlers(app_context: "AppContext") -> Dict[str, CommandHandler]:
     ret = {}
 
     check_instructions = [

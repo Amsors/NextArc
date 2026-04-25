@@ -32,9 +32,9 @@ class AliveHandler(CommandHandler):
 
             ignore_count = 0
             interested_count = 0
-            if self._ignore_manager:
-                ignore_count = await self._ignore_manager.get_ignored_count()
-                interested_count = await self._ignore_manager.get_interested_count()
+            if self._user_preference_manager:
+                ignore_count = await self._user_preference_manager.get_ignored_count()
+                interested_count = await self._user_preference_manager.get_interested_count()
 
             status_text = format_status_message(
                 is_running=is_running,

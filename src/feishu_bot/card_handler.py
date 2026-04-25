@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from pyustc.young import Status
 
-from src.core import SecondClassFilter
 from src.core.services import ActivityUpdateService, EnrollmentService, EnrollmentStatus
 from src.feishu_bot.card_builder import (
     ActivityCardBuilder,
@@ -52,12 +51,6 @@ class CardActionHandler:
     @property
     def _enrollment_service(self) -> EnrollmentService:
         return self.app_context.enrollment_service
-
-    def _get_activity_update_service(self) -> ActivityUpdateService:
-        return self._activity_update_service
-
-    def _get_enrollment_service(self) -> EnrollmentService:
-        return self._enrollment_service
 
     async def handle(self, action_value: dict, open_message_id: str) -> dict:
         action = action_value.get("action")
@@ -202,7 +195,7 @@ class CardActionHandler:
         logger.info(f"执行卡片报名: {activity_name} ({activity_id})")
 
         try:
-            result = await self._get_enrollment_service().join_activity(
+            result = await self._enrollment_service.join_activity(
                 activity_id,
                 activity_name,
                 user_id=self._bot.user_session.user_id if self._bot else None,
@@ -302,7 +295,7 @@ class CardActionHandler:
         logger.info(f"查看系列活动子活动: {activity_name} ({activity_id})")
 
         try:
-            sc, children = await self._get_activity_update_service().fetch_children(activity_id)
+            sc, children = await self._activity_update_service.fetch_children(activity_id)
 
             if not sc.is_series:
                 return {
@@ -312,7 +305,7 @@ class CardActionHandler:
                     }
                 }
 
-            filter = SecondClassFilter().exclude_status([
+            excluded_statuses = {
                 Status.ABNORMAL,
                 Status.APPLY_ENDED,
                 Status.HOUR_PUBLIC,
@@ -322,9 +315,9 @@ class CardActionHandler:
                 Status.HOUR_APPROVED,
                 Status.HOUR_REJECTED,
                 Status.FINISHED,
-            ])
+            }
 
-            children = filter(children)
+            children = [child for child in children if child.status not in excluded_statuses]
 
             if not children:
                 await self._bot.send_text(f'系列活动「{activity_name}」暂无可报名的子活动')
@@ -335,7 +328,7 @@ class CardActionHandler:
                     }
                 }
 
-            update_result = await self._get_activity_update_service().update_activities(
+            update_result = await self._activity_update_service.update_activities(
                 children,
                 continue_on_error=True,
             )
@@ -406,7 +399,7 @@ class CardActionHandler:
         logger.info(f"执行卡片取消报名: {activity_name} ({activity_id})")
 
         try:
-            result = await self._get_enrollment_service().cancel_activity(activity_id, activity_name)
+            result = await self._enrollment_service.cancel_activity(activity_id, activity_name)
 
             if result.success:
                 success_message = (

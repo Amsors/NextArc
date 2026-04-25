@@ -16,7 +16,7 @@ class InterestedHandler(CommandHandler):
     def get_usage(self) -> str:
         return (
             "/interested <筛选类型> <序号> - 将筛选掉的活动标记为感兴趣\n"
-                "  筛选类型: ai, db/ignore/忽略, time/时间, overlay/重叠\n"
+            "  筛选类型: ai, db/ignore/忽略, time/时间, overlay/重叠\n"
             "  序号格式: 1,2,3 或 1-5 或 全部"
         )
 
@@ -38,7 +38,7 @@ class InterestedHandler(CommandHandler):
                 "• time/时间 - 时间筛选掉的活动\n"
                 "• overlay/重叠 - 重叠筛选掉的活动\n"
                 "• db/ignore/忽略 - 数据库筛选掉的活动\n"
-                "\n被标记为感兴趣的活动将绕过所有筛选，在后续扫描中会被推荐"
+                "\n被标记为感兴趣的活动会绕过用户侧筛选；已报名或不可报名活动仍会被排除"
             )
 
         filter_type_arg = args[0].lower()

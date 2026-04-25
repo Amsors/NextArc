@@ -20,11 +20,14 @@ from src.core import (
     ActivityRepository,
     ActivityFilterPipeline,
     ActivityScanner,
+    ActivitySyncService,
     ActivityUpdateService,
     AIFilterConfig,
     AuthManager,
     DatabaseManager,
     EnrollmentService,
+    ScanCoordinator,
+    ScanDiffService,
 )
 from src.core.events import EventBus
 from src.core.time_filter import TimeFilter
@@ -59,6 +62,7 @@ class NextArcApp:
         self.filter_pipeline: ActivityFilterPipeline = None
         self.activity_query_service: ActivityQueryService = None
         self.activity_update_service: ActivityUpdateService = None
+        self.scan_coordinator: ScanCoordinator = None
         self.enrollment_service: EnrollmentService = None
         self.context_manager: ContextManager = None
         self.app_context: AppContext = None
@@ -216,23 +220,24 @@ class NextArcApp:
                 time_filter=self.time_filter,
                 use_time_filter=use_time_filter,
             )
+            self.scan_coordinator = ScanCoordinator(
+                db_manager=self.db_manager,
+                sync_service=ActivitySyncService(self.auth_manager, self.activity_repository),
+                diff_service=ScanDiffService(activity_repository=self.activity_repository),
+                event_bus=self.event_bus,
+                filter_pipeline=self.filter_pipeline,
+                activity_repository=self.activity_repository,
+                activity_update_service=self.activity_update_service,
+                use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
+                ignore_overlap=self.settings.filter.ignore_overlap,
+            )
 
             self.scanner = ActivityScanner(
-                auth_manager=self.auth_manager,
-                db_manager=self.db_manager,
+                coordinator=self.scan_coordinator,
                 event_bus=self.event_bus,
                 interval_minutes=self.settings.monitor.interval_minutes,
                 notify_new_activities=self.settings.monitor.notify_new_activities,
-                ai_filter=ai_filter,
-                use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
-                ai_user_info=self.settings.ai.user_info,
-                time_filter=self.time_filter,
-                use_time_filter=use_time_filter,
-                user_preference_manager=self.user_preference_manager,
                 version_checker=self.version_checker,
-                filter_pipeline=self.filter_pipeline,
-                ignore_overlap=self.settings.filter.ignore_overlap,
-                activity_update_service=self.activity_update_service,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")

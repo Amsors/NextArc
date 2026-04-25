@@ -2,13 +2,10 @@
 
 from pyustc.young import Status
 
-from src.core.repositories import ActivityRepository
-from src.core.services import ActivityQueryService
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
-from ...core import SecondClassFilter
 
 logger = get_logger("feishu.handler.cancel")
 
@@ -39,7 +36,7 @@ class CancelHandler(CommandHandler):
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
 
-        filter = SecondClassFilter().exclude_status([
+        excluded_statuses = [
             Status.ABNORMAL,
             Status.HOUR_PUBLIC,
             Status.HOUR_APPEND_PUBLIC,
@@ -48,10 +45,15 @@ class CancelHandler(CommandHandler):
             Status.HOUR_APPROVED,
             Status.HOUR_REJECTED,
             Status.FINISHED,
-        ])
+        ]
 
-        query_service = self._activity_query_service or ActivityQueryService(ActivityRepository())
-        enrolled = await query_service.list_enrolled_activities(latest_db, filter)
+        if not self._activity_query_service:
+            return Response.text("活动查询服务未初始化，请稍后重试")
+
+        enrolled = await self._activity_query_service.list_enrolled_activities(
+            latest_db,
+            excluded_statuses=excluded_statuses,
+        )
 
         if not enrolled:
             return Response.text("您目前没有报名任何活动")
@@ -86,8 +88,7 @@ class CancelHandler(CommandHandler):
         try:
             enrollment_service = self._enrollment_service
             if enrollment_service is None:
-                from src.core.services import EnrollmentService
-                enrollment_service = EnrollmentService(self._auth_manager)
+                return Response.text("报名服务未初始化，请稍后重试")
 
             result = await enrollment_service.cancel_activity(activity_id, activity_name)
             if result.success:
