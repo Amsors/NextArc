@@ -1,6 +1,7 @@
 """扫描编排服务。"""
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,6 +14,7 @@ from src.core.events.scan_events import (
 )
 from src.core.filtering import ActivityFilterPipeline, FilterContext
 from src.core.repositories import ActivityRepository
+from src.core.secondclass_db import SecondClassDB
 from src.core.services import ActivityUpdateService
 from src.utils.logger import get_logger
 
@@ -43,6 +45,7 @@ class ScanCoordinator:
         use_ai_filter: bool = False,
         ignore_overlap: bool = False,
         notify_enrolled_change_enabled: bool = False,
+        keep_old_activity: bool = True,
     ):
         self.db_manager = db_manager
         self.sync_service = sync_service
@@ -54,6 +57,7 @@ class ScanCoordinator:
         self.use_ai_filter = use_ai_filter
         self.ignore_overlap = ignore_overlap
         self.notify_enrolled_change_enabled = notify_enrolled_change_enabled
+        self.keep_old_activity = keep_old_activity
 
     async def scan(self, options: ScanOptions) -> ScanResult:
         logger.info("=" * 50)
@@ -70,6 +74,14 @@ class ScanCoordinator:
             result.enrolled_count = sync_result.enrolled_count
             logger.info(f"扫描到 {result.activity_count} 个可报名活动")
             logger.info(f"已报名 {result.enrolled_count} 个活动")
+
+            if self.keep_old_activity and old_db_path and old_db_path != new_db_path:
+                kept_count = await self._keep_old_unended_activities(old_db_path, new_db_path)
+                if kept_count:
+                    result.activity_count = await self.activity_repository.count_all(new_db_path)
+                    logger.info(
+                        f"已补入 {kept_count} 个旧数据库中仍未结束的活动，当前可报名活动总数 {result.activity_count}"
+                    )
 
             if (
                 not options.no_filter
@@ -250,3 +262,41 @@ class ScanCoordinator:
 
         logger.info(f"成功获取 {len(update_result.successful)}/{len(activity_ids)} 个活动详情")
         return update_result.successful
+
+    async def _keep_old_unended_activities(self, old_db_path: Path, new_db_path: Path) -> int:
+        old_rows = await self.activity_repository.list_all_rows(old_db_path)
+        new_rows = await self.activity_repository.list_all_rows(new_db_path)
+        missing_ids = [activity_id for activity_id in old_rows if activity_id not in new_rows]
+
+        if not missing_ids:
+            logger.debug("旧数据库中没有需要补查的缺失活动")
+            return 0
+
+        logger.info(f"发现 {len(missing_ids)} 个旧活动未出现在新数据库，开始深度更新确认是否仍未结束")
+        missing_activities = await self.activity_repository.get_by_ids(old_db_path, missing_ids)
+        update_result = await self.activity_update_service.update_activities(
+            missing_activities,
+            continue_on_error=True,
+        )
+
+        if update_result.failed:
+            logger.warning(f"旧活动补查失败 {update_result.failed_count} 个，将跳过这些活动")
+
+        now = datetime.now()
+        activities_to_keep = [
+            activity
+            for activity in update_result.successful
+            if self._activity_ends_after(activity, now)
+        ]
+
+        if not activities_to_keep:
+            logger.info("旧数据库缺失活动更新后均已结束，无需补入新数据库")
+            return 0
+
+        db = SecondClassDB(new_db_path)
+        return await db.insert_all_secondclass(activities_to_keep, deep_scaned=True)
+
+    @staticmethod
+    def _activity_ends_after(activity: SecondClass, now: datetime) -> bool:
+        hold_time = activity.hold_time
+        return bool(hold_time and hold_time.end and hold_time.end > now)

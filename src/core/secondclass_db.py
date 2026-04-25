@@ -453,6 +453,69 @@ class SecondClassDB:
             self._restore_backup(backup_path)
             raise RuntimeError(f"Failed to update all_secondclass: {e}") from e
 
+    async def insert_all_secondclass(
+            self,
+            secondclasses: list[SecondClass],
+            deep_scaned: bool = True,
+    ) -> int:
+        """向 all_secondclass 追加或替换活动，不删除当前快照中的其他记录。"""
+
+        if not secondclasses:
+            return 0
+
+        scan_timestamp = int(time.time())
+        rows_to_insert = [
+            self._secondclass_to_row(
+                sc,
+                scan_timestamp=scan_timestamp,
+                deep_scaned=deep_scaned,
+                deep_scaned_time=scan_timestamp if deep_scaned else None,
+            )
+            for sc in secondclasses
+        ]
+
+        backup_path = self._create_backup()
+
+        try:
+            with self._lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.executemany(
+                        """
+                        INSERT OR REPLACE INTO all_secondclass (
+                            id, name, status, create_time, apply_time, hold_time,
+                            tel, valid_hour, apply_num, apply_limit, applied,
+                            need_sign_info, module, department, labels, conceive,
+                            is_series, children_id, parent_id, scan_timestamp,
+                            deep_scaned, deep_scaned_time,
+                            place_info, participation_form
+                        ) VALUES (
+                            :id, :name, :status, :create_time, :apply_time, :hold_time,
+                            :tel, :valid_hour, :apply_num, :apply_limit, :applied,
+                            :need_sign_info, :module, :department, :labels, :conceive,
+                            :is_series, :children_id, :parent_id, :scan_timestamp,
+                            :deep_scaned, :deep_scaned_time,
+                            :place_info, :participation_form
+                        )
+                        """,
+                        rows_to_insert,
+                    )
+
+                    if rebuild_full_text_search_index(conn):
+                        logger.debug("已同步 all_secondclass FTS 搜索索引")
+                    else:
+                        logger.debug("SQLite FTS5 trigram 不可用，跳过 FTS 搜索索引")
+
+                    conn.commit()
+
+            self._remove_backup(backup_path)
+            logger.info(f"已追加 {len(rows_to_insert)} 条 all_secondclass 记录")
+            return len(rows_to_insert)
+
+        except Exception as e:
+            self._restore_backup(backup_path)
+            raise RuntimeError(f"Failed to insert all_secondclass: {e}") from e
+
     async def update_enrolled_secondclass(
             self,
             secondclasses: list[SecondClass],

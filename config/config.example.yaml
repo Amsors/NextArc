@@ -37,6 +37,9 @@ monitor:
   notify_filtered_activities: true
   # 是否使用 AI 筛选新活动（需要配置 ai 部分），默认关闭
   use_ai_filter: false
+  # 是否保留旧数据库中仍未结束但本次扫描未返回的活动，默认开启
+  # 开启后会把结束时间晚于当前时间的活动补入新数据库
+  keep_old_activity: true
 
 version_check:
   # 是否启用新版本检查功能，默认开启，建议开启

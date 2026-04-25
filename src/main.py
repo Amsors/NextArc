@@ -231,6 +231,7 @@ class NextArcApp:
                 use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
                 ignore_overlap=self.settings.filter.ignore_overlap,
                 notify_enrolled_change_enabled=self.settings.monitor.notify_enrolled_change,
+                keep_old_activity=self.settings.monitor.keep_old_activity,
             )
 
             self.scanner = ActivityScanner(

@@ -35,6 +35,10 @@ class MonitorConfig(BaseModel):
     notify_enrolled_change: bool = Field(default=False, description="已报名活动字段变更时发送飞书通知")
     notify_filtered_activities: bool = Field(default=True, description="是否推送被筛选掉的活动列表")
     use_ai_filter: bool = Field(default=False, description="是否使用 AI 筛选新活动")
+    keep_old_activity: bool = Field(
+        default=True,
+        description="是否保留旧快照中仍未结束但本次列表接口未返回的活动",
+    )
 
 
 class VersionCheckConfig(BaseModel):
