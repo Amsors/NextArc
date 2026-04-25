@@ -84,13 +84,19 @@ class OverlayFilter:
             logger.debug(f"活动 '{activity.name}' 无法获取开始时间，保留")
             return None
 
+        effective_activity_end = activity_end or (activity_start + timedelta(hours=2))
+        if effective_activity_end.date() != activity_start.date():
+            logger.debug(
+                f"活动 '{activity.name}' 举办时间跨多天，跳过重叠筛选并保留"
+            )
+            return None
+
         overlaps: list[EnrolledActivityTime] = []
 
         for enrolled in self.enrolled_time_ranges:
             enrolled_start = enrolled.start
             enrolled_end = enrolled.end
             effective_enrolled_end = enrolled_end or (enrolled_start + timedelta(hours=2))
-            effective_activity_end = activity_end or (activity_start + timedelta(hours=2))
 
             # 对于跨天（如系列活动）的已报名活动，不应用精确时间重叠筛选，
             # 因为无法判断系列课程在每一天的具体时间安排

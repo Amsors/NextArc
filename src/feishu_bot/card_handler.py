@@ -295,16 +295,6 @@ class CardActionHandler:
         logger.info(f"查看系列活动子活动: {activity_name} ({activity_id})")
 
         try:
-            sc, children = await self._activity_update_service.fetch_children(activity_id)
-
-            if not sc.is_series:
-                return {
-                    "toast": {
-                        "type": "error",
-                        "content": "该活动不是系列活动"
-                    }
-                }
-
             excluded_statuses = {
                 Status.ABNORMAL,
                 Status.APPLY_ENDED,
@@ -317,7 +307,21 @@ class CardActionHandler:
                 Status.FINISHED,
             }
 
-            children = [child for child in children if child.status not in excluded_statuses]
+            children_result = await self._activity_update_service.fetch_children_with_updates(
+                activity_id,
+                child_filter=lambda child: child.status not in excluded_statuses,
+                continue_on_error=True,
+            )
+
+            if not children_result.parent.is_series:
+                return {
+                    "toast": {
+                        "type": "error",
+                        "content": "该活动不是系列活动"
+                    }
+                }
+
+            children = children_result.children
 
             if not children:
                 await self._bot.send_text(f'系列活动「{activity_name}」暂无可报名的子活动')
@@ -328,10 +332,7 @@ class CardActionHandler:
                     }
                 }
 
-            update_result = await self._activity_update_service.update_activities(
-                children,
-                continue_on_error=True,
-            )
+            update_result = children_result.update_result
             if update_result.failed:
                 logger.warning(f"子活动深度更新失败 {update_result.failed_count} 个")
 
