@@ -67,11 +67,15 @@
 - `ScanCoordinator` 不再在缺少 `ActivityUpdateService` 时自行创建服务。
 - Handler 中移除缺少依赖时临时构造 service 的 fallback。
 - README 和 AGENTS 已更新为当前 AppContext、repository/service、pipeline、context 架构与扩展流程。
+- 阶段 11 复查修复：当新活动全部被筛选时，通知监听器仍会保存 `filtered_activities` 到 `ContextManager`，确保 `/interested ai/time/overlay/db 全部` 可恢复筛选结果。
+- 阶段 11 复查修复：同步更新 `/help` 中 `/info` 二级指令说明为 `结项/end/已结项`、`即将结项/pending`、`异常/abnormal`，并补齐 `/interested overlay/重叠` 说明。
+- 阶段 11 复查清理：删除 `UserPreferenceManager.filter_activities()`、`filter_activities_sync()`、`format_help_message()`、`MessageRouter.get_help_message()` 等无生产调用的旧辅助入口。
+- 阶段 11 复查清理：移除 `NextArcApp._handle_message()` 中错误的文本响应兼容判断，不再保留 `ResponseType.value == "text"` 旧分支。
 
 ## 验证
 
 - `/home/amsors/anaconda3/envs/pyustc/bin/python -m compileall src tests` 通过。
-- `/home/amsors/anaconda3/envs/pyustc/bin/python -m unittest discover -s tests -v` 通过，25 个测试全绿。
+- `/home/amsors/anaconda3/envs/pyustc/bin/python -m unittest discover -s tests -v` 通过，26 个测试全绿。
 - `git diff --check` 通过。
 
 ## 注意

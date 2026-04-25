@@ -7,7 +7,6 @@ from typing import Optional
 import aiosqlite
 
 from src.core.repositories import ActivityRepository, PreferenceKind, PreferenceRepository
-from src.models.filter_result import FilteredActivity
 from src.utils.logger import get_logger
 
 logger = get_logger("user_preference_manager")
@@ -371,70 +370,6 @@ class UserPreferenceManager:
         except Exception as e:
             logger.error(f"获取感兴趣活动数量失败: {e}")
             return 0
-
-    async def filter_activities(self, activities: list) -> tuple[list, list[FilteredActivity]]:
-        if not activities:
-            return [], []
-
-        interested_ids = await self.get_all_interested_ids()
-        ignored_ids = await self.get_all_ignored_ids()
-
-        kept = []
-        filtered: list[FilteredActivity] = []
-
-        for activity in activities:
-            activity_id = getattr(activity, 'id', None)
-            if activity_id is None:
-                if isinstance(activity, dict):
-                    activity_id = activity.get('id')
-
-            if activity_id and activity_id in interested_ids:
-                kept.append(activity)
-                continue
-
-            if activity_id and activity_id in ignored_ids:
-                filtered.append(FilteredActivity(
-                    activity=activity,
-                    reason="用户已标记为不感兴趣",
-                    filter_type="ignore"
-                ))
-            else:
-                kept.append(activity)
-
-        if filtered:
-            logger.info(f"数据库筛选过滤了 {len(filtered)} 个活动")
-
-        return kept, filtered
-
-    def filter_activities_sync(self, activities: list, ignored_ids: set[str], interested_ids: set[str] = None) -> tuple[
-        list, list[FilteredActivity]]:
-        if not activities:
-            return [], []
-
-        interested_ids = interested_ids or set()
-
-        kept = []
-        filtered: list[FilteredActivity] = []
-
-        for activity in activities:
-            activity_id = getattr(activity, 'id', None)
-            if activity_id is None and isinstance(activity, dict):
-                activity_id = activity.get('id')
-
-            if activity_id and activity_id in interested_ids:
-                kept.append(activity)
-                continue
-
-            if activity_id and activity_id in ignored_ids:
-                filtered.append(FilteredActivity(
-                    activity=activity,
-                    reason="用户已标记为不感兴趣",
-                    filter_type="ignore"
-                ))
-            else:
-                kept.append(activity)
-
-        return kept, filtered
 
     async def restore_interested_activities(self, activities: list) -> tuple[list, list]:
         if not activities:

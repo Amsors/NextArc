@@ -85,14 +85,3 @@ class MessageRouter:
                 f"{confirmation.get_confirm_prompt()}\n\n"
                 f"请回复「确认」或「取消」"
             )
-
-    def get_help_message(self) -> Response:
-        lines = ["NextArc - 第二课堂活动监控机器人\n", "可用指令："]
-
-        for handler in self.handlers.values():
-            lines.append(f"  /{handler.command} - {handler.get_usage()}")
-
-        lines.append("")
-        lines.append("搜索结果是有效期5分钟")
-
-        return Response.text("\n".join(lines))

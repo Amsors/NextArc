@@ -346,11 +346,8 @@ class NextArcApp:
         if self.notification_service:
             await self.notification_service.send_response(response)
             return None  # 已通过通知服务发送，不需要再返回文本
-        # TODO 重新检查此处逻辑
 
-        # 如果没有通知服务，返回文本内容（后适兼）
-        if response.type.value == "text":
-            return response.content
+        logger.error("通知服务未初始化，无法发送指令响应")
         return None
 
     async def run(self) -> None:

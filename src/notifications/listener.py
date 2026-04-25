@@ -129,18 +129,24 @@ class NotificationListener:
                 logger.error(f"发送新活动卡片失败: {e}")
                 send_errors.append(f"发送新活动卡片异常: {e}")
 
-            if self._context_manager:
-                try:
-                    await self._context_manager.set_displayed_activities(
-                        activities=event.activities,
-                        filtered_activities=event.filters_applied,
-                        source="new_activities"
-                    )
-                    logger.debug(f"已更新 ContextManager，保存了 {len(event.activities)} 个新活动")
-                except Exception as e:
-                    logger.error(f"更新 ContextManager 失败: {e}")
         else:
             logger.debug("没有新活动需要通知，仅发送过滤详情")
+
+        if self._context_manager and (event.activities or any(event.filters_applied.values())):
+            try:
+                await self._context_manager.set_displayed_activities(
+                    activities=event.activities,
+                    filtered_activities=event.filters_applied,
+                    source="new_activities"
+                )
+                filtered_count = sum(len(items) for items in event.filters_applied.values())
+                logger.debug(
+                    "已更新 ContextManager，保存了 %s 个新活动和 %s 个被筛选活动",
+                    len(event.activities),
+                    filtered_count,
+                )
+            except Exception as e:
+                logger.error(f"更新 ContextManager 失败: {e}")
 
         if send_errors:
             raise NotificationDeliveryError(send_errors)

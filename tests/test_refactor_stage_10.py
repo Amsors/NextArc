@@ -5,6 +5,7 @@ import unittest
 
 from pyustc.young import SecondClass, Status
 
+from src.context import ContextManager
 from src.core import FilteredActivity
 from src.core.events.scan_events import NewActivitiesFoundEvent
 from src.feishu_bot.card_builder import ActivityCardDisplayConfig
@@ -139,6 +140,31 @@ class NotificationBuilderTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("AI 判断理由", card_text)
         self.assertIn("与用户偏好匹配", card_text)
         self.assertIn("时间重叠", card_text)
+
+    async def test_listener_stores_filtered_context_when_no_activities_survive(self) -> None:
+        filtered = _activity("stage10-all-filtered", "全部被筛活动")
+        context_manager = ContextManager()
+        event = NewActivitiesFoundEvent(
+            activities=[],
+            total_found=1,
+            filters_applied={
+                "ai": [FilteredActivity(filtered, "AI 判断不匹配", "ai")],
+            },
+        )
+        service = RecordingNotificationService()
+        listener = NotificationListener(
+            service,
+            context_manager=context_manager,
+            runtime_config=NotificationRuntimeConfig(notify_filtered_activities=True),
+        )
+
+        await listener.on_new_activities_found(event)
+
+        self.assertEqual(service.cards, [])
+        self.assertEqual(len(service.texts), 1)
+        self.assertEqual(await context_manager.get_all_displayed_activities(), [])
+        restored_candidates = await context_manager.get_filtered_activities_by_type("ai")
+        self.assertEqual([item.activity.id for item in restored_candidates], [filtered.id])
 
     def test_filter_detail_builder_respects_ai_reason_config(self) -> None:
         filtered = _activity("stage10-builder-filtered", "过滤活动")
