@@ -594,6 +594,37 @@ class NextArcApp:
         flush_section(len(lines))
         return sections
 
+    def _build_change_log_card(self, version: str, section: str) -> dict:
+        """构建使用 Markdown 渲染的版本更新说明卡片。"""
+
+        content = self._format_change_log_for_feishu_card(section)
+        return {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "title": {"tag": "plain_text", "content": f"更新说明（v{version}）"},
+                "template": "blue",
+            },
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": content,
+                },
+            ],
+        }
+
+    def _format_change_log_for_feishu_card(self, section: str) -> str:
+        """将飞书卡片不稳定支持的标题语法降级为加粗文本。"""
+
+        formatted_lines = []
+        for line in section.splitlines():
+            match = re.fullmatch(r"(#{1,6})\s+(.+?)(?:\s+#+)?", line.strip())
+            if match:
+                formatted_lines.append(f"**{match.group(2)}**")
+            else:
+                formatted_lines.append(line)
+
+        return "\n".join(formatted_lines)
+
     async def _notify_change_logs_since_last_version(self):
         if not self.bot or not self.bot.is_connected():
             logger.warning("飞书机器人未连接，无法发送更新说明")
@@ -635,12 +666,10 @@ class NextArcApp:
         pending_sections.sort(key=lambda item: self._parse_semantic_version(item[0]))
 
         for version, section in pending_sections:
-            message = (f"更新说明（v{version}）\n"
-                       f"提示：建议前往 Github 查看渲染好 Markdown 的更新日志\n"
-                       f"\n{section}")
+            card = self._build_change_log_card(version, section)
 
             try:
-                success = await self.bot.send_text(message)
+                success = await self.bot.send_card(card)
                 if success:
                     logger.info(f"已发送版本 v{version} 的更新说明")
                 else:
