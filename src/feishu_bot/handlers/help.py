@@ -67,7 +67,7 @@ class HelpHandler(CommandHandler):
             "  不感兴趣 - 只看不感兴趣的活动\n"
             "\n\n"
             "/upgrade 检查并安装程序更新\n"
-            "  自动从 git 拉取最新代码并重启应用\n"
+            "  自动从 git 拉取配置分支、切换分支并重启应用\n"
             "  如有更新会显示变更内容并要求确认\n"
         )
         return Response.text(help_text)

@@ -58,8 +58,9 @@ version_check:
   minute: 0
   
   # Git 仓库设置，默认无需修改
+  # 更新时会拉取 remote_name/branch_name，并切换到 branch_name 后运行
   remote_name: "origin"     # 远程仓库名称
-  branch_name: "master"       # 要跟踪的分支名称
+  branch_name: "master"     # 要跟踪并运行的分支名称
   auto_fetch: true          # 检查前是否自动执行 git fetch
 
 # AI 筛选配置（使用 OpenAI API 格式）
