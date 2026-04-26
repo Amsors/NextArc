@@ -25,7 +25,7 @@ filter:
 behavior:
   # 是否在程序启动时扫描所有活动，建议关闭，默认关闭
   scan_on_start: false
-，
+
 monitor:
   # 定时扫描间隔（分钟），默认15分钟
   interval_minutes: 15
