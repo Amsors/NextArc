@@ -543,7 +543,7 @@ class SecondClassDB:
                 children_ids=None,
                 parent_id=None,
                 scan_timestamp=scan_timestamp,
-                deep_scaned=False,
+                deep_scaned=deep_update,
                 deep_scaned_time=scan_timestamp if deep_update else None,
             )
             rows_to_insert.append(row)

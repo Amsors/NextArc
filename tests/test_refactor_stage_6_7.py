@@ -1,13 +1,16 @@
 """阶段 6/7 重构回归测试。"""
 
 import unittest
+from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from pyustc.young import SecondClass, Status
 
 from src.core.events import EventBus
 from src.core.events.scan_events import EnrolledActivityChangedEvent, NewActivitiesFoundEvent
+from src.core.scanning.sync_service import ActivitySyncService
 from src.core.scanning import ScanCoordinator, ScanOptions, SyncResult
 from src.core.services import ActivityUpdateResult
 from src.feishu_bot.handlers import get_all_handlers
@@ -92,6 +95,76 @@ class FakeActivityUpdateService:
 class PassThroughPipeline:
     async def apply(self, activities: list[SecondClass], context) -> FilterPipelineResult:
         return FilterPipelineResult(kept=activities, filtered={}, summaries=[])
+
+
+class FakeActivityRepositoryCounts:
+    async def count_all(self, db_path: Path) -> int:
+        return 0
+
+    async def count_enrolled(self, db_path: Path) -> int:
+        return 0
+
+
+class FakeAuthManager:
+    @asynccontextmanager
+    async def create_session_once(self):
+        yield
+
+
+async def _empty_secondclass_generator():
+    if False:
+        yield _activity("unused")
+
+
+class ActivitySyncServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_enrolled_sync_always_deep_updates_before_writing(self) -> None:
+        class RecordingSecondClassDB:
+            def __init__(self, db_path: Path) -> None:
+                self.db_path = db_path
+                self.all_deep_update: bool | None = None
+                self.enrolled_deep_update: bool | None = None
+
+            async def update_all_from_generator(
+                self,
+                sc_generator,
+                expand_series: bool,
+                deep_update: bool,
+            ) -> None:
+                self.all_deep_update = deep_update
+                async for _ in sc_generator:
+                    pass
+
+            async def update_enrolled_from_generator(
+                self,
+                sc_generator,
+                deep_update: bool,
+            ) -> None:
+                self.enrolled_deep_update = deep_update
+                async for _ in sc_generator:
+                    pass
+
+        db_instances: list[RecordingSecondClassDB] = []
+
+        def build_db(db_path: Path) -> RecordingSecondClassDB:
+            db = RecordingSecondClassDB(db_path)
+            db_instances.append(db)
+            return db
+
+        service = ActivitySyncService(
+            auth_manager=FakeAuthManager(),
+            activity_repository=FakeActivityRepositoryCounts(),
+        )
+
+        with (
+            patch("src.core.scanning.sync_service.SecondClassDB", side_effect=build_db),
+            patch.object(SecondClass, "find", return_value=_empty_secondclass_generator()),
+            patch.object(SecondClass, "get_participated", return_value=_empty_secondclass_generator()),
+        ):
+            await service.sync(Path("snapshot.db"), deep_update=False)
+
+        self.assertEqual(len(db_instances), 1)
+        self.assertFalse(db_instances[0].all_deep_update)
+        self.assertTrue(db_instances[0].enrolled_deep_update)
 
 
 class FailingNotificationService(NotificationService):

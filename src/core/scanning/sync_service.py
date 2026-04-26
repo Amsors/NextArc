@@ -43,7 +43,7 @@ class ActivitySyncService:
             try:
                 await db.update_enrolled_from_generator(
                     SecondClass.get_participated(),
-                    deep_update=deep_update,
+                    deep_update=True,
                 )
             except Exception as e:
                 enrolled_error = str(e)
