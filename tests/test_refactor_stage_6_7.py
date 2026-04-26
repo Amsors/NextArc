@@ -376,6 +376,8 @@ class HandlerInjectionTest(unittest.TestCase):
         self.assertFalse(hasattr(CommandHandler, "set_dependencies"))
         self.assertIs(handlers["help"].app_context, app_context)
         self.assertIs(handlers["valid"].app_context, app_context)
+        self.assertIs(handlers["restart"].app_context, app_context)
+        self.assertIs(handlers["重启"].app_context, app_context)
 
 
 if __name__ == "__main__":

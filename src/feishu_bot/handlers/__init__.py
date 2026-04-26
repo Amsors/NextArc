@@ -13,6 +13,7 @@ from .interested import InterestedHandler
 from .menu import MenuHandler
 from .join import JoinHandler
 from .preference import PreferenceHandler
+from .restart import RestartHandler
 from .search import SearchHandler
 from .upgrade import UpgradeHandler
 from .valid import ValidHandler
@@ -130,6 +131,13 @@ def get_all_handlers(app_context: "AppContext") -> Dict[str, CommandHandler]:
     for instruction in upgrade_instructions:
         ret[instruction] = UpgradeHandler(app_context)
 
+    restart_instructions = [
+        "restart",
+        "重启",
+    ]
+    for instruction in restart_instructions:
+        ret[instruction] = RestartHandler(app_context)
+
     preference_instructions = [
         "preference",
         "偏好",
@@ -155,5 +163,6 @@ __all__ = [
     "InterestedHandler",
     "MenuHandler",
     "UpgradeHandler",
+    "RestartHandler",
     "PreferenceHandler",
 ]
