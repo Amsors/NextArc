@@ -24,9 +24,11 @@ class ActivitySyncService:
         self,
         auth_manager: "AuthManager",
         activity_repository: ActivityRepository | None = None,
+        add_sub_secondclass_into_db: bool = False,
     ):
         self.auth_manager = auth_manager
         self.activity_repository = activity_repository or ActivityRepository()
+        self.add_sub_secondclass_into_db = add_sub_secondclass_into_db
 
     async def sync(self, target_db: Path, deep_update: bool) -> SyncResult:
         db = SecondClassDB(target_db)
@@ -36,7 +38,7 @@ class ActivitySyncService:
             logger.debug("会话已创建，开始获取活动数据")
             await db.update_all_from_generator(
                 SecondClass.find(apply_ended=False),
-                expand_series=False,
+                expand_series=self.add_sub_secondclass_into_db,
                 deep_update=deep_update,
             )
 

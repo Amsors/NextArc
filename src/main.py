@@ -222,7 +222,11 @@ class NextArcApp:
             )
             self.scan_coordinator = ScanCoordinator(
                 db_manager=self.db_manager,
-                sync_service=ActivitySyncService(self.auth_manager, self.activity_repository),
+                sync_service=ActivitySyncService(
+                    self.auth_manager,
+                    self.activity_repository,
+                    add_sub_secondclass_into_db=self.settings.monitor.add_sub_secondclass_into_db,
+                ),
                 diff_service=ScanDiffService(activity_repository=self.activity_repository),
                 event_bus=self.event_bus,
                 filter_pipeline=self.filter_pipeline,
@@ -246,6 +250,10 @@ class NextArcApp:
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
             logger.info(f"已报名活动变更通知: {'开启' if self.settings.monitor.notify_enrolled_change else '关闭'}")
             logger.info(f"筛选活动通知: {'开启' if self.settings.monitor.notify_filtered_activities else '关闭'}")
+            logger.info(
+                "系列活动子活动入库: "
+                f"{'开启' if self.settings.monitor.add_sub_secondclass_into_db else '关闭'}"
+            )
             if self.settings.monitor.use_ai_filter and self.settings.ai.enabled and ai_filter:
                 logger.info(f"AI 筛选: 开启，模型: {self.settings.ai.model}")
             if use_time_filter and self.time_filter:

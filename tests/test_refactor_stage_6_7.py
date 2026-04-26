@@ -122,6 +122,7 @@ class ActivitySyncServiceTest(unittest.IsolatedAsyncioTestCase):
             def __init__(self, db_path: Path) -> None:
                 self.db_path = db_path
                 self.all_deep_update: bool | None = None
+                self.expand_series: bool | None = None
                 self.enrolled_deep_update: bool | None = None
 
             async def update_all_from_generator(
@@ -131,6 +132,7 @@ class ActivitySyncServiceTest(unittest.IsolatedAsyncioTestCase):
                 deep_update: bool,
             ) -> None:
                 self.all_deep_update = deep_update
+                self.expand_series = expand_series
                 async for _ in sc_generator:
                     pass
 
@@ -164,7 +166,58 @@ class ActivitySyncServiceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(db_instances), 1)
         self.assertFalse(db_instances[0].all_deep_update)
+        self.assertFalse(db_instances[0].expand_series)
         self.assertTrue(db_instances[0].enrolled_deep_update)
+
+    async def test_sync_passes_series_expansion_config_to_all_activity_snapshot(self) -> None:
+        class RecordingSecondClassDB:
+            def __init__(self, db_path: Path) -> None:
+                self.db_path = db_path
+                self.expand_series: bool | None = None
+                self.all_deep_update: bool | None = None
+
+            async def update_all_from_generator(
+                self,
+                sc_generator,
+                expand_series: bool,
+                deep_update: bool,
+            ) -> None:
+                self.expand_series = expand_series
+                self.all_deep_update = deep_update
+                async for _ in sc_generator:
+                    pass
+
+            async def update_enrolled_from_generator(
+                self,
+                sc_generator,
+                deep_update: bool,
+            ) -> None:
+                async for _ in sc_generator:
+                    pass
+
+        db_instances: list[RecordingSecondClassDB] = []
+
+        def build_db(db_path: Path) -> RecordingSecondClassDB:
+            db = RecordingSecondClassDB(db_path)
+            db_instances.append(db)
+            return db
+
+        service = ActivitySyncService(
+            auth_manager=FakeAuthManager(),
+            activity_repository=FakeActivityRepositoryCounts(),
+            add_sub_secondclass_into_db=True,
+        )
+
+        with (
+            patch("src.core.scanning.sync_service.SecondClassDB", side_effect=build_db),
+            patch.object(SecondClass, "find", return_value=_empty_secondclass_generator()),
+            patch.object(SecondClass, "get_participated", return_value=_empty_secondclass_generator()),
+        ):
+            await service.sync(Path("snapshot.db"), deep_update=True)
+
+        self.assertEqual(len(db_instances), 1)
+        self.assertTrue(db_instances[0].expand_series)
+        self.assertTrue(db_instances[0].all_deep_update)
 
 
 class FailingNotificationService(NotificationService):

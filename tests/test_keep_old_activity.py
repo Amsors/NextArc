@@ -112,6 +112,9 @@ class KeepOldActivityTest(unittest.IsolatedAsyncioTestCase):
     def test_keep_old_activity_defaults_to_enabled(self) -> None:
         self.assertTrue(MonitorConfig().keep_old_activity)
 
+    def test_add_sub_secondclass_into_db_defaults_to_disabled(self) -> None:
+        self.assertFalse(MonitorConfig().add_sub_secondclass_into_db)
+
 
 if __name__ == "__main__":
     unittest.main()

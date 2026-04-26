@@ -25,7 +25,7 @@ filter:
 behavior:
   # 是否在程序启动时扫描所有活动，建议关闭，默认关闭
   scan_on_start: false
-
+，
 monitor:
   # 定时扫描间隔（分钟），默认15分钟
   interval_minutes: 15
@@ -37,6 +37,9 @@ monitor:
   notify_filtered_activities: true
   # 是否使用 AI 筛选新活动（需要配置 ai 部分），默认关闭
   use_ai_filter: false
+  # 是否在扫描活动数据库时将“系列活动”的子活动也写入数据库，默认关闭，目前建议关闭
+  # 开启后可能显著增加 ai 筛选的 api 用量；在首次进行 ai 筛选时，大量请求有可能触发 api 提供方的限流机制，导致扫描缓慢或失败
+  add_sub_secondclass_into_db: false
   # 是否保留旧数据库中仍未结束但本次扫描未返回的活动，默认开启
   # 开启后会把结束时间晚于当前时间的活动补入新数据库
   keep_old_activity: true
