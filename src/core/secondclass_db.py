@@ -597,6 +597,84 @@ class SecondClassDB:
             self._restore_backup(backup_path)
             raise RuntimeError(f"Failed to update enrolled_secondclass: {e}") from e
 
+    async def upsert_enrolled_secondclass(
+            self,
+            sc: SecondClass,
+            deep_scaned: bool = True,
+    ) -> None:
+        """向 enrolled_secondclass 追加或替换单个已报名活动。"""
+
+        scan_timestamp = int(time.time())
+        row = self._secondclass_to_row(
+            sc,
+            children_ids=None,
+            parent_id=None,
+            scan_timestamp=scan_timestamp,
+            deep_scaned=deep_scaned,
+            deep_scaned_time=scan_timestamp if deep_scaned else None,
+        )
+
+        backup_path = self._create_backup()
+
+        try:
+            with self._lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO enrolled_secondclass (
+                            id, name, status, create_time, apply_time, hold_time,
+                            tel, valid_hour, apply_num, apply_limit, applied,
+                            need_sign_info, module, department, labels, conceive,
+                            is_series, children_id, parent_id, scan_timestamp,
+                            deep_scaned, deep_scaned_time,
+                            place_info, participation_form
+                        ) VALUES (
+                            :id, :name, :status, :create_time, :apply_time, :hold_time,
+                            :tel, :valid_hour, :apply_num, :apply_limit, :applied,
+                            :need_sign_info, :module, :department, :labels, :conceive,
+                            :is_series, :children_id, :parent_id, :scan_timestamp,
+                            :deep_scaned, :deep_scaned_time,
+                            :place_info, :participation_form
+                        )
+                        """,
+                        row,
+                    )
+                    conn.commit()
+
+            self._remove_backup(backup_path)
+            logger.info(f"已写入已报名活动快照: {sc.name} ({sc.id})")
+
+        except Exception as e:
+            logger.error(f"写入已报名活动快照失败: {e}")
+            self._restore_backup(backup_path)
+            raise RuntimeError(f"Failed to upsert enrolled_secondclass: {e}") from e
+
+    async def delete_enrolled_secondclass(self, activity_id: str) -> int:
+        """从 enrolled_secondclass 删除单个已报名活动，返回删除行数。"""
+
+        backup_path = self._create_backup()
+
+        try:
+            with self._lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "DELETE FROM enrolled_secondclass WHERE id = ?",
+                        (activity_id,),
+                    )
+                    deleted_count = cursor.rowcount
+                    conn.commit()
+
+            self._remove_backup(backup_path)
+            logger.info(f"已删除已报名活动快照: {activity_id}，删除 {deleted_count} 行")
+            return deleted_count
+
+        except Exception as e:
+            logger.error(f"删除已报名活动快照失败: {e}")
+            self._restore_backup(backup_path)
+            raise RuntimeError(f"Failed to delete enrolled_secondclass: {e}") from e
+
     def get_scan_timestamp(self, table: str = "all_secondclass") -> int | None:
         if table not in ("all_secondclass", "enrolled_secondclass"):
             raise ValueError(f"Invalid table name: {table}")

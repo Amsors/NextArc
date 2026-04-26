@@ -11,6 +11,7 @@ from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from src.core.auth_manager import AuthManager
+    from src.core.db_manager import DatabaseManager
 
 logger = get_logger("service.enrollment")
 
@@ -42,7 +43,7 @@ class EnrollmentResult:
 class EnrollmentService:
     """统一封装报名、取消报名和报名后的日历同步。
 
-    当前保持旧行为：报名或取消成功后不立即刷新已报名快照，等待后续扫描同步。
+    报名或取消成功后会增量维护最新活动快照中的已报名表。
     """
 
     def __init__(
@@ -51,11 +52,13 @@ class EnrollmentService:
         app_id: str = "",
         app_secret: str = "",
         calendar_sync_enabled: bool = True,
+        db_manager: "DatabaseManager | None" = None,
     ):
         self.auth_manager = auth_manager
         self.app_id = app_id
         self.app_secret = app_secret
         self.calendar_sync_enabled = calendar_sync_enabled
+        self.db_manager = db_manager
 
     async def join_activity(
         self,
@@ -126,6 +129,10 @@ class EnrollmentService:
                         message="报名失败：活动不可报名或名额已满",
                     )
 
+                activity.data["booleanRegistration"] = 1
+
+            await self._upsert_enrolled_snapshot(activity)
+
             calendar_message = ""
             if sync_calendar and self.app_id and self.app_secret:
                 from src.feishu_bot.calendar_service import sync_secondclass_to_calendar
@@ -180,6 +187,8 @@ class EnrollmentService:
                         message="取消报名失败",
                     )
 
+            await self._delete_enrolled_snapshot(activity_id)
+
             logger.info(f"取消报名成功: {display_name}")
             return EnrollmentResult(
                 status=EnrollmentStatus.SUCCESS,
@@ -197,3 +206,28 @@ class EnrollmentService:
                 message=str(e),
                 error=e,
             )
+
+    async def _upsert_enrolled_snapshot(self, activity: SecondClass) -> None:
+        latest_db = self._get_latest_db_path()
+        if latest_db is None:
+            logger.warning(f"报名成功但未找到活动快照数据库，跳过已报名快照写入: {activity.id}")
+            return
+
+        from src.core.secondclass_db import SecondClassDB
+
+        await SecondClassDB(latest_db).upsert_enrolled_secondclass(activity, deep_scaned=True)
+
+    async def _delete_enrolled_snapshot(self, activity_id: str) -> None:
+        latest_db = self._get_latest_db_path()
+        if latest_db is None:
+            logger.warning(f"取消报名成功但未找到活动快照数据库，跳过已报名快照删除: {activity_id}")
+            return
+
+        from src.core.secondclass_db import SecondClassDB
+
+        await SecondClassDB(latest_db).delete_enrolled_secondclass(activity_id)
+
+    def _get_latest_db_path(self):
+        if self.db_manager is None:
+            return None
+        return self.db_manager.get_latest_db()
