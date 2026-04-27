@@ -2,7 +2,6 @@
 
 from pyustc.young import Status
 
-from src.core import DatabaseManager, UserPreferenceManager
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -12,18 +11,6 @@ logger = get_logger("feishu.handler.preference")
 
 
 class PreferenceHandler(CommandHandler):
-    _db_manager: DatabaseManager = None
-    _user_preference_manager: UserPreferenceManager = None
-
-    @classmethod
-    def set_dependencies(
-            cls,
-            db_manager: DatabaseManager,
-            user_preference_manager: UserPreferenceManager
-    ) -> None:
-        cls._db_manager = db_manager
-        cls._user_preference_manager = user_preference_manager
-
     @property
     def command(self) -> str:
         return "preference"

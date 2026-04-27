@@ -1,10 +1,8 @@
 """/info 指令处理器"""
 
-import aiosqlite
 from pyustc.young import SecondClass, Status
 
-from src.core.filter import SecondClassFilter
-from src.models import UserSession, secondclass_from_db_row
+from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
@@ -29,10 +27,12 @@ class InfoHandler(CommandHandler):
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
+        if not self._activity_query_service:
+            return Response.text("活动查询服务未初始化，请稍后重试")
 
         try:
             if not args:
-                filter = SecondClassFilter().exclude_status([
+                excluded_statuses = [
                     Status.ABNORMAL,
                     # Status.PUBLISHED,
                     # Status.APPLYING,
@@ -44,11 +44,11 @@ class InfoHandler(CommandHandler):
                     Status.HOUR_APPROVED,
                     Status.HOUR_REJECTED,
                     Status.FINISHED,
-                ])
+                ]
                 hint = "仅显示发布、报名中、报名已结束的活动\n"
             else:
                 if args[0] == "结项" or args[0] == "end" or args[0] == "已经结项" or args[0] == "已结项":
-                    filter = SecondClassFilter().exclude_status([
+                    excluded_statuses = [
                         # Status.ABNORMAL,
                         Status.PUBLISHED,
                         Status.APPLYING,
@@ -60,10 +60,10 @@ class InfoHandler(CommandHandler):
                         Status.HOUR_APPROVED,
                         Status.HOUR_REJECTED,
                         # Status.FINISHED,
-                    ])
+                    ]
                     hint = "显示结项和异常结项的所有活动\n"
                 elif args[0] == "即将结项" or args[0] == "未结项" or args[0] == "pending" or args[0] == "尚未结项":
-                    filter = SecondClassFilter().exclude_status([
+                    excluded_statuses = [
                         Status.ABNORMAL,
                         Status.PUBLISHED,
                         Status.APPLYING,
@@ -75,10 +75,10 @@ class InfoHandler(CommandHandler):
                         # Status.HOUR_APPROVED,
                         # Status.HOUR_REJECTED,
                         Status.FINISHED,
-                    ])
+                    ]
                     hint = "显示公示/追加公示中、公示结束、学时申请中、学时审核通过、学时驳回的活动\n"
                 elif args[0] == "异常" or args[0] == "abnormal":
-                    filter = SecondClassFilter().exclude_status([
+                    excluded_statuses = [
                         Status.ABNORMAL,
                         Status.PUBLISHED,
                         Status.APPLYING,
@@ -90,17 +90,17 @@ class InfoHandler(CommandHandler):
                         Status.HOUR_APPROVED,
                         # Status.HOUR_REJECTED,
                         Status.FINISHED,
-                    ])
+                    ]
                     hint = "显示学时驳回的活动\n"
                 else:
                     return Response.error("未知状态码，请输入 /info [all/else]")
 
-            activities = await self._get_enrolled_activities(latest_db, filter)
+            activities = await self._get_enrolled_activities(latest_db, excluded_statuses)
 
             if not activities:
                 return Response.text("已报名活动\n\n您目前没有报名任何活动")
 
-            session.set_displayed_activities(
+            await session.context_manager.set_displayed_activities(
                 activities=activities,
                 source="info"
             )
@@ -115,18 +115,8 @@ class InfoHandler(CommandHandler):
             logger.error(f"查询已报名活动失败: {e}")
             return Response.error(str(e), context="查询已报名活动")
 
-    async def _get_enrolled_activities(self, db_path, filter: SecondClassFilter | None = None) -> list[SecondClass]:
-        activities = []
-
-        async with aiosqlite.connect(db_path) as conn:
-            conn.row_factory = aiosqlite.Row
-            async with conn.execute(
-                    "SELECT * FROM enrolled_secondclass ORDER BY name"
-            ) as cursor:
-                async for row in cursor:
-                    activities.append(secondclass_from_db_row(dict(row)))
-
-        if filter:
-            activities = filter(activities)
-
-        return activities
+    async def _get_enrolled_activities(self, db_path, excluded_statuses: list[Status]) -> list[SecondClass]:
+        return await self._activity_query_service.list_enrolled_activities(
+            db_path,
+            excluded_statuses=excluded_statuses,
+        )

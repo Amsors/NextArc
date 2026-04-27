@@ -9,7 +9,7 @@ from typing import Optional, TYPE_CHECKING
 from openai import AsyncOpenAI, APIError, RateLimitError, APITimeoutError
 from pyustc.young import SecondClass
 
-from src.models.activity import (
+from src.models.secondclass_view import (
     get_display_time,
     get_status_text,
     get_apply_progress,

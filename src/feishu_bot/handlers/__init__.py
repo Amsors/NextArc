@@ -1,6 +1,6 @@
 """指令处理器模块"""
 
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
 
 from .alive import AliveHandler
 from .base import CommandHandler
@@ -13,12 +13,16 @@ from .interested import InterestedHandler
 from .menu import MenuHandler
 from .join import JoinHandler
 from .preference import PreferenceHandler
+from .restart import RestartHandler
 from .search import SearchHandler
 from .upgrade import UpgradeHandler
 from .valid import ValidHandler
 
+if TYPE_CHECKING:
+    from src.app import AppContext
 
-def get_all_handlers() -> Dict[str, CommandHandler]:
+
+def get_all_handlers(app_context: "AppContext") -> Dict[str, CommandHandler]:
     ret = {}
 
     check_instructions = [
@@ -34,7 +38,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "扫描"
     ]
     for instruction in check_instructions:
-        ret[instruction] = CheckHandler()
+        ret[instruction] = CheckHandler(app_context)
 
     info_instructions = [
         "info",
@@ -42,7 +46,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "已经报名",
     ]
     for instruction in info_instructions:
-        ret[instruction] = InfoHandler()
+        ret[instruction] = InfoHandler(app_context)
 
     cancel_instructions = [
         "cancel",
@@ -50,7 +54,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "取消",
     ]
     for instruction in cancel_instructions:
-        ret[instruction] = CancelHandler()
+        ret[instruction] = CancelHandler(app_context)
 
     search_instructions = [
         "search",
@@ -58,7 +62,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "查找",
     ]
     for instruction in search_instructions:
-        ret[instruction] = SearchHandler()
+        ret[instruction] = SearchHandler(app_context)
 
     join_instructions = [
         "join",
@@ -67,7 +71,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "参与"
     ]
     for instruction in join_instructions:
-        ret[instruction] = JoinHandler()
+        ret[instruction] = JoinHandler(app_context)
 
     alive_instructions = [
         "alive",
@@ -77,7 +81,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "系统",
     ]
     for instruction in alive_instructions:
-        ret[instruction] = AliveHandler()
+        ret[instruction] = AliveHandler(app_context)
 
     help_instructions = [
         "help",
@@ -86,7 +90,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "？",
     ]
     for instruction in help_instructions:
-        ret[instruction] = HelpHandler()
+        ret[instruction] = HelpHandler(app_context)
 
     valid_instructions = [
         "valid",
@@ -94,7 +98,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "可报名活动",
     ]
     for instruction in valid_instructions:
-        ret[instruction] = ValidHandler()
+        ret[instruction] = ValidHandler(app_context)
 
     ignore_instructions = [
         "ignore",
@@ -102,14 +106,14 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "忽略",
     ]
     for instruction in ignore_instructions:
-        ret[instruction] = IgnoreHandler()
+        ret[instruction] = IgnoreHandler(app_context)
 
     interested_instructions = [
         "interested",
         "感兴趣",
     ]
     for instruction in interested_instructions:
-        ret[instruction] = InterestedHandler()
+        ret[instruction] = InterestedHandler(app_context)
 
     menu_instructions = [
         "菜单",
@@ -117,7 +121,7 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "功能",
     ]
     for instruction in menu_instructions:
-        ret[instruction] = MenuHandler()
+        ret[instruction] = MenuHandler(app_context)
 
     upgrade_instructions = [
         "upgrade",
@@ -125,14 +129,21 @@ def get_all_handlers() -> Dict[str, CommandHandler]:
         "更新程序",
     ]
     for instruction in upgrade_instructions:
-        ret[instruction] = UpgradeHandler()
+        ret[instruction] = UpgradeHandler(app_context)
+
+    restart_instructions = [
+        "restart",
+        "重启",
+    ]
+    for instruction in restart_instructions:
+        ret[instruction] = RestartHandler(app_context)
 
     preference_instructions = [
         "preference",
         "偏好",
     ]
     for instruction in preference_instructions:
-        ret[instruction] = PreferenceHandler()
+        ret[instruction] = PreferenceHandler(app_context)
 
     return ret
 
@@ -152,5 +163,6 @@ __all__ = [
     "InterestedHandler",
     "MenuHandler",
     "UpgradeHandler",
+    "RestartHandler",
     "PreferenceHandler",
 ]

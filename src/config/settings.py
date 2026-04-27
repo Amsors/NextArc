@@ -32,8 +32,17 @@ class FilterConfig(BaseModel):
 class MonitorConfig(BaseModel):
     interval_minutes: int = Field(default=15, ge=1, le=1440)
     notify_new_activities: bool = Field(default=True, description="发现新活动时发送飞书通知")
+    notify_enrolled_change: bool = Field(default=False, description="已报名活动字段变更时发送飞书通知")
     notify_filtered_activities: bool = Field(default=True, description="是否推送被筛选掉的活动列表")
     use_ai_filter: bool = Field(default=False, description="是否使用 AI 筛选新活动")
+    add_sub_secondclass_into_db: bool = Field(
+        default=False,
+        description="扫描活动数据库时是否将系列活动的子活动也写入 all_secondclass",
+    )
+    keep_old_activity: bool = Field(
+        default=True,
+        description="是否保留旧快照中仍未结束但本次列表接口未返回的活动",
+    )
 
 
 class VersionCheckConfig(BaseModel):
@@ -42,7 +51,7 @@ class VersionCheckConfig(BaseModel):
     hour: int = Field(default=18, ge=0, le=23, description="检查时间 - 小时")
     minute: int = Field(default=0, ge=0, le=59, description="检查时间 - 分钟")
     remote_name: str = Field(default="origin", description="远程仓库名称")
-    branch_name: str = Field(default="main", description="要跟踪的分支名称")
+    branch_name: str = Field(default="main", description="要跟踪并运行的分支名称")
     auto_fetch: bool = Field(default=True, description="检查前是否自动执行 git fetch")
 
 
@@ -53,6 +62,9 @@ class SendAIFilterDetailConfig(BaseModel):
 
 class CalendarSyncConfig(BaseModel):
     enabled: bool = Field(default=True, description="报名成功后是否自动同步到飞书日历")
+    ignore_submit_type: bool = Field(
+        default=False, description="是否忽略提交作品类活动的日历同步"
+    )
 
 
 class FeishuConfig(BaseModel):
@@ -114,6 +126,13 @@ class DatabaseConfig(BaseModel):
         if self.preference_db_path is not None:
             return self.preference_db_path
         return self.data_dir / "user_preference.db"
+
+
+class SearchConfig(BaseModel):
+    mode: Literal["name_like", "full_text"] = Field(
+        default="name_like",
+        description="活动搜索模式：name_like 保持旧的标题子串搜索；full_text 使用 SQLite FTS5 trigram 扩展搜索字段"
+    )
 
 
 class LogFileConfig(BaseModel):
@@ -262,6 +281,7 @@ class Settings(BaseSettings):
     version_check: VersionCheckConfig = VersionCheckConfig()
     feishu: FeishuConfig = FeishuConfig()
     database: DatabaseConfig = DatabaseConfig()
+    search: SearchConfig = SearchConfig()
     logging: LogConfig = LogConfig()
     ai: AIConfig = AIConfig()
 

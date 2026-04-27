@@ -1,6 +1,5 @@
 """不感兴趣指令处理器"""
 
-from src.core import UserPreferenceManager
 from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -10,12 +9,6 @@ logger = get_logger("feishu.handler.ignore")
 
 
 class IgnoreHandler(CommandHandler):
-    _ignore_manager: UserPreferenceManager = None
-
-    @classmethod
-    def set_ignore_manager(cls, ignore_manager: UserPreferenceManager) -> None:
-        cls._ignore_manager = ignore_manager
-
     @property
     def command(self) -> str:
         return "ignore"
@@ -27,7 +20,9 @@ class IgnoreHandler(CommandHandler):
         )
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
-        if not self._ignore_manager:
+        context_manager = session.context_manager
+        preference_manager = self._user_preference_manager
+        if not preference_manager:
             return Response.text("忽略功能未初始化")
 
         if not args:
@@ -42,14 +37,14 @@ class IgnoreHandler(CommandHandler):
             )
 
         if args[0] == "AI" or args[0] == "ai":
-            ai_filtered_activities = session.get_filtered_activities_by_type("ai")
+            ai_filtered_activities = await context_manager.get_filtered_activities_by_type("ai")
 
             if not ai_filtered_activities:
                 return Response.text("没有AI忽略的活动")
 
             ai_filtered_activities_ids = [activity.activity_id for activity in ai_filtered_activities]
 
-            success_count, failed_count = await self._ignore_manager.add_ignored_activities(ai_filtered_activities_ids)
+            success_count, failed_count = await preference_manager.add_ignored_activities(ai_filtered_activities_ids)
 
             if failed_count != 0:
                 return Response.text(f"添加失败，{failed_count}个活动未添加, {success_count}个活动成功添加")
@@ -58,7 +53,7 @@ class IgnoreHandler(CommandHandler):
 
         indices_str = " ".join(args).strip()
 
-        displayed_activities = session.get_all_displayed_activities()
+        displayed_activities = await context_manager.get_all_displayed_activities()
 
         if not displayed_activities:
             return Response.text(
@@ -68,7 +63,7 @@ class IgnoreHandler(CommandHandler):
                 "• /search <关键词> - 搜索活动"
             )
 
-        indices, errors = session.parse_displayed_indices(indices_str)
+        indices, errors = await context_manager.parse_displayed_indices(indices_str)
 
         if errors:
             error_msg = "\n".join(f"  • {e}" for e in errors)
@@ -84,7 +79,7 @@ class IgnoreHandler(CommandHandler):
         activity_names = []
 
         for idx in indices:
-            activity = session.get_displayed_activity_by_index(idx)
+            activity = await context_manager.get_displayed_activity_by_index(idx)
             if activity:
                 activity_ids.append(activity.id)
                 activity_names.append(f"[{idx}] {activity.name}")
@@ -92,7 +87,7 @@ class IgnoreHandler(CommandHandler):
         if not activity_ids:
             return Response.text("无法获取活动信息，请重试")
 
-        success_count, failed_count = await self._ignore_manager.add_ignored_activities(activity_ids)
+        success_count, failed_count = await preference_manager.add_ignored_activities(activity_ids)
 
         if success_count == 0:
             return Response.text("添加失败，请稍后重试")

@@ -50,23 +50,57 @@ class UpgradeHandler(CommandHandler):
 
             logger.info("正在检查版本差异...")
             result = await version_checker.check_for_updates()
+            current_branch = await version_checker.get_current_branch()
+            target_branch = version_checker.config.branch_name
 
             if result is None:
+                if current_branch != target_branch:
+                    current_sha = await version_checker.get_current_version()
+                    latest_sha = await version_checker.get_remote_version()
+                    if not current_sha or not latest_sha:
+                        return Response.text("无法获取当前版本或目标分支版本，请检查 git 仓库状态")
+
+                    await session.context_manager.set_confirmation(
+                        operation="upgrade",
+                        data={
+                            "current_sha": current_sha,
+                            "latest_sha": latest_sha,
+                            "current_branch": current_branch or "detached",
+                            "target_branch": target_branch,
+                            "commits": [],
+                        }
+                    )
+
+                    return Response.text(
+                        "当前代码已无新增提交需要拉取，但运行分支与配置不一致。\n"
+                        "\n"
+                        f"当前分支: {current_branch or 'detached'}\n"
+                        f"目标分支: {target_branch}\n"
+                        f"目标版本: {latest_sha[:7]}\n"
+                        "\n"
+                        "更新后将切换到目标分支并自动重启应用。\n"
+                        "\n"
+                        "是否立即切换并重启？(回复「确认」或「取消」)"
+                    )
+
                 current_sha = await version_checker.get_current_version()
                 current_short = current_sha[:7] if current_sha else "unknown"
                 return Response.text(
                     f"当前已是最新版本，无需更新。\n"
                     f"\n"
+                    f"当前分支: {current_branch or 'detached'}\n"
                     f"当前版本: {current_short}"
                 )
 
             logger.info(f"发现新版本: {result.current_sha[:7]} -> {result.latest_sha[:7]}")
 
-            session.set_confirm(
+            await session.context_manager.set_confirmation(
                 operation="upgrade",
                 data={
                     "current_sha": result.current_sha,
                     "latest_sha": result.latest_sha,
+                    "current_branch": current_branch or "detached",
+                    "target_branch": target_branch,
                     "commits": [
                         {
                             "sha": c.sha,
@@ -81,6 +115,8 @@ class UpgradeHandler(CommandHandler):
             lines = [
                 "发现新版本！",
                 "",
+                f"当前分支: {current_branch or 'detached'}",
+                f"目标分支: {target_branch}",
                 f"当前版本: {result.current_sha[:7]}",
                 f"最新版本: {result.latest_sha[:7]}",
                 f"落后提交: {result.commits_behind} 个",
@@ -109,32 +145,67 @@ class UpgradeHandler(CommandHandler):
             return Response.error(str(e), context="检查更新")
 
     async def execute_upgrade(self, session) -> Response:
-        if not session.confirm or session.confirm.operation != "upgrade":
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation or confirmation.operation != "upgrade":
             return Response.text("升级会话已过期，请重新执行 /upgrade")
 
-        data = session.confirm.data
+        version_checker = self._scanner.version_checker
+        if not version_checker:
+            await session.context_manager.clear_confirmation()
+            return Response.text("版本检查器未启用，请重新执行 /upgrade")
+
+        data = confirmation.data
         current_sha = data.get("current_sha", "")[:7]
         latest_sha = data.get("latest_sha", "")[:7]
+        current_branch = data.get("current_branch", "unknown")
+        target_branch = data.get("target_branch") or version_checker.config.branch_name
 
-        logger.info(f"用户确认升级: {current_sha} -> {latest_sha}")
-
-        version_checker = self._scanner.version_checker
+        logger.info(f"用户确认升级: {current_branch} -> {target_branch}, {current_sha} -> {latest_sha}")
 
         old_version = self._read_version_file()
         logger.info(f"更新前版本号: {old_version}")
 
         progress_msg = (
             "正在执行更新...\n"
+            f"  分支: {current_branch} -> {target_branch}\n"
             f"  当前: {current_sha}\n"
             f"  目标: {latest_sha}"
         )
+        logger.info(progress_msg)
 
         try:
-            logger.info("执行 git pull...")
+            logger.info("更新前 fetch 目标分支...")
+            fetch_success = await version_checker.fetch_remote()
+            if not fetch_success:
+                await session.context_manager.clear_confirmation()
+                return Response.text(
+                    "更新失败\n"
+                    "\n"
+                    f"无法拉取远程分支: {version_checker.target_remote_ref}\n"
+                    "\n"
+                    f"当前版本保持不变: {current_sha}"
+                )
+
+            logger.info("切换到目标分支...")
+            switch_code, switch_stdout, switch_stderr = await version_checker.switch_to_target_branch()
+            if switch_code != 0:
+                await session.context_manager.clear_confirmation()
+                error_detail = self._parse_git_error(switch_stderr, switch_stdout)
+                logger.error(f"git switch 失败: {error_detail}")
+                return Response.text(
+                    f"更新失败\n"
+                    f"\n"
+                    f"无法切换到目标分支 {target_branch}。\n"
+                    f"错误信息：{error_detail}\n"
+                    f"\n"
+                    f"当前版本保持不变: {current_sha}"
+                )
+
+            logger.info("执行 git pull --ff-only...")
             returncode, stdout, stderr = await self._run_git_pull(version_checker)
 
             if returncode != 0:
-                session.clear_confirm()
+                await session.context_manager.clear_confirmation()
                 error_detail = self._parse_git_error(stderr, stdout)
                 logger.error(f"git pull 失败: {error_detail}")
 
@@ -144,7 +215,8 @@ class UpgradeHandler(CommandHandler):
                     f"错误信息：{error_detail}\n"
                     f"\n"
                     f"请联系开发者。\n"
-                    f"当前版本保持不变: {current_sha}"
+                    f"当前分支已切换到: {target_branch}\n"
+                    f"但版本可能未完成更新，请检查 git 状态。"
                 )
 
             logger.info("git pull 成功")
@@ -154,7 +226,7 @@ class UpgradeHandler(CommandHandler):
 
             version_changed, old_ver_str, new_ver_str = self._compare_versions(old_version, new_version)
 
-            session.clear_confirm()
+            await session.context_manager.clear_confirmation()
 
             version_info = ""
             extra_notifications = []
@@ -180,6 +252,7 @@ class UpgradeHandler(CommandHandler):
             success_msg = (
                 f"更新成功！\n"
                 f"\n"
+                f"当前分支: {target_branch}\n"
                 f"已更新至: {latest_sha}\n"
                 f"{version_info}"
                 f"{extra_msg}"
@@ -191,7 +264,7 @@ class UpgradeHandler(CommandHandler):
             return Response.text(success_msg)
 
         except Exception as e:
-            session.clear_confirm()
+            await session.context_manager.clear_confirmation()
             logger.error(f"升级过程异常: {e}")
             return Response.error(str(e), context="执行升级")
 
@@ -202,6 +275,7 @@ class UpgradeHandler(CommandHandler):
             proc = await asyncio.create_subprocess_exec(
                 "git",
                 "pull",
+                "--ff-only",
                 version_checker.config.remote_name,
                 version_checker.config.branch_name,
                 cwd=project_root,

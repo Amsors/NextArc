@@ -1,10 +1,9 @@
 """/valid 指令处理器"""
 
-import aiosqlite
-from pyustc.young import SecondClass, Status
+from pyustc.young import SecondClass
 
-from src.core import EnrolledFilter, OverlayFilter, UserPreferenceManager
-from src.models import UserSession, secondclass_from_db_row
+from src.core import FilterContext
+from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
@@ -13,12 +12,6 @@ logger = get_logger("feishu.handler.valid")
 
 
 class ValidHandler(CommandHandler):
-    _user_preference_manager: UserPreferenceManager = None
-
-    @classmethod
-    def set_ignore_manager(cls, user_preference_manager: UserPreferenceManager) -> None:
-        cls._user_preference_manager = user_preference_manager
-
     @property
     def command(self) -> str:
         return "valid"
@@ -69,18 +62,23 @@ class ValidHandler(CommandHandler):
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update 或 /valid 重新扫描")
+        if not self._activity_query_service:
+            return Response.text("活动查询服务未初始化，请稍后重试")
 
         try:
             activities = await self._get_valid_activities(latest_db)
 
             if deep_update:
-                async with self._auth_manager.create_session_once() as service:
-                    for activity in activities:
-                        try:
-                            await activity.update()
-                            logger.debug(f"更新活动信息成功: {activity.name}")
-                        except Exception as e:
-                            logger.warning(f"更新活动 {activity.id} 信息失败: {e}")
+                update_service = self._activity_update_service
+                if update_service is None:
+                    return Response.text("活动更新服务未初始化，请稍后重试")
+
+                update_result = await update_service.update_activities(
+                    activities,
+                    continue_on_error=True,
+                )
+                if update_result.failed:
+                    logger.warning(f"/valid 深度更新失败 {update_result.failed_count} 个活动")
 
             if not activities:
                 lines = ["可报名活动\n\n目前暂无可报名的活动"]
@@ -90,86 +88,27 @@ class ValidHandler(CommandHandler):
                 return Response.text("\n".join(lines))
 
             original_count = len(activities)
-            filter_info = []
-            db_filtered = []
-            time_filtered = []
-            ai_filtered = []
-            enrolled_filtered = []
-            overlay_filtered = []
-            ai_keep_reasons = {}
+            pipeline = self.app_context.filter_pipeline
+            pipeline_result = await pipeline.apply(
+                activities,
+                FilterContext(
+                    latest_db=latest_db,
+                    enable_filters=not show_all,
+                    include_interested_restore=not show_all,
+                    use_ai_cache=not ai_filter_again,
+                    force_ai_review=ai_filter_again,
+                    ignore_overlap=self._settings.filter.ignore_overlap,
+                    source="valid",
+                    apply_enrolled_filter=not show_all,
+                ),
+            )
+            activities = pipeline_result.kept
+            filter_info = pipeline_result.summaries
+            filter_result = pipeline_result.non_empty_filtered()
+            ai_keep_reasons = pipeline_result.ai_keep_reasons
+            overlap_reasons = pipeline_result.overlap_reasons
 
-            if not show_all:
-                enrolled_ids = await EnrolledFilter.get_enrolled_ids_from_db(latest_db)
-                if enrolled_ids:
-                    enrolled_filter = EnrolledFilter(enrolled_ids)
-                    activities, enrolled_filtered = enrolled_filter.filter_activities(activities)
-                    if enrolled_filtered:
-                        filter_info.append(f"已报名筛选已过滤 {len(enrolled_filtered)} 个活动")
-                        logger.info(f"已报名筛选过滤了 {len(enrolled_filtered)} 个活动")
-
-                if self._user_preference_manager:
-                    activities, db_filtered = await self._user_preference_manager.filter_activities(activities)
-                    if db_filtered:
-                        filter_info.append(f"数据库筛选已过滤 {len(db_filtered)} 个不感兴趣的活动")
-                        logger.info(f"数据库筛选过滤了 {len(db_filtered)} 个活动")
-
-                enrolled_time_ranges = await OverlayFilter.get_enrolled_time_ranges_from_db(latest_db)
-                overlap_reasons: dict[str, str] = {}
-                if enrolled_time_ranges:
-                    from src.config import get_settings
-                    ignore_overlap = get_settings().filter.ignore_overlap
-                    overlay_filter = OverlayFilter(enrolled_time_ranges)
-                    activities, overlay_filtered = overlay_filter.filter_activities(
-                        activities, ignore_overlap=ignore_overlap
-                    )
-                    overlap_reasons = overlay_filter.overlap_reasons
-                    if overlay_filtered:
-                        filter_info.append(f"重叠筛选已过滤 {len(overlay_filtered)} 个活动")
-                        logger.info(f"重叠筛选过滤了 {len(overlay_filtered)} 个活动")
-                    if overlap_reasons:
-                        filter_info.append(f"重叠筛选标记了 {len(overlap_reasons)} 个活动但仍保留")
-                        logger.info(f"重叠筛选标记了 {len(overlap_reasons)} 个活动但仍保留")
-                else:
-                    logger.debug("没有已报名活动时间记录，跳过重叠筛选")
-
-                if self._scanner.use_time_filter and self._scanner.time_filter:
-                    activities, time_filtered = self._scanner.time_filter.filter_activities(activities)
-                    if time_filtered:
-                        filter_info.append(f"时间筛选已过滤 {len(time_filtered)} 个活动")
-                        logger.info(f"时间筛选过滤了 {len(time_filtered)} 个活动")
-
-                if self._scanner.use_ai_filter and self._scanner.ai_filter and self._scanner.ai_user_info:
-                    ai_user_info = self._scanner.ai_user_info
-                    activities, ai_filtered, ai_keep_reasons = await self._scanner.ai_filter.filter_activities(
-                        activities,
-                        ai_user_info,
-                        write_to_db=True,
-                        prefer_cached=not ai_filter_again,
-                        preference_manager=self._user_preference_manager,
-                    )
-                    ai_filtered_count = len(ai_filtered)
-                    if ai_filtered_count > 0:
-                        filter_info.append(f"AI 筛选已过滤 {ai_filtered_count} 个活动")
-                        logger.info(f"AI 筛选过滤了 {ai_filtered_count} 个活动")
-                    logger.debug(f"/valid AI筛选保留原因: {ai_keep_reasons}")
-                else:
-                    logger.debug(f"/valid 跳过AI筛选: use_ai_filter={self._scanner.use_ai_filter}, "
-                                f"has_ai_filter={self._scanner.ai_filter is not None}, "
-                                f"has_user_info={bool(self._scanner.ai_user_info)}")
-
-            filter_result = dict()
-            if ai_filtered:
-                filter_result["ai"] = ai_filtered
-            if db_filtered:
-                filter_result["db"] = db_filtered
-            if time_filtered:
-                filter_result["time"] = time_filtered
-            if enrolled_filtered:
-                filter_result["enrolled"] = enrolled_filtered
-            if overlay_filtered:
-                filter_result["overlay"] = overlay_filtered
-
-            session.set_displayed_activities(
+            await session.context_manager.set_displayed_activities(
                 activities=activities,
                 source="valid",
                 filtered_activities=filter_result
@@ -210,19 +149,11 @@ class ValidHandler(CommandHandler):
             lines.append("（使用折叠面板展示，点击活动名称查看详情）")
 
             if not show_all:
-                has_filter = (
-                        self._scanner.use_ai_filter or
-                        self._scanner.use_time_filter or
-                        self._user_preference_manager or
-                        True
-                )
-                if has_filter:
-                    lines.append("发送「/valid 全部」查看所有活动（不进行筛选）")
+                lines.append("发送「/valid 全部」查看所有活动（不进行筛选）")
 
             lines.append("对活动不感兴趣？发送「不感兴趣 序号」或「不感兴趣 全部」")
 
-            from src.config import get_settings
-            feishu_config = get_settings().feishu
+            feishu_config = self._settings.feishu
             card_ai_reasons = ai_keep_reasons if feishu_config.send_ai_filter_detail.kept else None
             logger.info(f"/valid 卡片配置: kept={feishu_config.send_ai_filter_detail.kept}, "
                        f"ai_keep_reasons_keys={list(card_ai_reasons.keys()) if card_ai_reasons else []}")
@@ -243,23 +174,6 @@ class ValidHandler(CommandHandler):
             return Response.error(str(e), context="查询可报名活动")
 
     async def _get_valid_activities(self, db_path) -> list[SecondClass]:
-        activities = []
-
-        valid_status_codes = [Status.APPLYING.code, Status.PUBLISHED.code]
-
-        async with aiosqlite.connect(db_path) as conn:
-            conn.row_factory = aiosqlite.Row
-            placeholders = ",".join(["?"] * len(valid_status_codes))
-            async with conn.execute(
-                    f"""
-                SELECT * FROM all_secondclass
-                WHERE status IN ({placeholders})
-                ORDER BY name
-                """,
-                    valid_status_codes
-            ) as cursor:
-                async for row in cursor:
-                    activities.append(secondclass_from_db_row(dict(row)))
-
+        activities = await self._activity_query_service.list_valid_activities(db_path)
         logger.debug(f"从数据库获取到 {len(activities)} 个可报名活动")
         return activities

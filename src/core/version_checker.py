@@ -52,6 +52,10 @@ class VersionChecker:
         git_dir = self.project_root / ".git"
         return git_dir.exists() and git_dir.is_dir()
 
+    @property
+    def target_remote_ref(self) -> str:
+        return f"{self.config.remote_name}/{self.config.branch_name}"
+
     async def _run_git_command(self, args: list[str]) -> tuple[int, str, str]:
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -81,8 +85,15 @@ class VersionChecker:
             return None
         return stdout
 
+    async def get_current_branch(self) -> Optional[str]:
+        returncode, stdout, stderr = await self._run_git_command(["branch", "--show-current"])
+        if returncode != 0:
+            logger.warning(f"获取当前分支失败: {stderr}")
+            return None
+        return stdout or None
+
     async def get_remote_version(self) -> Optional[str]:
-        remote_ref = f"{self.config.remote_name}/{self.config.branch_name}"
+        remote_ref = self.target_remote_ref
         logger.debug(f"获取远程版本: {remote_ref}")
         returncode, stdout, stderr = await self._run_git_command(["rev-parse", remote_ref])
         if returncode != 0:
@@ -91,15 +102,43 @@ class VersionChecker:
         return stdout
 
     async def fetch_remote(self) -> bool:
-        logger.debug(f"正在 fetch 远程仓库 {self.config.remote_name}...")
+        remote_refspec = (
+            f"+refs/heads/{self.config.branch_name}:"
+            f"refs/remotes/{self.config.remote_name}/{self.config.branch_name}"
+        )
+        logger.debug(f"正在 fetch 远程仓库 {self.target_remote_ref}...")
         returncode, stdout, stderr = await self._run_git_command(
-            ["fetch", self.config.remote_name, self.config.branch_name]
+            ["fetch", self.config.remote_name, remote_refspec]
         )
         if returncode != 0:
             logger.warning(f"git fetch 失败: {stderr}")
             return False
         logger.info("git fetch 成功")
         return True
+
+    async def local_branch_exists(self, branch_name: str | None = None) -> bool:
+        branch = branch_name or self.config.branch_name
+        returncode, _stdout, _stderr = await self._run_git_command(
+            ["show-ref", "--verify", "--quiet", f"refs/heads/{branch}"]
+        )
+        return returncode == 0
+
+    async def switch_to_target_branch(self) -> tuple[int, str, str]:
+        current_branch = await self.get_current_branch()
+        target_branch = self.config.branch_name
+
+        if current_branch == target_branch:
+            logger.info(f"当前已经在目标分支 {target_branch}")
+            return (0, "", "")
+
+        if await self.local_branch_exists(target_branch):
+            logger.info(f"切换到本地目标分支 {target_branch}")
+            return await self._run_git_command(["switch", target_branch])
+
+        logger.info(f"创建并切换到跟踪分支 {target_branch} -> {self.target_remote_ref}")
+        return await self._run_git_command(
+            ["switch", "--track", "-c", target_branch, self.target_remote_ref]
+        )
 
     async def get_commits_between(self, from_sha: str, to_sha: str) -> list[CommitInfo]:
         logger.debug(f"获取 commit 列表: {from_sha[:7]}..{to_sha[:7]}")

@@ -31,10 +31,18 @@ monitor:
   interval_minutes: 15
   # 发现新活动时是否发送飞书通知，默认开启
   notify_new_activities: true
+  # 已报名活动字段变更时是否发送飞书通知，默认关闭
+  notify_enrolled_change: false
   # 是否发送被 AI/数据库/时间等筛选掉的活动列表，默认开启
   notify_filtered_activities: true
   # 是否使用 AI 筛选新活动（需要配置 ai 部分），默认关闭
   use_ai_filter: false
+  # 是否在扫描活动数据库时将“系列活动”的子活动也写入数据库，默认关闭，目前建议关闭
+  # 开启后可能显著增加 ai 筛选的 api 用量；在首次进行 ai 筛选时，大量请求有可能触发 api 提供方的限流机制，导致扫描缓慢或失败
+  add_sub_secondclass_into_db: false
+  # 是否保留旧数据库中仍未结束但本次扫描未返回的活动，默认开启
+  # 开启后会把结束时间晚于当前时间的活动补入新数据库
+  keep_old_activity: true
 
 version_check:
   # 是否启用新版本检查功能，默认开启，建议开启
@@ -50,8 +58,9 @@ version_check:
   minute: 0
   
   # Git 仓库设置，默认无需修改
+  # 更新时会拉取 remote_name/branch_name，并切换到 branch_name 后运行
   remote_name: "origin"     # 远程仓库名称
-  branch_name: "master"       # 要跟踪的分支名称
+  branch_name: "master"     # 要跟踪并运行的分支名称
   auto_fetch: true          # 检查前是否自动执行 git fetch
 
 # AI 筛选配置（使用 OpenAI API 格式）
@@ -193,6 +202,9 @@ feishu:
   # 报名成功后是否同步飞书日历邀请
   calendar_sync:
     enabled: true
+    # 是否忽略提交作品类活动的日历同步，默认 false
+    # 设为 true 时，报名「提交作品」类活动不会尝试同步到飞书日历
+    ignore_submit_type: false
 
 database:
   # 数据库文件存储目录（相对于项目根目录）
@@ -205,6 +217,14 @@ database:
   # 可以指定绝对路径或相对于项目根目录的路径
   # 例如 "./custom/preferences.db" 表示 {项目根目录}/custom/preferences.db
   preference_db_path: "./data/user_preference.db"
+
+search:
+  # 活动搜索模式，默认保持旧行为：只对标题做中文子串搜索
+  # 可选值：
+  #   name_like: 兼容旧 /search <关键词> 行为
+  #   full_text: 显式启用 SQLite FTS5 trigram，搜索标题、组织单位、标签、活动构想、地点
+  # 如果运行环境不支持 FTS5 trigram，会自动回退到 name_like
+  mode: "name_like"
 
 logging:
   # 日志级别: DEBUG, INFO, WARNING, ERROR

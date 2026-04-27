@@ -35,11 +35,27 @@ class SecondClassBatchUpdater:
 
         logger.info(f"开始批量更新 {len(instances)} 个 SecondClass 实例，并发数: {self._max_concurrent}")
 
-        tasks = [self._update_single(sc) for sc in instances]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
         successful = []
         failed = []
+
+        if continue_on_error:
+            tasks = [self._update_single(sc) for sc in instances]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        else:
+            pending = {asyncio.create_task(self._update_single(sc)) for sc in instances}
+            results = []
+            try:
+                for task in asyncio.as_completed(pending):
+                    result = await task
+                    results.append(result)
+                    if not result[1]:
+                        for pending_task in pending:
+                            if not pending_task.done():
+                                pending_task.cancel()
+                        await asyncio.gather(*pending, return_exceptions=True)
+                        break
+            finally:
+                pending.clear()
 
         for result in results:
             if isinstance(result, Exception):

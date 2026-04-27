@@ -1,23 +1,15 @@
 """/alive 指令处理器"""
 
-from src.core import UserPreferenceManager
 from src.notifications import Response
 from src.utils.formatter import format_status_message
 from src.utils.logger import get_logger
 
 from .base import CommandHandler
-from ...core.ignore_manager import IgnoreManager
 
 logger = get_logger("feishu.handler.alive")
 
 
 class AliveHandler(CommandHandler):
-    _ignore_manager: UserPreferenceManager = None
-
-    @classmethod
-    def set_ignore_manager(cls, ignore_manager: IgnoreManager) -> None:
-        cls._ignore_manager = ignore_manager
-
     @property
     def command(self) -> str:
         return "alive"
@@ -40,9 +32,9 @@ class AliveHandler(CommandHandler):
 
             ignore_count = 0
             interested_count = 0
-            if self._ignore_manager:
-                ignore_count = await self._ignore_manager.get_ignored_count()
-                interested_count = await self._ignore_manager.get_interested_count()
+            if self._user_preference_manager:
+                ignore_count = await self._user_preference_manager.get_ignored_count()
+                interested_count = await self._user_preference_manager.get_interested_count()
 
             status_text = format_status_message(
                 is_running=is_running,

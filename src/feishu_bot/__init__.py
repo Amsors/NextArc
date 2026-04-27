@@ -1,7 +1,19 @@
 """飞书机器人模块"""
 
+from .card_builder import (
+    ActivityCardBuilder,
+    ActivityCardDisplayConfig,
+    ActivityListCardRequest,
+    CardButtonConfig,
+)
 from .card_handler import CardActionHandler
 from .client import FeishuBot
-from .message_sender import MessageSender
 
-__all__ = ["FeishuBot", "MessageSender", "CardActionHandler"]
+__all__ = [
+    "FeishuBot",
+    "CardActionHandler",
+    "ActivityCardBuilder",
+    "ActivityCardDisplayConfig",
+    "ActivityListCardRequest",
+    "CardButtonConfig",
+]

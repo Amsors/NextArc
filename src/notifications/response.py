@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
 
+from src.feishu_bot.card_builder import ActivityListCardRequest, CardButtonConfig
+
 
 class ResponseType(Enum):
     TEXT = auto()
@@ -36,33 +38,32 @@ class Response:
             activities: list,
             title: str = "活动列表",
             filters_applied: list[str] | None = None,
+            ignored_ids: set[str] | None = None,
             button_config: "CardButtonConfig | None" = None,
             ai_reasons: dict[str, str] | None = None,
             overlap_reasons: dict[str, str] | None = None,
-            **metadata  # TODO 检查此处额外元数据
+            **metadata
     ) -> "Response":
         """创建活动列表卡片响应"""
-        from src.utils.formatter import build_activity_card, CardButtonConfig
-
         if button_config is None:
             button_config = CardButtonConfig()
 
-        card_content = build_activity_card(
-            activities, title, button_config=button_config,
-            ai_reasons=ai_reasons, overlap_reasons=overlap_reasons
+        activity_card_request = ActivityListCardRequest(
+            activities=activities,
+            title=title,
+            ignored_ids=ignored_ids or set(),
+            button_config=button_config,
+            ai_reasons=ai_reasons or {},
+            overlap_reasons=overlap_reasons or {},
         )
 
         meta = {
-            "activities": activities,
-            "title": title,
+            "activity_card_request": activity_card_request,
             "filters_applied": filters_applied or [],
-            "button_config": button_config,
-            "ai_reasons": ai_reasons,
-            "overlap_reasons": overlap_reasons,
             **metadata
         }
 
-        return cls(type=ResponseType.CARD, content=card_content, metadata=meta)
+        return cls(type=ResponseType.CARD, content={"kind": "activity_list"}, metadata=meta)
 
     @classmethod
     def enrolled_list(
@@ -73,8 +74,6 @@ class Response:
             **metadata
     ) -> "Response":
         """创建已报名活动列表卡片响应（显示取消报名按钮）"""
-        from src.utils.formatter import CardButtonConfig
-
         button_config = CardButtonConfig(
             show_ignore_button=False,
             show_join_button=False,

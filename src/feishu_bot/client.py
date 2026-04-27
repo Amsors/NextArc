@@ -20,6 +20,7 @@ from src.models import UserSession
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from src.context import ContextManager
     from .card_handler import CardActionHandler
 
 logger = get_logger("feishu")
@@ -41,12 +42,13 @@ class FeishuBot:
             chat_id: Optional[str] = None,
             user_id: Optional[str] = None,
             card_handler: Optional["CardActionHandler"] = None,
+            context_manager: Optional["ContextManager"] = None,
     ):
         self.app_id = app_id
         self.app_secret = app_secret
         self.message_handler = message_handler
         self.card_handler = card_handler
-        self.user_session = UserSession()
+        self.user_session = UserSession(context_manager=context_manager)
         if user_id:
             self.user_session.user_id = user_id
         self._client: Optional[WSClient] = None

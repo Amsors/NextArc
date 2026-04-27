@@ -51,24 +51,3 @@ class EnrolledFilter:
         logger.info(f"已报名筛选完成：{len(passed)} 个通过，{len(filtered)} 个已报名被过滤")
 
         return passed, filtered
-
-    @staticmethod
-    async def get_enrolled_ids_from_db(db_path) -> set[str]:
-        import aiosqlite
-
-        enrolled_ids = set()
-
-        try:
-            async with aiosqlite.connect(db_path) as db:
-                async with db.execute(
-                        "SELECT id FROM enrolled_secondclass"
-                ) as cursor:
-                    async for row in cursor:
-                        enrolled_ids.add(row[0])
-
-            logger.debug(f"从数据库获取到 {len(enrolled_ids)} 个已报名活动")
-
-        except Exception as e:
-            logger.error(f"获取已报名活动列表失败: {e}")
-
-        return enrolled_ids

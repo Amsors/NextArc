@@ -6,7 +6,6 @@ from src.models import UserSession
 from src.notifications import Response
 from src.utils.logger import get_logger
 from .base import CommandHandler
-from ...core import SecondClassFilter
 
 logger = get_logger("feishu.handler.cancel")
 
@@ -33,16 +32,11 @@ class CancelHandler(CommandHandler):
         except ValueError:
             return Response.text("无效的序号，请输入正整数\n\n示例：/cancel 1")
 
-        from src.feishu_bot.handlers.info import InfoHandler
-        info_handler = InfoHandler()
-        info_handler._scanner = self._scanner
-        info_handler._db_manager = self._db_manager
-
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
 
-        filter = SecondClassFilter().exclude_status([
+        excluded_statuses = [
             Status.ABNORMAL,
             Status.HOUR_PUBLIC,
             Status.HOUR_APPEND_PUBLIC,
@@ -51,9 +45,15 @@ class CancelHandler(CommandHandler):
             Status.HOUR_APPROVED,
             Status.HOUR_REJECTED,
             Status.FINISHED,
-        ])
+        ]
 
-        enrolled = await info_handler._get_enrolled_activities(latest_db, filter=filter)
+        if not self._activity_query_service:
+            return Response.text("活动查询服务未初始化，请稍后重试")
+
+        enrolled = await self._activity_query_service.list_enrolled_activities(
+            latest_db,
+            excluded_statuses=excluded_statuses,
+        )
 
         if not enrolled:
             return Response.text("您目前没有报名任何活动")
@@ -63,40 +63,37 @@ class CancelHandler(CommandHandler):
 
         activity = enrolled[index - 1]
 
-        if session.confirm and not session.confirm.is_expired():
+        if await session.context_manager.get_confirmation():
             return Response.text("您有一个待确认的操作，请先回复「确认」或「取消」")
 
-        session.set_confirm("cancel", activity.id, activity.name)
+        await session.context_manager.set_confirmation("cancel", activity.id, activity.name)
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation:
+            return Response.text("创建确认操作失败，请稍后重试")
 
-        return Response.text(session.confirm.get_confirm_prompt())
+        return Response.text(confirmation.get_confirm_prompt())
 
     async def execute_cancel(self, session: UserSession) -> Response:
-        if not session.confirm or session.confirm.operation != "cancel":
+        confirmation = await session.context_manager.get_confirmation()
+        if not confirmation or confirmation.operation != "cancel":
             return Response.text("无效的操作")
 
-        activity_id = session.confirm.activity_id
-        activity_name = session.confirm.activity_name
+        activity_id = confirmation.activity_id
+        activity_name = confirmation.activity_name
 
-        session.clear_confirm()
+        await session.context_manager.clear_confirmation()
 
         logger.info(f"执行取消报名: {activity_name} ({activity_id})")
 
         try:
-            from pyustc.young.second_class import SecondClass
+            enrollment_service = self._enrollment_service
+            if enrollment_service is None:
+                return Response.text("报名服务未初始化，请稍后重试")
 
-            async with self._auth_manager.create_session_once():
-                sc = SecondClass(activity_id, {})
-                result = await sc.cancel_apply()
-
-                logger.info(f"cancel_apply() 返回值: {result}")
-
-                if not result:
-                    return Response.text("取消报名失败")
-
-            logger.info(f"取消报名成功: {activity_name}")
-            return Response.text(
-                f"已成功取消报名「{activity_name}」\n"
-            )
+            result = await enrollment_service.cancel_activity(activity_id, activity_name)
+            if result.success:
+                return Response.text(f"{result.message}\n")
+            return Response.text(result.message)
 
         except Exception as e:
             logger.error(f"取消报名失败: {e}")

@@ -5,13 +5,13 @@ import shutil
 import sqlite3
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Self
 
 from pyustc.young import SecondClass
-from pyustc.young.filter import Department, Label, Module, TimePeriod
 
+from src.core.search_index import ensure_base_search_indexes, rebuild_full_text_search_index
+from src.models.secondclass_mapper import secondclass_to_db_row
 from src.utils.logger import get_logger
 
 logger = get_logger("secondclass_db")
@@ -285,44 +285,8 @@ class SecondClassDB:
                     )
                 """)
 
+                ensure_base_search_indexes(conn)
                 conn.commit()
-
-    @staticmethod
-    def _timeperiod_to_json(tp: TimePeriod | None) -> dict[str, str] | None:
-        if tp is None:
-            return None
-        return {
-            "start": tp.start.strftime("%Y-%m-%d %H:%M:%S"),
-            "end": tp.end.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-
-    @staticmethod
-    def _datetime_to_json(dt: datetime) -> dict[str, str]:
-        return {
-            "datetime": dt.strftime("%Y-%m-%d %H:%M:%S"),
-        }
-
-    @staticmethod
-    def _module_to_json(module: Module | None) -> dict[str, str] | None:
-        if module is None:
-            return None
-        return {"value": module.value, "text": module.text}
-
-    @staticmethod
-    def _department_to_json(dept: Department | None) -> dict[str, Any] | None:
-        if dept is None:
-            return None
-        return {"id": dept.id, "name": dept.name, "level": dept.level}
-
-    @staticmethod
-    def _labels_to_json(labels: list[Label] | None) -> list[dict[str, str]] | None:
-        if labels is None:
-            return None
-        return [{"id": label.id, "name": label.name} for label in labels]
-
-    @staticmethod
-    def _apply_num_to_json(apply_num: int | None) -> dict[str, Any]:
-        return {"value": apply_num, "is_none": apply_num is None}
 
     def _secondclass_to_row(
             self,
@@ -333,35 +297,14 @@ class SecondClassDB:
             deep_scaned: bool = False,
             deep_scaned_time: int | None = None,
     ) -> dict[str, Any]:
-        timestamp = scan_timestamp or int(time.time())
-        status_code = sc.status.code if sc.status else None
-
-        return {
-            "id": sc.id,
-            "name": sc.name,
-            "status": status_code,
-            "create_time": json.dumps(self._datetime_to_json(sc.create_time)) if sc.create_time else None,
-            "apply_time": json.dumps(self._timeperiod_to_json(sc.apply_time)) if sc.apply_time else None,
-            "hold_time": json.dumps(self._timeperiod_to_json(sc.hold_time)) if sc.hold_time else None,
-            "tel": sc.tel,
-            "valid_hour": sc.valid_hour if sc.valid_hour is not None else None,
-            "apply_num": sc.apply_num if sc.apply_num is not None else None,
-            "apply_limit": sc.apply_limit if sc.apply_limit is not None else None,
-            "applied": 1 if sc.applied else 0,
-            "need_sign_info": 1 if sc.need_sign_info else 0,
-            "module": json.dumps(self._module_to_json(sc.module)),
-            "department": json.dumps(self._department_to_json(sc.department)),
-            "labels": json.dumps(self._labels_to_json(sc.labels)),
-            "conceive": sc.conceive,
-            "is_series": 1 if sc.is_series else 0,
-            "place_info": sc.place_info if sc.place_info is not None else None,
-            "children_id": json.dumps(children_ids) if children_ids is not None else None,
-            "parent_id": parent_id,
-            "scan_timestamp": timestamp,
-            "deep_scaned": deep_scaned,
-            "deep_scaned_time": deep_scaned_time or None,
-            "participation_form": sc.participation_form.code_str if sc.participation_form else None,
-        }
+        return secondclass_to_db_row(
+            sc,
+            children_ids=children_ids,
+            parent_id=parent_id,
+            scan_timestamp=scan_timestamp,
+            deep_scaned=deep_scaned,
+            deep_scaned_time=deep_scaned_time,
+        )
 
     def _create_backup(self) -> Path | None:
         if not self.db_path.exists():
@@ -475,27 +418,31 @@ class SecondClassDB:
                         cursor.execute("DELETE FROM all_secondclass")
                         logger.info("Deleted all records (empty batch)")
 
-                    for row in rows_to_insert:
-                        cursor.execute(
-                            """
-                            INSERT OR REPLACE INTO all_secondclass (
-                                id, name, status, create_time, apply_time, hold_time,
-                                tel, valid_hour, apply_num, apply_limit, applied,
-                                need_sign_info, module, department, labels, conceive,
-                                is_series, children_id, parent_id, scan_timestamp,
-                                deep_scaned, deep_scaned_time,
-                                place_info, participation_form
-                            ) VALUES (
-                                :id, :name, :status, :create_time, :apply_time, :hold_time,
-                                :tel, :valid_hour, :apply_num, :apply_limit, :applied,
-                                :need_sign_info, :module, :department, :labels, :conceive,
-                                :is_series, :children_id, :parent_id, :scan_timestamp,
-                                :deep_scaned, :deep_scaned_time,
-                                :place_info, :participation_form
-                            )
-                            """,
-                            row,
+                    cursor.executemany(
+                        """
+                        INSERT OR REPLACE INTO all_secondclass (
+                            id, name, status, create_time, apply_time, hold_time,
+                            tel, valid_hour, apply_num, apply_limit, applied,
+                            need_sign_info, module, department, labels, conceive,
+                            is_series, children_id, parent_id, scan_timestamp,
+                            deep_scaned, deep_scaned_time,
+                            place_info, participation_form
+                        ) VALUES (
+                            :id, :name, :status, :create_time, :apply_time, :hold_time,
+                            :tel, :valid_hour, :apply_num, :apply_limit, :applied,
+                            :need_sign_info, :module, :department, :labels, :conceive,
+                            :is_series, :children_id, :parent_id, :scan_timestamp,
+                            :deep_scaned, :deep_scaned_time,
+                            :place_info, :participation_form
                         )
+                        """,
+                        rows_to_insert,
+                    )
+
+                    if rebuild_full_text_search_index(conn):
+                        logger.debug("已同步 all_secondclass FTS 搜索索引")
+                    else:
+                        logger.debug("SQLite FTS5 trigram 不可用，跳过 FTS 搜索索引")
 
                     conn.commit()
 
@@ -505,6 +452,69 @@ class SecondClassDB:
         except Exception as e:
             self._restore_backup(backup_path)
             raise RuntimeError(f"Failed to update all_secondclass: {e}") from e
+
+    async def insert_all_secondclass(
+            self,
+            secondclasses: list[SecondClass],
+            deep_scaned: bool = True,
+    ) -> int:
+        """向 all_secondclass 追加或替换活动，不删除当前快照中的其他记录。"""
+
+        if not secondclasses:
+            return 0
+
+        scan_timestamp = int(time.time())
+        rows_to_insert = [
+            self._secondclass_to_row(
+                sc,
+                scan_timestamp=scan_timestamp,
+                deep_scaned=deep_scaned,
+                deep_scaned_time=scan_timestamp if deep_scaned else None,
+            )
+            for sc in secondclasses
+        ]
+
+        backup_path = self._create_backup()
+
+        try:
+            with self._lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.executemany(
+                        """
+                        INSERT OR REPLACE INTO all_secondclass (
+                            id, name, status, create_time, apply_time, hold_time,
+                            tel, valid_hour, apply_num, apply_limit, applied,
+                            need_sign_info, module, department, labels, conceive,
+                            is_series, children_id, parent_id, scan_timestamp,
+                            deep_scaned, deep_scaned_time,
+                            place_info, participation_form
+                        ) VALUES (
+                            :id, :name, :status, :create_time, :apply_time, :hold_time,
+                            :tel, :valid_hour, :apply_num, :apply_limit, :applied,
+                            :need_sign_info, :module, :department, :labels, :conceive,
+                            :is_series, :children_id, :parent_id, :scan_timestamp,
+                            :deep_scaned, :deep_scaned_time,
+                            :place_info, :participation_form
+                        )
+                        """,
+                        rows_to_insert,
+                    )
+
+                    if rebuild_full_text_search_index(conn):
+                        logger.debug("已同步 all_secondclass FTS 搜索索引")
+                    else:
+                        logger.debug("SQLite FTS5 trigram 不可用，跳过 FTS 搜索索引")
+
+                    conn.commit()
+
+            self._remove_backup(backup_path)
+            logger.info(f"已追加 {len(rows_to_insert)} 条 all_secondclass 记录")
+            return len(rows_to_insert)
+
+        except Exception as e:
+            self._restore_backup(backup_path)
+            raise RuntimeError(f"Failed to insert all_secondclass: {e}") from e
 
     async def update_enrolled_secondclass(
             self,
@@ -533,7 +543,7 @@ class SecondClassDB:
                 children_ids=None,
                 parent_id=None,
                 scan_timestamp=scan_timestamp,
-                deep_scaned=False,
+                deep_scaned=deep_update,
                 deep_scaned_time=scan_timestamp if deep_update else None,
             )
             rows_to_insert.append(row)
@@ -556,27 +566,26 @@ class SecondClassDB:
                     else:
                         cursor.execute("DELETE FROM enrolled_secondclass")
 
-                    for row in rows_to_insert:
-                        cursor.execute(
-                            """
-                            INSERT OR REPLACE INTO enrolled_secondclass (
-                                id, name, status, create_time, apply_time, hold_time,
-                                tel, valid_hour, apply_num, apply_limit, applied,
-                                need_sign_info, module, department, labels, conceive,
-                                is_series, children_id, parent_id, scan_timestamp,
-                                deep_scaned, deep_scaned_time,
-                                place_info, participation_form
-                            ) VALUES (
-                                :id, :name, :status, :create_time, :apply_time, :hold_time,
-                                :tel, :valid_hour, :apply_num, :apply_limit, :applied,
-                                :need_sign_info, :module, :department, :labels, :conceive,
-                                :is_series, :children_id, :parent_id, :scan_timestamp,
-                                :deep_scaned, :deep_scaned_time,
-                                :place_info, :participation_form
-                            )
-                            """,
-                            row,
+                    cursor.executemany(
+                        """
+                        INSERT OR REPLACE INTO enrolled_secondclass (
+                            id, name, status, create_time, apply_time, hold_time,
+                            tel, valid_hour, apply_num, apply_limit, applied,
+                            need_sign_info, module, department, labels, conceive,
+                            is_series, children_id, parent_id, scan_timestamp,
+                            deep_scaned, deep_scaned_time,
+                            place_info, participation_form
+                        ) VALUES (
+                            :id, :name, :status, :create_time, :apply_time, :hold_time,
+                            :tel, :valid_hour, :apply_num, :apply_limit, :applied,
+                            :need_sign_info, :module, :department, :labels, :conceive,
+                            :is_series, :children_id, :parent_id, :scan_timestamp,
+                            :deep_scaned, :deep_scaned_time,
+                            :place_info, :participation_form
                         )
+                        """,
+                        rows_to_insert,
+                    )
 
                     conn.commit()
                     logger.info("Committed successfully")
@@ -587,6 +596,84 @@ class SecondClassDB:
             logger.error(f"Exception occurred: {e}")
             self._restore_backup(backup_path)
             raise RuntimeError(f"Failed to update enrolled_secondclass: {e}") from e
+
+    async def upsert_enrolled_secondclass(
+            self,
+            sc: SecondClass,
+            deep_scaned: bool = True,
+    ) -> None:
+        """向 enrolled_secondclass 追加或替换单个已报名活动。"""
+
+        scan_timestamp = int(time.time())
+        row = self._secondclass_to_row(
+            sc,
+            children_ids=None,
+            parent_id=None,
+            scan_timestamp=scan_timestamp,
+            deep_scaned=deep_scaned,
+            deep_scaned_time=scan_timestamp if deep_scaned else None,
+        )
+
+        backup_path = self._create_backup()
+
+        try:
+            with self._lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO enrolled_secondclass (
+                            id, name, status, create_time, apply_time, hold_time,
+                            tel, valid_hour, apply_num, apply_limit, applied,
+                            need_sign_info, module, department, labels, conceive,
+                            is_series, children_id, parent_id, scan_timestamp,
+                            deep_scaned, deep_scaned_time,
+                            place_info, participation_form
+                        ) VALUES (
+                            :id, :name, :status, :create_time, :apply_time, :hold_time,
+                            :tel, :valid_hour, :apply_num, :apply_limit, :applied,
+                            :need_sign_info, :module, :department, :labels, :conceive,
+                            :is_series, :children_id, :parent_id, :scan_timestamp,
+                            :deep_scaned, :deep_scaned_time,
+                            :place_info, :participation_form
+                        )
+                        """,
+                        row,
+                    )
+                    conn.commit()
+
+            self._remove_backup(backup_path)
+            logger.info(f"已写入已报名活动快照: {sc.name} ({sc.id})")
+
+        except Exception as e:
+            logger.error(f"写入已报名活动快照失败: {e}")
+            self._restore_backup(backup_path)
+            raise RuntimeError(f"Failed to upsert enrolled_secondclass: {e}") from e
+
+    async def delete_enrolled_secondclass(self, activity_id: str) -> int:
+        """从 enrolled_secondclass 删除单个已报名活动，返回删除行数。"""
+
+        backup_path = self._create_backup()
+
+        try:
+            with self._lock:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "DELETE FROM enrolled_secondclass WHERE id = ?",
+                        (activity_id,),
+                    )
+                    deleted_count = cursor.rowcount
+                    conn.commit()
+
+            self._remove_backup(backup_path)
+            logger.info(f"已删除已报名活动快照: {activity_id}，删除 {deleted_count} 行")
+            return deleted_count
+
+        except Exception as e:
+            logger.error(f"删除已报名活动快照失败: {e}")
+            self._restore_backup(backup_path)
+            raise RuntimeError(f"Failed to delete enrolled_secondclass: {e}") from e
 
     def get_scan_timestamp(self, table: str = "all_secondclass") -> int | None:
         if table not in ("all_secondclass", "enrolled_secondclass"):

@@ -68,13 +68,20 @@ class TimeFilter:
             logger.debug(f"活动 '{activity.name}' 无法获取开始时间，保留")
             return None
 
+        activity_end = hold_time.end
+        if activity_end and activity_end.date() != activity_start.date():
+            logger.debug(
+                f"活动 '{activity.name}' 举办时间跨多天，跳过空闲时间筛选并保留"
+            )
+            return None
+
         weekday = activity_start.weekday()
         busy_ranges = self.time_config.weekly_preferences.get_day_preference(weekday)
         if not busy_ranges:
             return None
 
         act_start_time = activity_start.time()
-        act_end_time = hold_time.end.time() if hold_time.end else None
+        act_end_time = activity_end.time() if activity_end else None
 
         if act_end_time is None:
             act_end_time = (datetime.combine(datetime.today(), act_start_time) + timedelta(hours=2)).time()

@@ -211,11 +211,8 @@ class CalendarService:
         )
 
 
-def should_sync_calendar(user_id: str | None, sc) -> bool:
-    from src.config import get_settings
-
-    settings = get_settings()
-    if not settings.feishu.calendar_sync.enabled:
+def should_sync_calendar(user_id: str | None, sc, enabled: bool = True) -> bool:
+    if not enabled:
         return False
     if not user_id:
         return False
@@ -233,9 +230,10 @@ async def sync_secondclass_to_calendar(
     app_secret: str,
     user_id: str | None,
     sc,
+    enabled: bool = True,
 ) -> str:
     """同步活动到飞书日历，并返回可直接拼接到用户消息中的文本。"""
-    if not should_sync_calendar(user_id, sc):
+    if not should_sync_calendar(user_id, sc, enabled=enabled):
         return ""
 
     try:

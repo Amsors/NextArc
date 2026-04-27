@@ -11,16 +11,29 @@ UPDATE_MARKER_FILE = ".next_arc_updated"
 VERSION_FILE_NAME = ".next_arc_version"
 CHANGE_LOG_FILE = "docs/change_log.md"
 
+from src.app import AppContext, build_card_display_config, build_notification_runtime_config
 from src.config import load_settings
 from src.config.preferences import load_preferences
-from src.core import AuthManager, DatabaseManager, ActivityScanner, AIFilterConfig
+from src.context import ContextManager
+from src.core import (
+    ActivityQueryService,
+    ActivityRepository,
+    ActivityFilterPipeline,
+    ActivityScanner,
+    ActivitySyncService,
+    ActivityUpdateService,
+    AIFilterConfig,
+    AuthManager,
+    DatabaseManager,
+    EnrollmentService,
+    ScanCoordinator,
+    ScanDiffService,
+)
 from src.core.events import EventBus
 from src.core.time_filter import TimeFilter
 from src.core.user_preference_manager import UserPreferenceManager
 from src.feishu_bot import FeishuBot, CardActionHandler
-from src.feishu_bot.handlers.alive import AliveHandler
-from src.feishu_bot.handlers.ignore import IgnoreHandler
-from src.feishu_bot.handlers.valid import ValidHandler
+from src.feishu_bot.card_builder import ActivityCardBuilder
 from src.feishu_bot.message_router import MessageRouter
 from src.notifications import (
     FeishuNotificationService,
@@ -45,10 +58,19 @@ class NextArcApp:
         self.notification_service: FeishuNotificationService = None
         self.notification_listener: NotificationListener = None
         self.scanner: ActivityScanner = None
+        self.activity_repository: ActivityRepository = None
+        self.filter_pipeline: ActivityFilterPipeline = None
+        self.activity_query_service: ActivityQueryService = None
+        self.activity_update_service: ActivityUpdateService = None
+        self.scan_coordinator: ScanCoordinator = None
+        self.enrollment_service: EnrollmentService = None
+        self.context_manager: ContextManager = None
+        self.app_context: AppContext = None
         self.bot: FeishuBot = None
         self.router: MessageRouter = None
         self.time_filter: TimeFilter = None
         self.card_handler: CardActionHandler = None
+        self.card_builder: ActivityCardBuilder = None
         self.version_checker = None
         self._should_notify_file_auth_deprecation = False
         self._shutdown_event = asyncio.Event()
@@ -186,46 +208,95 @@ class NextArcApp:
             else:
                 logger.info("时间筛选: 已禁用")
 
-            self.scanner = ActivityScanner(
-                auth_manager=self.auth_manager,
-                db_manager=self.db_manager,
-                event_bus=self.event_bus,
-                interval_minutes=self.settings.monitor.interval_minutes,
-                notify_new_activities=self.settings.monitor.notify_new_activities,
+            self.activity_repository = ActivityRepository(search_mode=self.settings.search.mode)
+            self.activity_query_service = ActivityQueryService(self.activity_repository)
+            self.activity_update_service = ActivityUpdateService(self.auth_manager)
+            self.filter_pipeline = ActivityFilterPipeline(
+                activity_repository=self.activity_repository,
+                user_preference_manager=self.user_preference_manager,
                 ai_filter=ai_filter,
                 use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
                 ai_user_info=self.settings.ai.user_info,
                 time_filter=self.time_filter,
                 use_time_filter=use_time_filter,
-                user_preference_manager=self.user_preference_manager,
+            )
+            self.scan_coordinator = ScanCoordinator(
+                db_manager=self.db_manager,
+                sync_service=ActivitySyncService(
+                    self.auth_manager,
+                    self.activity_repository,
+                    add_sub_secondclass_into_db=self.settings.monitor.add_sub_secondclass_into_db,
+                ),
+                diff_service=ScanDiffService(activity_repository=self.activity_repository),
+                event_bus=self.event_bus,
+                filter_pipeline=self.filter_pipeline,
+                activity_repository=self.activity_repository,
+                activity_update_service=self.activity_update_service,
+                use_ai_filter=self.settings.monitor.use_ai_filter and self.settings.ai.enabled,
+                ignore_overlap=self.settings.filter.ignore_overlap,
+                notify_enrolled_change_enabled=self.settings.monitor.notify_enrolled_change,
+                keep_old_activity=self.settings.monitor.keep_old_activity,
+            )
+
+            self.scanner = ActivityScanner(
+                coordinator=self.scan_coordinator,
+                event_bus=self.event_bus,
+                interval_minutes=self.settings.monitor.interval_minutes,
+                notify_new_activities=self.settings.monitor.notify_new_activities,
+                notify_enrolled_change=self.settings.monitor.notify_enrolled_change,
                 version_checker=self.version_checker,
             )
             logger.info(f"扫描器初始化完成，间隔: {self.settings.monitor.interval_minutes}分钟")
             logger.info(f"新活动通知: {'开启' if self.settings.monitor.notify_new_activities else '关闭'}")
+            logger.info(f"已报名活动变更通知: {'开启' if self.settings.monitor.notify_enrolled_change else '关闭'}")
             logger.info(f"筛选活动通知: {'开启' if self.settings.monitor.notify_filtered_activities else '关闭'}")
+            logger.info(
+                "系列活动子活动入库: "
+                f"{'开启' if self.settings.monitor.add_sub_secondclass_into_db else '关闭'}"
+            )
             if self.settings.monitor.use_ai_filter and self.settings.ai.enabled and ai_filter:
                 logger.info(f"AI 筛选: 开启，模型: {self.settings.ai.model}")
             if use_time_filter and self.time_filter:
                 logger.info("时间筛选: 开启")
             logger.info("数据库筛选: 已启用")
 
-            self.router = MessageRouter()
-            self.router.set_dependencies(self.scanner, self.auth_manager, self.db_manager, self.user_preference_manager)
+            self.enrollment_service = EnrollmentService(
+                self.auth_manager,
+                app_id=self.settings.feishu.app_id,
+                app_secret=self.settings.feishu.app_secret,
+                calendar_sync_enabled=self.settings.feishu.calendar_sync.enabled,
+                calendar_sync_ignore_submit_type=self.settings.feishu.calendar_sync.ignore_submit_type,
+                db_manager=self.db_manager,
+            )
+            self.context_manager = ContextManager()
+            self.card_builder = ActivityCardBuilder()
+            logger.info("活动查询、深度更新和报名服务初始化完成")
+
+            self.app_context = AppContext(
+                settings=self.settings,
+                preferences=self.preferences,
+                event_bus=self.event_bus,
+                auth_manager=self.auth_manager,
+                db_manager=self.db_manager,
+                activity_repo=self.activity_repository,
+                preference_manager=self.user_preference_manager,
+                context_manager=self.context_manager,
+                activity_query_service=self.activity_query_service,
+                activity_update_service=self.activity_update_service,
+                enrollment_service=self.enrollment_service,
+                filter_pipeline=self.filter_pipeline,
+                scanner=self.scanner,
+                time_filter=self.time_filter,
+                version_checker=self.version_checker,
+            )
+            logger.info("应用上下文初始化完成")
+
+            self.router = MessageRouter(self.app_context)
             logger.info("消息路由器初始化完成")
 
-            from src.feishu_bot.handlers.interested import InterestedHandler
-            from src.feishu_bot.handlers.preference import PreferenceHandler
-            ValidHandler.set_ignore_manager(self.user_preference_manager)
-            AliveHandler.set_ignore_manager(self.user_preference_manager)
-            IgnoreHandler.set_ignore_manager(self.user_preference_manager)
-            InterestedHandler.set_user_preference_manager(self.user_preference_manager)
-            PreferenceHandler.set_dependencies(self.db_manager, self.user_preference_manager)
-
-            self.card_handler = CardActionHandler()
-            self.card_handler.set_dependencies(
-                user_preference_manager=self.user_preference_manager,
-                auth_manager=self.auth_manager,
-                bot=None  # 暂时为None，等bot创建后再设置
+            self.card_handler = CardActionHandler(
+                self.app_context,
+                bot_getter=lambda: self.bot,
             )
             logger.info("卡片交互处理器初始化完成")
 
@@ -238,26 +309,24 @@ class NextArcApp:
                     chat_id=chat_id,
                     user_id=self.settings.feishu.user_id if self.settings.feishu.user_id else None,
                     card_handler=self.card_handler,
+                    context_manager=self.context_manager,
                 )
 
-                self.card_handler.set_dependencies(
-                    user_preference_manager=self.user_preference_manager,
-                    auth_manager=self.auth_manager,
-                    bot=self.bot
+                self.notification_service = FeishuNotificationService(
+                    self.bot,
+                    card_config=build_card_display_config(self.settings),
+                    card_builder=self.card_builder,
                 )
-
-                self.notification_service = FeishuNotificationService(self.bot)
                 logger.info("通知服务初始化完成")
 
                 self.notification_listener = NotificationListener(
                     self.notification_service,
-                    user_preference_manager=self.user_preference_manager
+                    user_preference_manager=self.user_preference_manager,
+                    context_manager=self.context_manager,
+                    runtime_config=build_notification_runtime_config(self.settings),
                 )
                 self.notification_listener.subscribe(self.event_bus)
                 logger.info("通知监听器已订阅事件")
-
-                self.notification_listener.set_user_session(self.bot.user_session)
-                logger.info("已设置 UserSession 引用到通知监听器")
 
                 if chat_id:
                     logger.info(f"飞书机器人初始化完成（已配置 chat_id: {chat_id}）")
@@ -291,11 +360,8 @@ class NextArcApp:
         if self.notification_service:
             await self.notification_service.send_response(response)
             return None  # 已通过通知服务发送，不需要再返回文本
-        # TODO 重新检查此处逻辑
 
-        # 如果没有通知服务，返回文本内容（后适兼）
-        if response.type.value == "text":
-            return response.content
+        logger.error("通知服务未初始化，无法发送指令响应")
         return None
 
     async def run(self) -> None:
@@ -529,6 +595,37 @@ class NextArcApp:
         flush_section(len(lines))
         return sections
 
+    def _build_change_log_card(self, version: str, section: str) -> dict:
+        """构建使用 Markdown 渲染的版本更新说明卡片。"""
+
+        content = self._format_change_log_for_feishu_card(section)
+        return {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "title": {"tag": "plain_text", "content": f"更新说明（v{version}）"},
+                "template": "blue",
+            },
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": content,
+                },
+            ],
+        }
+
+    def _format_change_log_for_feishu_card(self, section: str) -> str:
+        """将飞书卡片不稳定支持的标题语法降级为加粗文本。"""
+
+        formatted_lines = []
+        for line in section.splitlines():
+            match = re.fullmatch(r"(#{1,6})\s+(.+?)(?:\s+#+)?", line.strip())
+            if match:
+                formatted_lines.append(f"**{match.group(2)}**")
+            else:
+                formatted_lines.append(line)
+
+        return "\n".join(formatted_lines)
+
     async def _notify_change_logs_since_last_version(self):
         if not self.bot or not self.bot.is_connected():
             logger.warning("飞书机器人未连接，无法发送更新说明")
@@ -570,12 +667,10 @@ class NextArcApp:
         pending_sections.sort(key=lambda item: self._parse_semantic_version(item[0]))
 
         for version, section in pending_sections:
-            message = (f"更新说明（v{version}）\n"
-                       f"提示：建议前往 Github 查看渲染好 Markdown 的更新日志\n"
-                       f"\n{section}")
+            card = self._build_change_log_card(version, section)
 
             try:
-                success = await self.bot.send_text(message)
+                success = await self.bot.send_card(card)
                 if success:
                     logger.info(f"已发送版本 v{version} 的更新说明")
                 else:

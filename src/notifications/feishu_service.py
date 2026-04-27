@@ -2,8 +2,9 @@
 
 from typing import TYPE_CHECKING
 
+from src.feishu_bot.card_builder import ActivityCardBuilder
 from src.utils.logger import get_logger
-from .service import NotificationService
+from .service import CardDisplayConfig, NotificationService
 
 if TYPE_CHECKING:
     from src.feishu_bot.client import FeishuBot
@@ -14,7 +15,13 @@ logger = get_logger("notifications.feishu")
 class FeishuNotificationService(NotificationService):
     """通过 FeishuBot 发送文本和卡片消息"""
 
-    def __init__(self, bot: "FeishuBot"):
+    def __init__(
+        self,
+        bot: "FeishuBot",
+        card_config: CardDisplayConfig | None = None,
+        card_builder: ActivityCardBuilder | None = None,
+    ):
+        super().__init__(card_config, card_builder)
         self._bot = bot
 
     async def send_text(self, message: str) -> bool:

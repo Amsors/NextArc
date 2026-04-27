@@ -1,12 +1,11 @@
 """/search 指令处理器"""
 import traceback
 
-import aiosqlite
 from pyustc.young import SecondClass
 
-from src.models import UserSession, secondclass_from_db_row
+from src.feishu_bot.card_builder import CardButtonConfig
+from src.models import UserSession
 from src.notifications import Response
-from src.utils.formatter import CardButtonConfig
 from src.utils.logger import get_logger
 from .base import CommandHandler
 
@@ -19,7 +18,7 @@ class SearchHandler(CommandHandler):
         return "search"
 
     def get_usage(self) -> str:
-        return "/search <关键词> - 搜索标题含关键词的活动"
+        return "/search <关键词> - 搜索活动关键词"
 
     async def handle(self, args: list[str], session: UserSession) -> Response:
         if not self.check_dependencies():
@@ -34,6 +33,8 @@ class SearchHandler(CommandHandler):
         latest_db = self._db_manager.get_latest_db()
         if not latest_db:
             return Response.text("暂无数据，请先执行 /update")
+        if not self._activity_query_service:
+            return Response.text("活动查询服务未初始化，请稍后重试")
 
         try:
             activities = await self._search_activities(latest_db, keyword)
@@ -42,20 +43,27 @@ class SearchHandler(CommandHandler):
                 return Response.text(f'搜索「{keyword}」\n\n未找到匹配的活动，请尝试其他关键词')
 
             try:
-                async with self._auth_manager.create_session_once() as service:
-                    for activity in activities:
-                        try:
-                            await activity.update()
-                            logger.debug(f"更新活动信息成功: {activity.name}")
-                        except Exception as e:
-                            logger.warning(f"更新活动 {activity.id} 信息失败: {e}")
+                update_service = self._activity_update_service
+                if update_service is None:
+                    return Response.text("活动更新服务未初始化，请稍后重试")
 
-                hint = "活动已经更新，最新报名人数已显示"
+                update_result = await update_service.update_activities(
+                    activities,
+                    continue_on_error=True,
+                )
+                if update_result.failed:
+                    hint = "部分活动信息可能不是最新"
+                else:
+                    hint = "活动已经更新，最新报名人数已显示"
             except Exception as e:
                 logger.error(f"更新活动信息失败: {e}")
                 hint = "部分活动信息可能不是最新"
 
-            session.set_search(keyword, activities)
+            await session.context_manager.set_search_result(keyword, activities)
+            await session.context_manager.set_displayed_activities(
+                activities=activities,
+                source="search",
+            )
 
             title = f'搜索「{keyword}」结果（共{len(activities)}个）'
             if hint:
@@ -80,32 +88,7 @@ class SearchHandler(CommandHandler):
             return Response.error(str(e), context="搜索活动")
 
     async def _search_activities(self, db_path, keyword: str) -> list[SecondClass]:
-        activities = []
-        keyword_lower = keyword.lower()
-
-        logger.debug(f"搜索关键词: {keyword_lower}")
-
-        async with aiosqlite.connect(db_path) as conn:
-            conn.row_factory = aiosqlite.Row
-            async with conn.execute(
-                    "SELECT * FROM all_secondclass WHERE LOWER(name) LIKE ? ORDER BY name",
-                    (f"%{keyword_lower}%",)
-            ) as cursor:
-                async for row in cursor:
-                    activities.append(secondclass_from_db_row(dict(row)))
+        activities = await self._activity_query_service.search_activities(db_path, keyword)
 
         logger.debug(f"搜索结果: {len(activities)} 个活动")
-
-        if not activities:
-            async with aiosqlite.connect(db_path) as conn:
-                async with conn.execute("SELECT COUNT(*) FROM all_secondclass") as cursor:
-                    total = (await cursor.fetchone())[0]
-                    logger.debug(f"数据库中共有 {total} 个活动")
-
-                async with conn.execute(
-                        "SELECT name FROM all_secondclass LIMIT 5"
-                ) as cursor:
-                    sample = [row[0] for row in await cursor.fetchall()]
-                    logger.debug(f"示例活动: {sample}")
-
         return activities
