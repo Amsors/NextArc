@@ -62,6 +62,9 @@ class SendAIFilterDetailConfig(BaseModel):
 
 class CalendarSyncConfig(BaseModel):
     enabled: bool = Field(default=True, description="报名成功后是否自动同步到飞书日历")
+    ignore_submit_type: bool = Field(
+        default=False, description="是否忽略提交作品类活动的日历同步"
+    )
 
 
 class FeishuConfig(BaseModel):

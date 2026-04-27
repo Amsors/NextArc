@@ -265,6 +265,7 @@ class NextArcApp:
                 app_id=self.settings.feishu.app_id,
                 app_secret=self.settings.feishu.app_secret,
                 calendar_sync_enabled=self.settings.feishu.calendar_sync.enabled,
+                calendar_sync_ignore_submit_type=self.settings.feishu.calendar_sync.ignore_submit_type,
                 db_manager=self.db_manager,
             )
             self.context_manager = ContextManager()

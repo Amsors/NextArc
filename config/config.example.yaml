@@ -202,6 +202,9 @@ feishu:
   # 报名成功后是否同步飞书日历邀请
   calendar_sync:
     enabled: true
+    # 是否忽略提交作品类活动的日历同步，默认 false
+    # 设为 true 时，报名「提交作品」类活动不会尝试同步到飞书日历
+    ignore_submit_type: false
 
 database:
   # 数据库文件存储目录（相对于项目根目录）

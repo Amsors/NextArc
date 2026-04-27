@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from pyustc.young import SecondClass, Status
+from pyustc.young import ParticipationForm, SecondClass, Status
 from pyustc.young.second_class import SignInfo
 
 from src.utils.logger import get_logger
@@ -52,12 +52,14 @@ class EnrollmentService:
         app_id: str = "",
         app_secret: str = "",
         calendar_sync_enabled: bool = True,
+        calendar_sync_ignore_submit_type: bool = False,
         db_manager: "DatabaseManager | None" = None,
     ):
         self.auth_manager = auth_manager
         self.app_id = app_id
         self.app_secret = app_secret
         self.calendar_sync_enabled = calendar_sync_enabled
+        self.calendar_sync_ignore_submit_type = calendar_sync_ignore_submit_type
         self.db_manager = db_manager
 
     async def join_activity(
@@ -135,15 +137,20 @@ class EnrollmentService:
 
             calendar_message = ""
             if sync_calendar and self.app_id and self.app_secret:
-                from src.feishu_bot.calendar_service import sync_secondclass_to_calendar
-
-                calendar_message = await sync_secondclass_to_calendar(
-                    app_id=self.app_id,
-                    app_secret=self.app_secret,
-                    user_id=user_id,
-                    sc=activity,
-                    enabled=self.calendar_sync_enabled,
+                ignore = (
+                    self.calendar_sync_ignore_submit_type
+                    and activity.participation_form == ParticipationForm.SUBMIT_WORKS
                 )
+                if not ignore:
+                    from src.feishu_bot.calendar_service import sync_secondclass_to_calendar
+
+                    calendar_message = await sync_secondclass_to_calendar(
+                        app_id=self.app_id,
+                        app_secret=self.app_secret,
+                        user_id=user_id,
+                        sc=activity,
+                        enabled=self.calendar_sync_enabled,
+                    )
 
             logger.info(f"报名成功: {display_name}")
             return EnrollmentResult(
