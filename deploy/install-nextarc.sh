@@ -2,9 +2,15 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NEXTARC_REPO_URL="${NEXTARC_REPO_URL:-https://github.com/Amsors/NextArc}"
+NEXTARC_GITHUB_REPO_URL="https://github.com/Amsors/NextArc"
+PYUSTC_GITHUB_REPO_URL="https://github.com/Amsors/pyustc"
+NEXTARC_LUG_GITLAB_REPO_URL="https://git.lug.ustc.edu.cn/amsors/nextarc_mirror"
+PYUSTC_LUG_GITLAB_REPO_URL="https://git.lug.ustc.edu.cn/amsors/pyustc_mirror"
+
+NEXTARC_REPO_ORIGIN="${NEXTARC_REPO_ORIGIN:-lug_gitlab}"
+NEXTARC_REPO_URL="${NEXTARC_REPO_URL:-}"
 NEXTARC_REPO_BRANCH="${NEXTARC_REPO_BRANCH:-feat/one_click_deploy}"
-PYUSTC_REPO_URL="${PYUSTC_REPO_URL:-https://github.com/Amsors/pyustc}"
+PYUSTC_REPO_URL="${PYUSTC_REPO_URL:-}"
 PYUSTC_REPO_BRANCH="${PYUSTC_REPO_BRANCH:-adapt/NextArc}"
 
 NEXTARC_INSTALL_DIR="${NEXTARC_INSTALL_DIR:-/opt/nextarc}"
@@ -34,16 +40,76 @@ log_info() {
 usage() {
   cat <<'EOF'
 Usage:
-  install-nextarc.sh
+  install-nextarc.sh [--origin github|lug_gitlab]
   install-nextarc.sh --uninstall
   install-nextarc.sh --purge
 
+Default origin:
+  lug_gitlab
+
 Environment overrides:
+  NEXTARC_REPO_ORIGIN
   NEXTARC_REPO_URL
   NEXTARC_REPO_BRANCH
   PYUSTC_REPO_URL
   PYUSTC_REPO_BRANCH
 EOF
+}
+
+parse_args() {
+  ACTION="install"
+
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        ACTION="help"
+        shift
+        ;;
+      --uninstall)
+        ACTION="uninstall"
+        shift
+        ;;
+      --purge)
+        ACTION="purge"
+        shift
+        ;;
+      --origin)
+        if [[ "$#" -lt 2 ]]; then
+          echo "--origin 需要指定 github 或 lug_gitlab" >&2
+          usage >&2
+          exit 1
+        fi
+        NEXTARC_REPO_ORIGIN="$2"
+        shift 2
+        ;;
+      --origin=*)
+        NEXTARC_REPO_ORIGIN="${1#--origin=}"
+        shift
+        ;;
+      *)
+        usage >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
+configure_repo_urls() {
+  case "${NEXTARC_REPO_ORIGIN}" in
+    github)
+      NEXTARC_REPO_URL="${NEXTARC_REPO_URL:-${NEXTARC_GITHUB_REPO_URL}}"
+      PYUSTC_REPO_URL="${PYUSTC_REPO_URL:-${PYUSTC_GITHUB_REPO_URL}}"
+      ;;
+    lug_gitlab)
+      NEXTARC_REPO_URL="${NEXTARC_REPO_URL:-${NEXTARC_LUG_GITLAB_REPO_URL}}"
+      PYUSTC_REPO_URL="${PYUSTC_REPO_URL:-${PYUSTC_LUG_GITLAB_REPO_URL}}"
+      ;;
+    *)
+      echo "不支持的仓库来源: ${NEXTARC_REPO_ORIGIN}" >&2
+      echo "可用来源: github, lug_gitlab" >&2
+      exit 1
+      ;;
+  esac
 }
 
 require_root() {
@@ -139,11 +205,13 @@ ensure_user_and_dirs() {
 
 checkout_code() {
   log_step "获取 NextArc 代码"
+  log_info "来源: ${NEXTARC_REPO_ORIGIN}"
   log_info "仓库: ${NEXTARC_REPO_URL}"
   log_info "分支: ${NEXTARC_REPO_BRANCH}"
   log_info "目标目录: ${NEXTARC_APP_DIR}"
   if [[ -d "${NEXTARC_APP_DIR}/.git" ]]; then
     log_info "检测到已有 git 仓库，拉取最新代码"
+    git -C "${NEXTARC_APP_DIR}" remote set-url origin "${NEXTARC_REPO_URL}"
     git -C "${NEXTARC_APP_DIR}" fetch origin "${NEXTARC_REPO_BRANCH}"
     git -C "${NEXTARC_APP_DIR}" checkout "${NEXTARC_REPO_BRANCH}"
     git -C "${NEXTARC_APP_DIR}" pull --ff-only origin "${NEXTARC_REPO_BRANCH}"
@@ -156,12 +224,16 @@ checkout_code() {
 
 checkout_pyustc() {
   log_step "获取 pyustc 代码"
+  log_info "来源: ${NEXTARC_REPO_ORIGIN}"
   log_info "仓库: ${PYUSTC_REPO_URL}"
   log_info "分支: ${PYUSTC_REPO_BRANCH}"
   log_info "目标目录: ${NEXTARC_PYUSTC_DIR}"
   if [[ -d "${NEXTARC_PYUSTC_DIR}/.git" ]]; then
     log_info "检测到已有 pyustc 仓库，拉取最新代码"
-    git -C "${NEXTARC_PYUSTC_DIR}" pull --ff-only
+    git -C "${NEXTARC_PYUSTC_DIR}" remote set-url origin "${PYUSTC_REPO_URL}"
+    git -C "${NEXTARC_PYUSTC_DIR}" fetch origin "${PYUSTC_REPO_BRANCH}"
+    git -C "${NEXTARC_PYUSTC_DIR}" checkout "${PYUSTC_REPO_BRANCH}"
+    git -C "${NEXTARC_PYUSTC_DIR}" pull --ff-only origin "${PYUSTC_REPO_BRANCH}"
   else
     log_info "未检测到已有 pyustc 仓库，清理目标目录并重新克隆"
     rm -rf "${NEXTARC_PYUSTC_DIR}"
@@ -328,30 +400,32 @@ EOF
 }
 
 main() {
-  require_root
+  parse_args "$@"
 
-  case "${1:-}" in
-    -h|--help)
+  case "${ACTION}" in
+    help)
       usage
       exit 0
       ;;
-    --uninstall)
+  esac
+
+  require_root
+
+  case "${ACTION}" in
+    uninstall)
       uninstall_service
       exit 0
       ;;
-    --purge)
+    purge)
       purge_all
       exit 0
       ;;
-    "")
-      ;;
-    *)
-      usage >&2
-      exit 1
-      ;;
   esac
 
+  configure_repo_urls
+
   log_step "开始安装 NextArc"
+  log_info "仓库来源: ${NEXTARC_REPO_ORIGIN}"
   log_info "安装目录: ${NEXTARC_INSTALL_DIR}"
   log_info "应用目录: ${NEXTARC_APP_DIR}"
   log_info "虚拟环境: ${NEXTARC_VENV_DIR}"
