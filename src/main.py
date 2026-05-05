@@ -5,6 +5,8 @@ import signal
 import sys
 from pathlib import Path
 
+import httpx
+
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -149,7 +151,12 @@ class NextArcApp:
                         logger.info(f"登录测试成功，获取到 {len(depts)} 个根部门")
                         break
                 except Exception as e:
-                    logger.warning(f"登录测试失败 (尝试 {attempt}/{max_login_retries}): {e}")
+                    logger.warning(
+                        "登录测试失败 (尝试 %s/%s): %s",
+                        attempt,
+                        max_login_retries,
+                        self._format_login_error(e),
+                    )
                     if attempt == max_login_retries:
                         raise
                     await asyncio.sleep(5)
@@ -362,6 +369,24 @@ class NextArcApp:
             logger.info("检测到 conda 环境")
         else:
             logger.warning("未检测到虚拟环境，建议在隔离环境中运行")
+
+    @staticmethod
+    def _format_login_error(exc: Exception) -> str:
+        """Format login errors so empty timeout messages still give useful context."""
+        if isinstance(exc, httpx.ConnectTimeout):
+            return (
+                "连接 USTC CAS 超时: https://id.ustc.edu.cn/cas/login。"
+                "这通常表示部署机器无法连通 CAS（网络、DNS、IPv6、代理或防火墙问题），"
+                "不是账号密码校验失败。原始异常: httpx.ConnectTimeout"
+            )
+
+        if isinstance(exc, httpx.TimeoutException):
+            return f"访问 USTC CAS 超时: {type(exc).__name__}"
+
+        message = str(exc).strip()
+        if message:
+            return f"{type(exc).__name__}: {message}"
+        return type(exc).__name__
 
     async def _handle_message(self, text: str, session) -> str | None:
         response = await self.router.handle_message(text, session)
