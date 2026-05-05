@@ -41,6 +41,7 @@ usage() {
   cat <<'EOF'
 Usage:
   install-nextarc.sh [--origin github|lug_gitlab]
+  install-nextarc.sh --migrate /path/to/old_nextarc
   install-nextarc.sh --uninstall
   install-nextarc.sh --purge
 
@@ -58,6 +59,7 @@ EOF
 
 parse_args() {
   ACTION="install"
+  MIGRATE_SOURCE_DIR=""
 
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -71,6 +73,21 @@ parse_args() {
         ;;
       --purge)
         ACTION="purge"
+        shift
+        ;;
+      --migrate)
+        if [[ "$#" -lt 2 ]]; then
+          echo "--migrate 需要指定旧 NextArc 项目根目录" >&2
+          usage >&2
+          exit 1
+        fi
+        ACTION="migrate"
+        MIGRATE_SOURCE_DIR="$2"
+        shift 2
+        ;;
+      --migrate=*)
+        ACTION="migrate"
+        MIGRATE_SOURCE_DIR="${1#--migrate=}"
         shift
         ;;
       --origin)
@@ -353,6 +370,158 @@ fix_permissions() {
   fi
 }
 
+require_installed_service() {
+  log_step "检查 daemon 化安装状态"
+  [[ -f "${NEXTARC_SERVICE_FILE}" ]] || {
+    echo "未找到 systemd 服务文件: ${NEXTARC_SERVICE_FILE}" >&2
+    echo "请先以服务化形式安装 NextArc，再执行迁移。" >&2
+    exit 1
+  }
+  [[ -d "${NEXTARC_APP_DIR}" ]] || {
+    echo "未找到应用目录: ${NEXTARC_APP_DIR}" >&2
+    echo "请先以服务化形式安装 NextArc，再执行迁移。" >&2
+    exit 1
+  }
+  [[ -d "${NEXTARC_CONFIG_DIR}" ]] || {
+    echo "未找到配置目录: ${NEXTARC_CONFIG_DIR}" >&2
+    echo "请先以服务化形式安装 NextArc，再执行迁移。" >&2
+    exit 1
+  }
+  [[ -d "${NEXTARC_STATE_DIR}" ]] || {
+    echo "未找到状态目录: ${NEXTARC_STATE_DIR}" >&2
+    echo "请先以服务化形式安装 NextArc，再执行迁移。" >&2
+    exit 1
+  }
+  [[ -x "${NEXTARC_VENV_DIR}/bin/python" ]] || {
+    echo "未找到可用虚拟环境: ${NEXTARC_VENV_DIR}" >&2
+    echo "请先以服务化形式安装 NextArc，再执行迁移。" >&2
+    exit 1
+  }
+  id nextarc >/dev/null 2>&1 || {
+    echo "未找到运行用户: nextarc" >&2
+    echo "请先以服务化形式安装 NextArc，再执行迁移。" >&2
+    exit 1
+  }
+  log_info "daemon 化安装状态检查通过"
+}
+
+validate_migration_source() {
+  if [[ -z "${MIGRATE_SOURCE_DIR}" ]]; then
+    echo "未指定旧 NextArc 项目根目录" >&2
+    usage >&2
+    exit 1
+  fi
+
+  MIGRATE_SOURCE_DIR="$(cd "${MIGRATE_SOURCE_DIR}" 2>/dev/null && pwd -P)" || {
+    echo "旧 NextArc 项目根目录不存在或不可访问: ${MIGRATE_SOURCE_DIR}" >&2
+    exit 1
+  }
+  local daemon_app_dir
+  daemon_app_dir="$(cd "${NEXTARC_APP_DIR}" 2>/dev/null && pwd -P)" || daemon_app_dir=""
+  if [[ -n "${daemon_app_dir}" && "${MIGRATE_SOURCE_DIR}" == "${daemon_app_dir}" ]]; then
+    echo "旧 NextArc 项目根目录不能是当前 daemon 应用目录: ${NEXTARC_APP_DIR}" >&2
+    exit 1
+  fi
+
+  log_step "检查旧 NextArc 数据"
+  log_info "旧项目目录: ${MIGRATE_SOURCE_DIR}"
+  [[ -f "${MIGRATE_SOURCE_DIR}/config/config.yaml" ]] || {
+    echo "旧配置文件不存在: ${MIGRATE_SOURCE_DIR}/config/config.yaml" >&2
+    exit 1
+  }
+  [[ -f "${MIGRATE_SOURCE_DIR}/config/preferences.yaml" ]] || {
+    echo "旧偏好配置文件不存在: ${MIGRATE_SOURCE_DIR}/config/preferences.yaml" >&2
+    exit 1
+  }
+  [[ -d "${MIGRATE_SOURCE_DIR}/data" ]] || {
+    echo "旧数据目录不存在: ${MIGRATE_SOURCE_DIR}/data" >&2
+    exit 1
+  }
+
+  shopt -s nullglob
+  MIGRATE_DB_FILES=("${MIGRATE_SOURCE_DIR}"/data/*.db)
+  shopt -u nullglob
+  if [[ "${#MIGRATE_DB_FILES[@]}" -eq 0 ]]; then
+    echo "旧数据目录中未找到 .db 文件: ${MIGRATE_SOURCE_DIR}/data" >&2
+    exit 1
+  fi
+
+  log_info "检测到配置文件: config/config.yaml"
+  log_info "检测到偏好配置: config/preferences.yaml"
+  log_info "检测到数据库文件数量: ${#MIGRATE_DB_FILES[@]}"
+}
+
+rewrite_migrated_config_paths() {
+  log_info "修正 daemon 运行所需数据库路径: ${NEXTARC_CONFIG_DIR}/config.yaml"
+  "${NEXTARC_VENV_DIR}/bin/python" - "${NEXTARC_CONFIG_DIR}/config.yaml" "${NEXTARC_STATE_DIR}/data" <<'PY'
+from pathlib import Path
+import sys
+
+import yaml
+
+config_path = Path(sys.argv[1])
+data_dir = Path(sys.argv[2])
+
+with config_path.open("r", encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+
+database = config.setdefault("database", {})
+database["data_dir"] = str(data_dir)
+database["preference_db_path"] = str(data_dir / "user_preference.db")
+
+with config_path.open("w", encoding="utf-8") as f:
+    yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False)
+PY
+}
+
+migrate_legacy_data() {
+  require_installed_service
+  validate_migration_source
+
+  local target_data_dir="${NEXTARC_STATE_DIR}/data"
+  local service_was_active="no"
+  if systemctl is-active --quiet nextarc; then
+    service_was_active="yes"
+  fi
+  restart_nextarc_on_migration_error() {
+    if [[ "${service_was_active}" == "yes" ]]; then
+      echo "迁移失败，尝试恢复启动 nextarc 服务。" >&2
+      systemctl start nextarc || true
+    fi
+  }
+  trap restart_nextarc_on_migration_error ERR
+
+  log_step "停止 NextArc 服务"
+  systemctl stop nextarc || true
+
+  log_step "迁移旧配置和数据"
+  log_info "目标配置目录: ${NEXTARC_CONFIG_DIR}"
+  log_info "目标数据目录: ${target_data_dir}"
+  mkdir -p "${NEXTARC_CONFIG_DIR}" "${target_data_dir}"
+
+  log_info "覆盖主配置文件: config.yaml"
+  install -m 0640 -o root -g nextarc "${MIGRATE_SOURCE_DIR}/config/config.yaml" "${NEXTARC_CONFIG_DIR}/config.yaml"
+  log_info "覆盖偏好配置文件: preferences.yaml"
+  install -m 0640 -o root -g nextarc "${MIGRATE_SOURCE_DIR}/config/preferences.yaml" "${NEXTARC_CONFIG_DIR}/preferences.yaml"
+
+  log_info "覆盖数据库文件"
+  find "${target_data_dir}" -maxdepth 1 -type f -name '*.db' -delete
+  install -o nextarc -g nextarc -m 0640 "${MIGRATE_DB_FILES[@]}" "${target_data_dir}/"
+
+  rewrite_migrated_config_paths
+  fix_permissions
+
+  log_step "重启 NextArc 服务"
+  trap - ERR
+  systemctl start nextarc
+
+  echo
+  echo "NextArc 旧数据迁移完成。"
+  echo "已迁移配置: ${NEXTARC_CONFIG_DIR}/config.yaml"
+  echo "已迁移偏好: ${NEXTARC_CONFIG_DIR}/preferences.yaml"
+  echo "已迁移数据库目录: ${target_data_dir}"
+}
+
 install_service() {
   log_step "安装并启动 systemd 服务"
   log_info "写入服务文件: ${NEXTARC_SERVICE_FILE}"
@@ -418,6 +587,10 @@ main() {
       ;;
     purge)
       purge_all
+      exit 0
+      ;;
+    migrate)
+      migrate_legacy_data
       exit 0
       ;;
   esac
