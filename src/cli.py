@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import yaml
@@ -226,8 +227,16 @@ def _post_registration(base_url: str, data: dict[str, str]) -> dict[str, Any]:
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
     )
-    with urlopen(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(request, timeout=30) as response:
+            payload = response.read().decode("utf-8")
+    except HTTPError as exc:
+        payload = exc.read().decode("utf-8")
+
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"飞书应用创建接口返回了无法解析的响应: {payload[:200]}") from exc
 
 
 def _build_registration_qr_url(uri: str) -> str:
