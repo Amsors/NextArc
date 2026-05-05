@@ -1,8 +1,6 @@
 """/restart 指令处理器"""
 
 import asyncio
-import os
-import sys
 
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -23,8 +21,17 @@ class RestartHandler(CommandHandler):
         return "/restart - 重启应用"
 
     async def handle(self, args: list[str], session) -> Response:
-        logger.info("执行 /restart 指令 - 当前已禁用")
-        return Response.text("机器人内自重启功能已暂时禁用，请通过 systemd 管理服务。")
+        if not self._maintenance_service:
+            return Response.text("运行时维护服务未初始化，无法重启")
+
+        await session.context_manager.set_confirmation(operation="restart")
+        return Response.text(
+            "即将重启 NextArc。\n"
+            "\n"
+            "确认后服务会先发送响应，再由 systemd 自动拉起新进程。\n"
+            "\n"
+            "是否立即重启？(回复「确认」或「取消」)"
+        )
 
     async def execute_restart(self, session) -> Response:
         confirmation = await session.context_manager.get_confirmation()
@@ -34,21 +41,9 @@ class RestartHandler(CommandHandler):
         await session.context_manager.clear_confirmation()
         logger.info("用户确认重启应用")
 
-        asyncio.create_task(self._delayed_restart())
+        if not self._maintenance_service:
+            return Response.text("运行时维护服务未初始化，无法重启")
+
+        asyncio.create_task(self._maintenance_service.request_restart())
 
         return Response.text("正在重启应用...")
-
-    async def _delayed_restart(self, delay: float = 5.0) -> None:
-        await asyncio.sleep(delay)
-        self._restart_application()
-
-    def _restart_application(self) -> None:
-        executable = sys.executable
-        args = sys.argv
-
-        logger.info(f"重启命令: {executable} {' '.join(args)}")
-
-        try:
-            os.execv(executable, [executable] + args)
-        except Exception as e:
-            logger.error(f"重启失败: {e}")

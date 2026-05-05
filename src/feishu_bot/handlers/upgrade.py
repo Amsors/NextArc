@@ -1,10 +1,7 @@
 """/upgrade 指令处理器"""
 
 import asyncio
-import os
 import re
-import sys
-from pathlib import Path
 
 from src.notifications import Response
 from src.utils.logger import get_logger
@@ -26,11 +23,10 @@ class UpgradeHandler(CommandHandler):
         return "/upgrade - 检查并安装程序更新"
 
     async def handle(self, args: list[str], session) -> Response:
-        logger.info("执行 /upgrade 指令 - 当前已禁用")
-        return Response.text("机器人内自升级功能已暂时禁用，请使用安装脚本或服务器运维流程更新。")
-
         if not self.check_dependencies():
             return Response.text("服务未初始化")
+        if not self._maintenance_service:
+            return Response.text("运行时维护服务未初始化，无法升级")
 
         logger.info("执行 /upgrade 指令 - 检查更新")
         version_checker = self._scanner.version_checker
@@ -155,6 +151,9 @@ class UpgradeHandler(CommandHandler):
         if not version_checker:
             await session.context_manager.clear_confirmation()
             return Response.text("版本检查器未启用，请重新执行 /upgrade")
+        if not self._maintenance_service:
+            await session.context_manager.clear_confirmation()
+            return Response.text("运行时维护服务未初始化，无法升级")
 
         data = confirmation.data
         current_sha = data.get("current_sha", "")[:7]
@@ -164,158 +163,50 @@ class UpgradeHandler(CommandHandler):
 
         logger.info(f"用户确认升级: {current_branch} -> {target_branch}, {current_sha} -> {latest_sha}")
 
-        old_version = self._read_version_file()
-        logger.info(f"更新前版本号: {old_version}")
-
-        progress_msg = (
-            "正在执行更新...\n"
-            f"  分支: {current_branch} -> {target_branch}\n"
-            f"  当前: {current_sha}\n"
-            f"  目标: {latest_sha}"
-        )
-        logger.info(progress_msg)
-
         try:
-            logger.info("更新前 fetch 目标分支...")
-            fetch_success = await version_checker.fetch_remote()
-            if not fetch_success:
-                await session.context_manager.clear_confirmation()
-                return Response.text(
-                    "更新失败\n"
-                    "\n"
-                    f"无法拉取远程分支: {version_checker.target_remote_ref}\n"
-                    "\n"
-                    f"当前版本保持不变: {current_sha}"
-                )
+            old_version = self._read_version_file()
+            old_ver_str = self._version_to_str(old_version)
+            logger.info(f"更新前版本号: {old_ver_str}")
 
-            logger.info("切换到目标分支...")
-            switch_code, switch_stdout, switch_stderr = await version_checker.switch_to_target_branch()
-            if switch_code != 0:
-                await session.context_manager.clear_confirmation()
-                error_detail = self._parse_git_error(switch_stderr, switch_stdout)
-                logger.error(f"git switch 失败: {error_detail}")
-                return Response.text(
-                    f"更新失败\n"
-                    f"\n"
-                    f"无法切换到目标分支 {target_branch}。\n"
-                    f"错误信息：{error_detail}\n"
-                    f"\n"
-                    f"当前版本保持不变: {current_sha}"
-                )
-
-            logger.info("执行 git pull --ff-only...")
-            returncode, stdout, stderr = await self._run_git_pull(version_checker)
-
-            if returncode != 0:
-                await session.context_manager.clear_confirmation()
-                error_detail = self._parse_git_error(stderr, stdout)
-                logger.error(f"git pull 失败: {error_detail}")
-
-                return Response.text(
-                    f"更新失败\n"
-                    f"\n"
-                    f"错误信息：{error_detail}\n"
-                    f"\n"
-                    f"请联系开发者。\n"
-                    f"当前分支已切换到: {target_branch}\n"
-                    f"但版本可能未完成更新，请检查 git 状态。"
-                )
-
-            logger.info("git pull 成功")
-
-            new_version = self._read_version_file()
-            logger.info(f"更新后版本号: {new_version}")
-
-            version_changed, old_ver_str, new_ver_str = self._compare_versions(old_version, new_version)
-
+            self._maintenance_service.write_upgrade_request(
+                remote_name=version_checker.config.remote_name,
+                branch_name=target_branch,
+                old_version=old_ver_str if old_version is not None else None,
+            )
             await session.context_manager.clear_confirmation()
 
-            version_info = ""
-            extra_notifications = []
-            
-            if version_changed:
-                version_info = f"\n版本号: {old_ver_str} → {new_ver_str}\n"
-                logger.info(f"版本号发生变化: {old_ver_str} -> {new_ver_str}")
+            asyncio.create_task(self._delayed_trigger_upgrade_service())
 
-            major_version_changed = self._is_major_version_changed(old_version, new_version)
-            if major_version_changed:
-                logger.warning(f"主版本号发生变化: {old_ver_str} -> {new_ver_str}")
-                extra_notifications.extend([
-                    "",
-                    "⚠️ 重要提醒：主版本号发生变更！！！",
-                    "可能引入 breaking change，请于 GitHub 上查看最新版本文档，",
-                    "手动进行配置迁移，否则软件将无法运行，或部分功能将不可用！！！"
-                ])
-
-            extra_msg = "\n".join(extra_notifications) if extra_notifications else ""
-            if extra_msg:
-                extra_msg = "\n" + extra_msg + "\n"
-
-            success_msg = (
-                f"更新成功！\n"
+            return Response.text(
+                "已提交升级任务。\n"
                 f"\n"
-                f"当前分支: {target_branch}\n"
-                f"已更新至: {latest_sha}\n"
-                f"{version_info}"
-                f"{extra_msg}"
-                f"正在重启应用..."
+                f"分支: {current_branch} -> {target_branch}\n"
+                f"当前: {current_sha}\n"
+                f"目标: {latest_sha}\n"
+                f"当前版本号: {old_ver_str}\n"
+                f"\n"
+                "后台升级服务将停止 NextArc、拉取 NextArc 和 pyustc、安装依赖并重新启动。"
             )
-
-            asyncio.create_task(self._delayed_restart(old_version))
-
-            return Response.text(success_msg)
 
         except Exception as e:
             await session.context_manager.clear_confirmation()
             logger.error(f"升级过程异常: {e}")
             return Response.error(str(e), context="执行升级")
 
-    async def _run_git_pull(self, version_checker) -> tuple[int, str, str]:
-        project_root = version_checker.project_root
-
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "git",
-                "pull",
-                "--ff-only",
-                version_checker.config.remote_name,
-                version_checker.config.branch_name,
-                cwd=project_root,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            return (
-                proc.returncode,
-                stdout.decode("utf-8", errors="replace").strip(),
-                stderr.decode("utf-8", errors="replace").strip(),
-            )
-        except FileNotFoundError:
-            return (1, "", "git command not found")
-        except Exception as e:
-            return (1, "", str(e))
-
-    def _parse_git_error(self, stderr: str, stdout: str) -> str:
-        error_lower = stderr.lower()
-
-        if "conflict" in error_lower:
-            return "存在代码冲突，请联系开发者"
-        elif "could not resolve host" in error_lower or "unable to access" in error_lower:
-            return "网络连接失败，无法连接到远程仓库"
-        elif "authentication failed" in error_lower or "permission denied" in error_lower:
-            return "权限不足，请检查 git 认证配置"
-        elif "merge" in error_lower and "abort" in error_lower:
-            return "合并被中止，可能存在冲突，请联系开发者"
-        elif stderr:
-            return stderr[:100] + ("..." if len(stderr) > 100 else "")
-        elif stdout:
-            return stdout[:100] + ("..." if len(stdout) > 100 else "")
-        else:
-            return "未知错误"
-
-    async def _delayed_restart(self, old_version: tuple[int, int, int] | None, delay: float = 5.0):
+    async def _delayed_trigger_upgrade_service(self, delay: float = 3.0) -> None:
         await asyncio.sleep(delay)
-        self._restart_application(old_version)
+        if not self._maintenance_service:
+            logger.error("运行时维护服务未初始化，无法启动升级服务")
+            return
+
+        result = await self._maintenance_service.trigger_upgrade_service()
+        if result.returncode != 0:
+            logger.error(
+                "启动升级服务失败: returncode=%s stdout=%s stderr=%s",
+                result.returncode,
+                result.stdout,
+                result.stderr,
+            )
 
     def _read_version_file(self) -> tuple[int, int, int] | None:
         try:
@@ -340,51 +231,7 @@ class UpgradeHandler(CommandHandler):
             logger.error(f"读取版本文件失败: {e}")
             return None
 
-    def _compare_versions(
-            self,
-            old: tuple[int, int, int] | None,
-            new: tuple[int, int, int] | None
-    ) -> tuple[bool, str, str]:
-        old_str = self._version_to_str(old)
-        new_str = self._version_to_str(new)
-        changed = old_str != new_str
-        return (changed, old_str, new_str)
-
-    def _is_major_version_changed(
-            self,
-            old: tuple[int, int, int] | None,
-            new: tuple[int, int, int] | None
-    ) -> bool:
-        if old is None or new is None:
-            return False
-        return old[0] != new[0]
-
     def _version_to_str(self, version: tuple[int, int, int] | None) -> str:
         if version is None:
             return "unknown"
         return f"{version[0]}.{version[1]}.{version[2]}"
-
-    def _restart_application(self, old_version: tuple[int, int, int] | None):
-        logger.info("正在重启应用...")
-
-        self._create_update_marker(old_version)
-
-        executable = sys.executable
-        args = sys.argv
-
-        logger.info(f"重启命令: {executable} {' '.join(args)}")
-
-        try:
-            os.execv(executable, [executable] + args)
-        except Exception as e:
-            logger.error(f"重启失败: {e}")
-
-    def _create_update_marker(self, old_version: tuple[int, int, int] | None):
-        try:
-            project_root = self._scanner.version_checker.project_root
-            marker_file = project_root / ".next_arc_updated"
-            marker_content = self._version_to_str(old_version) if old_version is not None else ""
-            marker_file.write_text(marker_content, encoding="utf-8")
-            logger.info(f"已创建更新标记文件: {marker_file}")
-        except Exception as e:
-            logger.error(f"创建更新标记文件失败: {e}")

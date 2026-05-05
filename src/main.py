@@ -30,10 +30,12 @@ from src.core import (
     EnrollmentService,
     ScanCoordinator,
     ScanDiffService,
+    RuntimeMaintenanceService,
 )
 from src.core.events import EventBus
 from src.core.time_filter import TimeFilter
 from src.core.user_preference_manager import UserPreferenceManager
+from src.core.version_checker import VersionChecker
 from src.feishu_bot import FeishuBot, CardActionHandler
 from src.feishu_bot.card_builder import ActivityCardBuilder
 from src.feishu_bot.message_router import MessageRouter
@@ -74,6 +76,7 @@ class NextArcApp:
         self.card_handler: CardActionHandler = None
         self.card_builder: ActivityCardBuilder = None
         self.version_checker = None
+        self.maintenance_service: RuntimeMaintenanceService | None = None
         self.runtime_state: RuntimeState | None = None
         self._should_notify_file_auth_deprecation = False
         self._shutdown_event = asyncio.Event()
@@ -174,8 +177,23 @@ class NextArcApp:
             else:
                 logger.info("AI 筛选: 已禁用")
 
-            self.version_checker = None
-            logger.info("版本检查/应用内自升级: 暂时禁用")
+            self.version_checker = VersionChecker(
+                config=self.settings.version_check,
+                project_root=project_root,
+            )
+            logger.info(
+                "版本检查器初始化完成: enabled=%s, target=%s/%s",
+                self.settings.version_check.enabled,
+                self.settings.version_check.remote_name,
+                self.settings.version_check.branch_name,
+            )
+
+            state_dir = Path(os.getenv("NEXTARC_STATE_DIR", str(project_root)))
+            self.maintenance_service = RuntimeMaintenanceService(
+                state_dir=state_dir,
+                shutdown_callback=self.request_shutdown,
+            )
+            logger.info(f"运行时维护服务初始化完成，状态目录: {state_dir}")
 
             self.time_filter = None
             use_time_filter = False
@@ -272,6 +290,7 @@ class NextArcApp:
                 enrollment_service=self.enrollment_service,
                 filter_pipeline=self.filter_pipeline,
                 scanner=self.scanner,
+                maintenance_service=self.maintenance_service,
                 time_filter=self.time_filter,
                 version_checker=self.version_checker,
             )
@@ -436,6 +455,11 @@ class NextArcApp:
 
     def _signal_handler(self) -> None:
         logger.info("收到关闭信号...")
+        self.request_shutdown()
+
+    def request_shutdown(self) -> None:
+        """请求主循环退出。"""
+
         self._shutdown_event.set()
 
     async def shutdown(self) -> None:
@@ -465,6 +489,8 @@ class NextArcApp:
         }
 
     def _get_update_marker_path(self) -> Path:
+        if self.maintenance_service:
+            return self.maintenance_service.update_marker_path
         return project_root / UPDATE_MARKER_FILE
 
     def _has_update_marker(self) -> bool:

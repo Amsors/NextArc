@@ -8,6 +8,8 @@ from src.utils.logger import get_logger
 from .handlers import get_all_handlers
 from .handlers.cancel import CancelHandler
 from .handlers.join import JoinHandler
+from .handlers.restart import RestartHandler
+from .handlers.upgrade import UpgradeHandler
 
 if TYPE_CHECKING:
     from src.app import AppContext
@@ -23,6 +25,8 @@ class MessageRouter:
         self._confirm_handlers = {
             "cancel": CancelHandler(app_context),
             "join": JoinHandler(app_context),
+            "restart": RestartHandler(app_context),
+            "upgrade": UpgradeHandler(app_context),
         }
 
     async def handle_message(self, text: str, session: UserSession) -> Response:

@@ -114,12 +114,25 @@ class DisplayedActivitiesPayload:
 
 @dataclass
 class ConfirmationPayload:
-    operation: Literal["cancel", "join"]
+    operation: Literal["cancel", "join", "restart", "upgrade"]
     activity_id: str | None = None
     activity_name: str | None = None
     data: dict | None = None
 
     def get_confirm_prompt(self) -> str:
+        if self.operation == "restart":
+            return (
+                "确定要重启 NextArc 吗？\n\n"
+                "回复「确认」执行操作\n"
+                "回复「取消」放弃操作"
+            )
+        if self.operation == "upgrade":
+            return (
+                "确定要升级并重启 NextArc 吗？\n\n"
+                "回复「确认」执行操作\n"
+                "回复「取消」放弃操作"
+            )
+
         action = "取消报名" if self.operation == "cancel" else "报名"
         activity_name = self.activity_name or "未知活动"
         return (

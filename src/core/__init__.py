@@ -13,6 +13,7 @@ from .repositories import ActivityRepository, PreferenceKind, PreferenceReposito
 from .scanning import ActivitySyncService, ScanCoordinator, ScanDiffService, ScanOptions, ScanResult
 from .scanner import ActivityScanner
 from .services import ActivityQueryService, ActivityUpdateService, EnrollmentService
+from .runtime_maintenance import RuntimeMaintenanceService
 from .time_filter import TimeFilter
 from .user_preference_manager import UserPreferenceManager
 
@@ -37,6 +38,7 @@ __all__ = [
     "ActivityQueryService",
     "ActivityUpdateService",
     "EnrollmentService",
+    "RuntimeMaintenanceService",
     "TimeFilter",
     "UserPreferenceManager",
     "FilteredActivity",

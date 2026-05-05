@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NEXTARC_REPO_URL="${NEXTARC_REPO_URL:-https://github.com/Amsors/NextArc}"
 NEXTARC_REPO_BRANCH="${NEXTARC_REPO_BRANCH:-feat/one_click_deploy}"
 PYUSTC_REPO_URL="${PYUSTC_REPO_URL:-https://github.com/Amsors/pyustc}"
@@ -8,12 +9,17 @@ PYUSTC_REPO_BRANCH="${PYUSTC_REPO_BRANCH:-adapt/NextArc}"
 
 NEXTARC_INSTALL_DIR="${NEXTARC_INSTALL_DIR:-/opt/nextarc}"
 NEXTARC_APP_DIR="${NEXTARC_APP_DIR:-/opt/nextarc/app}"
+NEXTARC_PYUSTC_DIR="${NEXTARC_PYUSTC_DIR:-/opt/nextarc/pyustc}"
 NEXTARC_VENV_DIR="${NEXTARC_VENV_DIR:-/opt/nextarc/venv}"
 NEXTARC_CONFIG_DIR="${NEXTARC_CONFIG_DIR:-/etc/nextarc}"
 NEXTARC_STATE_DIR="${NEXTARC_STATE_DIR:-/var/lib/nextarc}"
 NEXTARC_LOG_DIR="${NEXTARC_LOG_DIR:-/var/log/nextarc}"
 NEXTARC_ENV_FILE="${NEXTARC_ENV_FILE:-/etc/nextarc/nextarc.env}"
 NEXTARC_SERVICE_FILE="/etc/systemd/system/nextarc.service"
+NEXTARC_UPGRADE_SERVICE_FILE="/etc/systemd/system/nextarc-upgrade.service"
+NEXTARC_LIB_DIR="${NEXTARC_LIB_DIR:-/usr/local/lib/nextarc}"
+NEXTARC_UPGRADE_SCRIPT="${NEXTARC_LIB_DIR}/upgrade-nextarc.sh"
+NEXTARC_SUDOERS_FILE="/etc/sudoers.d/nextarc-upgrade"
 
 log_step() {
   echo
@@ -50,12 +56,21 @@ uninstall_service() {
   log_step "卸载 NextArc systemd 服务"
   log_info "停止并禁用服务: nextarc"
   systemctl disable --now nextarc >/dev/null 2>&1 || true
+  log_info "停止升级服务: nextarc-upgrade"
+  systemctl stop nextarc-upgrade >/dev/null 2>&1 || true
   log_info "删除服务文件: ${NEXTARC_SERVICE_FILE}"
   rm -f "${NEXTARC_SERVICE_FILE}"
+  log_info "删除升级服务文件: ${NEXTARC_UPGRADE_SERVICE_FILE}"
+  rm -f "${NEXTARC_UPGRADE_SERVICE_FILE}"
+  log_info "删除升级脚本: ${NEXTARC_UPGRADE_SCRIPT}"
+  rm -f "${NEXTARC_UPGRADE_SCRIPT}"
+  log_info "删除 sudoers 白名单: ${NEXTARC_SUDOERS_FILE}"
+  rm -f "${NEXTARC_SUDOERS_FILE}"
   log_info "重新加载 systemd 配置"
   systemctl daemon-reload
   log_info "清理 systemd failed 状态"
   systemctl reset-failed nextarc >/dev/null 2>&1 || true
+  systemctl reset-failed nextarc-upgrade >/dev/null 2>&1 || true
   echo "NextArc systemd 服务已卸载。配置、数据、日志和代码均已保留。"
 }
 
@@ -68,6 +83,7 @@ purge_all() {
   echo "  - ${NEXTARC_CONFIG_DIR}"
   echo "  - ${NEXTARC_STATE_DIR}"
   echo "  - ${NEXTARC_LOG_DIR}"
+  echo "  - ${NEXTARC_LIB_DIR}"
   echo "将删除的系统用户：nextarc"
   read -r -p "如确认删除，请输入 DELETE NEXTARC: " confirmation
   if [[ "${confirmation}" != "DELETE NEXTARC" ]]; then
@@ -79,7 +95,8 @@ purge_all() {
   log_info "删除配置和密钥: ${NEXTARC_CONFIG_DIR}"
   log_info "删除运行数据: ${NEXTARC_STATE_DIR}"
   log_info "删除日志目录: ${NEXTARC_LOG_DIR}"
-  rm -rf "${NEXTARC_INSTALL_DIR}" "${NEXTARC_CONFIG_DIR}" "${NEXTARC_STATE_DIR}" "${NEXTARC_LOG_DIR}"
+  log_info "删除维护脚本目录: ${NEXTARC_LIB_DIR}"
+  rm -rf "${NEXTARC_INSTALL_DIR}" "${NEXTARC_CONFIG_DIR}" "${NEXTARC_STATE_DIR}" "${NEXTARC_LOG_DIR}" "${NEXTARC_LIB_DIR}"
   log_step "删除系统用户"
   log_info "删除用户: nextarc"
   userdel nextarc >/dev/null 2>&1 || true
@@ -91,8 +108,8 @@ install_packages() {
   log_info "更新 apt 软件包索引"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
-  log_info "安装软件包: git curl ca-certificates python3 python3-venv python3-pip sqlite3"
-  apt-get install -y git curl ca-certificates python3 python3-venv python3-pip sqlite3
+  log_info "安装软件包: git curl ca-certificates sudo python3 python3-venv python3-pip sqlite3"
+  apt-get install -y git curl ca-certificates sudo python3 python3-venv python3-pip sqlite3
 }
 
 ensure_user_and_dirs() {
@@ -132,21 +149,31 @@ checkout_code() {
   fi
 }
 
+checkout_pyustc() {
+  log_step "获取 pyustc 代码"
+  log_info "仓库: ${PYUSTC_REPO_URL}"
+  log_info "分支: ${PYUSTC_REPO_BRANCH}"
+  log_info "目标目录: ${NEXTARC_PYUSTC_DIR}"
+  if [[ -d "${NEXTARC_PYUSTC_DIR}/.git" ]]; then
+    log_info "检测到已有 pyustc 仓库，拉取最新代码"
+    git -C "${NEXTARC_PYUSTC_DIR}" pull --ff-only
+  else
+    log_info "未检测到已有 pyustc 仓库，清理目标目录并重新克隆"
+    rm -rf "${NEXTARC_PYUSTC_DIR}"
+    git clone --branch "${PYUSTC_REPO_BRANCH}" --single-branch "${PYUSTC_REPO_URL}" "${NEXTARC_PYUSTC_DIR}"
+  fi
+}
+
 install_python_deps() {
   log_step "创建 Python 虚拟环境并安装依赖"
-  local pyustc_pip_url="${PYUSTC_REPO_URL}"
-  if [[ "${pyustc_pip_url}" != *.git ]]; then
-    pyustc_pip_url="${pyustc_pip_url}.git"
-  fi
-
   log_info "虚拟环境目录: ${NEXTARC_VENV_DIR}"
   python3 -m venv "${NEXTARC_VENV_DIR}"
   log_info "升级 pip 和 wheel"
   "${NEXTARC_VENV_DIR}/bin/python" -m pip install --upgrade pip wheel
   log_info "安装项目依赖: ${NEXTARC_APP_DIR}/requirements.txt"
   "${NEXTARC_VENV_DIR}/bin/pip" install -r "${NEXTARC_APP_DIR}/requirements.txt"
-  log_info "安装 pyustc: git+${pyustc_pip_url}@${PYUSTC_REPO_BRANCH}"
-  "${NEXTARC_VENV_DIR}/bin/pip" install "git+${pyustc_pip_url}@${PYUSTC_REPO_BRANCH}"
+  log_info "以 editable 模式安装 pyustc: ${NEXTARC_PYUSTC_DIR}"
+  "${NEXTARC_VENV_DIR}/bin/pip" install -e "${NEXTARC_PYUSTC_DIR}"
 
   log_info "写入 nextarc 命令包装脚本: ${NEXTARC_VENV_DIR}/bin/nextarc"
   cat >"${NEXTARC_VENV_DIR}/bin/nextarc" <<EOF
@@ -156,6 +183,45 @@ exec "${NEXTARC_VENV_DIR}/bin/python" -m src.cli "\$@"
 EOF
   log_info "设置 nextarc 命令权限为 755"
   chmod 755 "${NEXTARC_VENV_DIR}/bin/nextarc"
+}
+
+install_upgrade_service() {
+  log_step "安装自升级服务"
+  log_info "创建维护脚本目录: ${NEXTARC_LIB_DIR}"
+  mkdir -p "${NEXTARC_LIB_DIR}"
+  log_info "写入升级脚本: ${NEXTARC_UPGRADE_SCRIPT}"
+  install -m 0755 "${SCRIPT_DIR}/upgrade-nextarc.sh" "${NEXTARC_UPGRADE_SCRIPT}"
+
+  log_info "写入升级服务文件: ${NEXTARC_UPGRADE_SERVICE_FILE}"
+  cat >"${NEXTARC_UPGRADE_SERVICE_FILE}" <<EOF
+[Unit]
+Description=NextArc Self Upgrade
+Documentation=https://github.com/Amsors/NextArc
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=NEXTARC_APP_DIR=${NEXTARC_APP_DIR}
+Environment=NEXTARC_INSTALL_DIR=${NEXTARC_INSTALL_DIR}
+Environment=NEXTARC_PYUSTC_DIR=${NEXTARC_PYUSTC_DIR}
+Environment=NEXTARC_VENV_DIR=${NEXTARC_VENV_DIR}
+Environment=NEXTARC_CONFIG_DIR=${NEXTARC_CONFIG_DIR}
+Environment=NEXTARC_STATE_DIR=${NEXTARC_STATE_DIR}
+Environment=NEXTARC_LOG_DIR=${NEXTARC_LOG_DIR}
+ExecStart=${NEXTARC_UPGRADE_SCRIPT}
+TimeoutStartSec=900
+EOF
+  chmod 0644 "${NEXTARC_UPGRADE_SERVICE_FILE}"
+
+  log_info "写入 sudoers 白名单: ${NEXTARC_SUDOERS_FILE}"
+  cat >"${NEXTARC_SUDOERS_FILE}" <<EOF
+nextarc ALL=(root) NOPASSWD: /bin/systemctl start nextarc-upgrade.service, /usr/bin/systemctl start nextarc-upgrade.service
+nextarc ALL=(root) NOPASSWD: /bin/systemctl start --no-block nextarc-upgrade.service, /usr/bin/systemctl start --no-block nextarc-upgrade.service
+EOF
+  chmod 0440 "${NEXTARC_SUDOERS_FILE}"
 }
 
 run_bootstrap_if_needed() {
@@ -278,9 +344,11 @@ main() {
   install_packages
   ensure_user_and_dirs
   checkout_code
+  checkout_pyustc
   install_python_deps
   run_bootstrap_if_needed
   fix_permissions
+  install_upgrade_service
   install_service
 
   echo

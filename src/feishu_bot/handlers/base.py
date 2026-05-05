@@ -9,6 +9,7 @@ from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from src.core import ActivityScanner, AuthManager, DatabaseManager
+    from src.core.runtime_maintenance import RuntimeMaintenanceService
     from src.core.services import ActivityQueryService, ActivityUpdateService, EnrollmentService
     from src.app import AppContext
     from src.core.user_preference_manager import UserPreferenceManager
@@ -51,6 +52,10 @@ class CommandHandler(ABC):
     @property
     def _settings(self) -> Any:
         return self._get_context_attr("settings")
+
+    @property
+    def _maintenance_service(self) -> "RuntimeMaintenanceService | None":
+        return self._get_context_attr("maintenance_service")
 
     def _get_context_attr(self, name: str) -> Any:
         return getattr(self.app_context, name, None)

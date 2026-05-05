@@ -17,6 +17,7 @@ from src.core import (
     AuthManager,
     DatabaseManager,
     EnrollmentService,
+    RuntimeMaintenanceService,
     UserPreferenceManager,
 )
 from src.core.events import EventBus
@@ -40,5 +41,6 @@ class AppContext:
     enrollment_service: EnrollmentService
     filter_pipeline: ActivityFilterPipeline
     scanner: ActivityScanner
+    maintenance_service: RuntimeMaintenanceService | None = None
     time_filter: TimeFilter | None = None
     version_checker: Any | None = None
