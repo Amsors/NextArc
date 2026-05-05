@@ -324,12 +324,16 @@ def _post_registration(base_url: str, data: dict[str, str]) -> dict[str, Any]:
         with urlopen(request, timeout=30) as response:
             payload = response.read().decode("utf-8")
     except HTTPError as exc:
-        payload = exc.read().decode("utf-8")
+        payload = exc.read().decode("utf-8", errors="replace")
 
     try:
-        return json.loads(payload)
+        result = json.loads(payload)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"飞书应用创建接口返回了无法解析的响应: {payload[:200]}") from exc
+
+    if not isinstance(result, dict):
+        raise RuntimeError(f"飞书应用创建接口返回了异常响应: {payload[:200]}")
+    return result
 
 
 def _build_registration_qr_url(uri: str) -> str:
@@ -403,12 +407,19 @@ def _run_feishu_registration(on_qr_code, on_status_change) -> dict[str, Any]:
         },
     )
 
-    device_code = begin_res["device_code"]
+    device_code = begin_res.get("device_code")
+    verification_uri = begin_res.get("verification_uri_complete")
+    if not device_code or not verification_uri:
+        error = begin_res.get("error", "")
+        error_desc = begin_res.get("error_description", "")
+        detail = f"{error} {error_desc}".strip() or str(begin_res)[:200]
+        raise RuntimeError(f"飞书应用创建初始化失败: {detail}")
+
     server_interval = float(begin_res.get("interval", 5))
     interval = _get_registration_poll_interval(server_interval)
     expire_in = int(begin_res.get("expires_in", 600))
 
-    qr_url = _build_registration_qr_url(begin_res["verification_uri_complete"])
+    qr_url = _build_registration_qr_url(verification_uri)
     on_qr_code({"url": qr_url, "expire_in": expire_in})
     on_status_change({"status": "polling", "interval": interval})
 
@@ -778,29 +789,33 @@ def main_cli() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.ai_config:
-        return cmd_ai_config(args)
-    if args.preference_config:
-        return cmd_preference_config(args)
-    if args.feishu_register:
-        return cmd_feishu_register(args)
-
-    match args.command:
-        case "run":
-            return cmd_run(args)
-        case "bootstrap":
-            return cmd_bootstrap(args)
-        case "feishu-register":
-            return cmd_feishu_register(args)
-        case "ai-config":
+    try:
+        if args.ai_config:
             return cmd_ai_config(args)
-        case "preference-config":
+        if args.preference_config:
             return cmd_preference_config(args)
-        case "doctor":
-            return cmd_doctor(args)
-        case _:
-            parser.print_help()
-            return 1
+        if args.feishu_register:
+            return cmd_feishu_register(args)
+
+        match args.command:
+            case "run":
+                return cmd_run(args)
+            case "bootstrap":
+                return cmd_bootstrap(args)
+            case "feishu-register":
+                return cmd_feishu_register(args)
+            case "ai-config":
+                return cmd_ai_config(args)
+            case "preference-config":
+                return cmd_preference_config(args)
+            case "doctor":
+                return cmd_doctor(args)
+            case _:
+                parser.print_help()
+                return 1
+    except RuntimeError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
