@@ -89,6 +89,14 @@ class RuntimeMaintenanceService:
     async def trigger_upgrade_service(self) -> MaintenanceCommandResult:
         """启动 systemd 升级服务。"""
 
+        if os.geteuid() != 0 and self._no_new_privileges_enabled():
+            message = (
+                "当前进程启用了 NoNewPrivileges，跳过 sudo；"
+                "升级请求将由 nextarc-upgrade.path 监听并触发"
+            )
+            logger.info(message)
+            return MaintenanceCommandResult(0, message, "")
+
         command = self._build_systemctl_start_command()
         logger.info("启动升级服务: %s", " ".join(command))
         try:
@@ -112,6 +120,18 @@ class RuntimeMaintenanceService:
         if os.geteuid() == 0:
             return [systemctl, "start", "--no-block", self.upgrade_service_name]
         return ["sudo", "-n", systemctl, "start", "--no-block", self.upgrade_service_name]
+
+    def _no_new_privileges_enabled(self) -> bool:
+        """读取 Linux 进程状态，判断 sudo 是否会被 NoNewPrivileges 拦截。"""
+
+        status_path = Path("/proc/self/status")
+        try:
+            for line in status_path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("NoNewPrivs:"):
+                    return line.split(":", 1)[1].strip() == "1"
+        except OSError as exc:
+            logger.debug("读取 NoNewPrivileges 状态失败: %s", exc)
+        return False
 
     def _validate_remote(self, remote_name: str) -> None:
         if not remote_name or not SAFE_REMOTE_PATTERN.fullmatch(remote_name):

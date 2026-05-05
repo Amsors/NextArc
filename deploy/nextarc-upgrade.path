@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch NextArc Self Upgrade Requests
+Documentation=https://github.com/Amsors/NextArc
+
+[Path]
+PathExists=/var/lib/nextarc/upgrade-request.env
+PathChanged=/var/lib/nextarc/upgrade-request.env
+Unit=nextarc-upgrade.service
+
+[Install]
+WantedBy=multi-user.target

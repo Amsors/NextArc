@@ -17,6 +17,7 @@ NEXTARC_LOG_DIR="${NEXTARC_LOG_DIR:-/var/log/nextarc}"
 NEXTARC_ENV_FILE="${NEXTARC_ENV_FILE:-/etc/nextarc/nextarc.env}"
 NEXTARC_SERVICE_FILE="/etc/systemd/system/nextarc.service"
 NEXTARC_UPGRADE_SERVICE_FILE="/etc/systemd/system/nextarc-upgrade.service"
+NEXTARC_UPGRADE_PATH_FILE="/etc/systemd/system/nextarc-upgrade.path"
 NEXTARC_LIB_DIR="${NEXTARC_LIB_DIR:-/usr/local/lib/nextarc}"
 NEXTARC_UPGRADE_SCRIPT="${NEXTARC_LIB_DIR}/upgrade-nextarc.sh"
 NEXTARC_SUDOERS_FILE="/etc/sudoers.d/nextarc-upgrade"
@@ -57,11 +58,14 @@ uninstall_service() {
   log_info "停止并禁用服务: nextarc"
   systemctl disable --now nextarc >/dev/null 2>&1 || true
   log_info "停止升级服务: nextarc-upgrade"
+  systemctl disable --now nextarc-upgrade.path >/dev/null 2>&1 || true
   systemctl stop nextarc-upgrade >/dev/null 2>&1 || true
   log_info "删除服务文件: ${NEXTARC_SERVICE_FILE}"
   rm -f "${NEXTARC_SERVICE_FILE}"
   log_info "删除升级服务文件: ${NEXTARC_UPGRADE_SERVICE_FILE}"
   rm -f "${NEXTARC_UPGRADE_SERVICE_FILE}"
+  log_info "删除升级监听文件: ${NEXTARC_UPGRADE_PATH_FILE}"
+  rm -f "${NEXTARC_UPGRADE_PATH_FILE}"
   log_info "删除升级脚本: ${NEXTARC_UPGRADE_SCRIPT}"
   rm -f "${NEXTARC_UPGRADE_SCRIPT}"
   log_info "删除 sudoers 白名单: ${NEXTARC_SUDOERS_FILE}"
@@ -71,6 +75,7 @@ uninstall_service() {
   log_info "清理 systemd failed 状态"
   systemctl reset-failed nextarc >/dev/null 2>&1 || true
   systemctl reset-failed nextarc-upgrade >/dev/null 2>&1 || true
+  systemctl reset-failed nextarc-upgrade.path >/dev/null 2>&1 || true
   echo "NextArc systemd 服务已卸载。配置、数据、日志和代码均已保留。"
 }
 
@@ -216,12 +221,24 @@ TimeoutStartSec=900
 EOF
   chmod 0644 "${NEXTARC_UPGRADE_SERVICE_FILE}"
 
-  log_info "写入 sudoers 白名单: ${NEXTARC_SUDOERS_FILE}"
-  cat >"${NEXTARC_SUDOERS_FILE}" <<EOF
-nextarc ALL=(root) NOPASSWD: /bin/systemctl start nextarc-upgrade.service, /usr/bin/systemctl start nextarc-upgrade.service
-nextarc ALL=(root) NOPASSWD: /bin/systemctl start --no-block nextarc-upgrade.service, /usr/bin/systemctl start --no-block nextarc-upgrade.service
+  log_info "写入升级请求监听文件: ${NEXTARC_UPGRADE_PATH_FILE}"
+  cat >"${NEXTARC_UPGRADE_PATH_FILE}" <<EOF
+[Unit]
+Description=Watch NextArc Self Upgrade Requests
+Documentation=https://github.com/Amsors/NextArc
+
+[Path]
+PathExists=${NEXTARC_STATE_DIR}/upgrade-request.env
+PathChanged=${NEXTARC_STATE_DIR}/upgrade-request.env
+Unit=nextarc-upgrade.service
+
+[Install]
+WantedBy=multi-user.target
 EOF
-  chmod 0440 "${NEXTARC_SUDOERS_FILE}"
+  chmod 0644 "${NEXTARC_UPGRADE_PATH_FILE}"
+
+  log_info "移除旧版 sudoers 白名单: ${NEXTARC_SUDOERS_FILE}"
+  rm -f "${NEXTARC_SUDOERS_FILE}"
 }
 
 run_bootstrap_if_needed() {
@@ -304,6 +321,8 @@ EOF
   chmod 0644 "${NEXTARC_SERVICE_FILE}"
   log_info "重新加载 systemd 配置"
   systemctl daemon-reload
+  log_info "启用并启动升级请求监听: nextarc-upgrade.path"
+  systemctl enable --now nextarc-upgrade.path
   log_info "启用并启动服务: nextarc"
   systemctl enable --now nextarc
 }
