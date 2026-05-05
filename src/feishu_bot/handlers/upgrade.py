@@ -38,16 +38,21 @@ class UpgradeHandler(CommandHandler):
 
         try:
             logger.info("正在 fetch 远程仓库...")
-            fetch_success = await version_checker.fetch_remote()
-            if not fetch_success:
+            fetch_result = await version_checker.fetch_remote_result()
+            if not fetch_result.success:
+                if version_checker.is_permission_error(fetch_result.stderr):
+                    return await self._handle_readonly_upgrade_check(session, fetch_result.stderr)
+
                 return Response.text(
                     "无法连接到远程仓库\n"
                     "\n"
-                    "请检查网络连接是否正常\n"
+                    f"错误信息: {fetch_result.stderr or 'unknown'}\n"
+                    "\n"
+                    "请检查网络连接、远程仓库地址和访问权限是否正常\n"
                 )
 
             logger.info("正在检查版本差异...")
-            result = await version_checker.check_for_updates()
+            result = await version_checker.check_for_updates(auto_fetch=False)
             current_branch = await version_checker.get_current_branch()
             target_branch = version_checker.config.branch_name
 
@@ -141,6 +146,62 @@ class UpgradeHandler(CommandHandler):
         except Exception as e:
             logger.error(f"检查更新失败: {e}")
             return Response.error(str(e), context="检查更新")
+
+    async def _handle_readonly_upgrade_check(self, session, fetch_error: str) -> Response:
+        """主服务无权写 .git 时，改用只读远端查询完成升级确认。"""
+
+        version_checker = self._scanner.version_checker
+        current_sha = await version_checker.get_current_version()
+        latest_sha = await version_checker.get_remote_head_version()
+        current_branch = await version_checker.get_current_branch()
+        target_branch = version_checker.config.branch_name
+
+        if not current_sha or not latest_sha:
+            return Response.text(
+                "检查更新失败：当前服务无权写入本地 Git 目录，且无法读取远端目标分支。\n"
+                "\n"
+                f"fetch 错误: {fetch_error or 'unknown'}\n"
+                "\n"
+                "请确认 nextarc-upgrade.service 已安装，且远端仓库可以访问。"
+            )
+
+        branch_mismatch = current_branch != target_branch
+        version_changed = current_sha != latest_sha
+        if not branch_mismatch and not version_changed:
+            return Response.text(
+                "当前已是最新版本，无需更新。\n"
+                "\n"
+                f"当前分支: {current_branch or 'detached'}\n"
+                f"当前版本: {current_sha[:7]}\n"
+                "\n"
+                "提示：当前服务进程无权写入本地 Git 目录，已使用只读远端检查。"
+            )
+
+        await session.context_manager.set_confirmation(
+            operation="upgrade",
+            data={
+                "current_sha": current_sha,
+                "latest_sha": latest_sha,
+                "current_branch": current_branch or "detached",
+                "target_branch": target_branch,
+                "commits": [],
+            }
+        )
+
+        lines = [
+            "发现可升级的目标版本。",
+            "",
+            f"当前分支: {current_branch or 'detached'}",
+            f"目标分支: {target_branch}",
+            f"当前版本: {current_sha[:7]}",
+            f"目标版本: {latest_sha[:7]}",
+            "",
+            "当前服务进程无权写入本地 Git 目录，已改用只读远端检查；更新内容列表暂不可用。",
+            "确认后将由 nextarc-upgrade.service 拉取代码、安装依赖并重启应用。",
+            "",
+            "是否立即更新并重启？(回复「确认」或「取消」)",
+        ]
+        return Response.text("\n".join(lines))
 
     async def execute_upgrade(self, session) -> Response:
         confirmation = await session.context_manager.get_confirmation()

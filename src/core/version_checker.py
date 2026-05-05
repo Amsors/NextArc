@@ -29,6 +29,15 @@ class VersionUpdateResult:
     repo_url: str
 
 
+@dataclass(frozen=True)
+class GitOperationResult:
+    """Git 操作结果。"""
+
+    success: bool
+    stdout: str = ""
+    stderr: str = ""
+
+
 class VersionCheckConfig:
     enabled: bool
     day_of_week: int
@@ -106,7 +115,9 @@ class VersionChecker:
             return None
         return stdout
 
-    async def fetch_remote(self) -> bool:
+    async def fetch_remote_result(self) -> GitOperationResult:
+        """拉取目标远程分支，并保留失败原因供调用方诊断。"""
+
         remote_refspec = (
             f"+refs/heads/{self.config.branch_name}:"
             f"refs/remotes/{self.config.remote_name}/{self.config.branch_name}"
@@ -117,9 +128,47 @@ class VersionChecker:
         )
         if returncode != 0:
             logger.warning(f"git fetch 失败: {stderr}")
-            return False
+            return GitOperationResult(False, stdout, stderr)
         logger.info("git fetch 成功")
-        return True
+        return GitOperationResult(True, stdout, stderr)
+
+    async def fetch_remote(self) -> bool:
+        result = await self.fetch_remote_result()
+        return result.success
+
+    async def get_remote_head_version(self) -> Optional[str]:
+        """只读查询远端目标分支 HEAD，不写入本地 .git 目录。"""
+
+        remote_branch = f"refs/heads/{self.config.branch_name}"
+        logger.debug(f"查询远端分支 HEAD: {self.config.remote_name} {remote_branch}")
+        returncode, stdout, stderr = await self._run_git_command(
+            ["ls-remote", "--heads", self.config.remote_name, remote_branch]
+        )
+        if returncode != 0:
+            logger.warning(f"查询远端分支 HEAD 失败: {stderr}")
+            return None
+
+        first_line = stdout.splitlines()[0].strip() if stdout else ""
+        if not first_line:
+            logger.warning(f"远端分支不存在或无返回: {remote_branch}")
+            return None
+
+        parts = first_line.split()
+        if len(parts) < 2:
+            logger.warning(f"远端分支 HEAD 返回格式无效: {first_line}")
+            return None
+        return parts[0]
+
+    def is_permission_error(self, stderr: str) -> bool:
+        """判断 Git 失败是否由本地仓库写权限不足导致。"""
+
+        normalized = stderr.lower()
+        return (
+            "permission denied" in normalized
+            or "could not lock" in normalized
+            or "unable to create" in normalized
+            or "cannot open '.git/" in normalized
+        )
 
     async def local_branch_exists(self, branch_name: str | None = None) -> bool:
         branch = branch_name or self.config.branch_name
@@ -234,7 +283,7 @@ class VersionChecker:
         logger.debug(f"远程 URL: {url}")
         return url
 
-    async def check_for_updates(self) -> Optional[VersionUpdateResult]:
+    async def check_for_updates(self, *, auto_fetch: bool | None = None) -> Optional[VersionUpdateResult]:
         logger.info("开始检查版本更新...")
         logger.info(f"项目目录: {self.project_root}")
 
@@ -251,7 +300,9 @@ class VersionChecker:
 
         logger.info(f"当前本地版本: {current_sha[:7]}")
 
-        if self.config.auto_fetch:
+        should_fetch = self.config.auto_fetch if auto_fetch is None else auto_fetch
+
+        if should_fetch:
             logger.info(f"auto_fetch 启用，正在 fetch {self.config.remote_name}...")
             fetch_success = await self.fetch_remote()
             if not fetch_success:

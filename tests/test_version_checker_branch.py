@@ -67,6 +67,52 @@ class VersionCheckerBranchTest(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_fetch_remote_result_keeps_error_detail(self) -> None:
+        checker = RecordingVersionChecker()
+
+        async def fail_fetch(args: list[str]) -> tuple[int, str, str]:
+            checker.commands.append(args)
+            return (1, "", "error: cannot open '.git/FETCH_HEAD': Permission denied")
+
+        checker._run_git_command = fail_fetch
+
+        result = await checker.fetch_remote_result()
+
+        self.assertFalse(result.success)
+        self.assertIn("Permission denied", result.stderr)
+
+    async def test_permission_error_detects_git_write_failures(self) -> None:
+        checker = RecordingVersionChecker()
+
+        self.assertTrue(
+            checker.is_permission_error("error: cannot open '.git/FETCH_HEAD': Permission denied")
+        )
+        self.assertTrue(checker.is_permission_error("fatal: could not lock config file .git/config"))
+        self.assertFalse(checker.is_permission_error("fatal: unable to access remote"))
+
+    async def test_get_remote_head_version_uses_readonly_ls_remote(self) -> None:
+        checker = RecordingVersionChecker()
+
+        async def run_git(args: list[str]) -> tuple[int, str, str]:
+            checker.commands.append(args)
+            if args[:2] == ["ls-remote", "--heads"]:
+                return (
+                    0,
+                    "0123456789abcdef0123456789abcdef01234567\trefs/heads/feature/test",
+                    "",
+                )
+            return (0, "", "")
+
+        checker._run_git_command = run_git
+
+        sha = await checker.get_remote_head_version()
+
+        self.assertEqual(sha, "0123456789abcdef0123456789abcdef01234567")
+        self.assertEqual(
+            checker.commands[-1],
+            ["ls-remote", "--heads", "origin", "refs/heads/feature/test"],
+        )
+
     async def test_switch_to_existing_target_branch(self) -> None:
         checker = RecordingVersionChecker()
         checker.branch_exists = True
