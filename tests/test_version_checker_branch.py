@@ -37,6 +37,21 @@ class RecordingVersionChecker(VersionChecker):
 
 
 class VersionCheckerBranchTest(unittest.IsolatedAsyncioTestCase):
+    async def test_git_commands_trust_only_project_root(self) -> None:
+        checker = RecordingVersionChecker()
+
+        git_args = checker._build_git_command_args(["rev-parse", "HEAD"])
+
+        self.assertEqual(
+            git_args,
+            [
+                "-c",
+                f"safe.directory={checker.project_root.resolve()}",
+                "rev-parse",
+                "HEAD",
+            ],
+        )
+
     async def test_fetch_remote_updates_configured_remote_tracking_branch(self) -> None:
         checker = RecordingVersionChecker()
 

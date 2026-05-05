@@ -56,11 +56,16 @@ class VersionChecker:
     def target_remote_ref(self) -> str:
         return f"{self.config.remote_name}/{self.config.branch_name}"
 
+    def _build_git_command_args(self, args: list[str]) -> list[str]:
+        safe_directory = str(self.project_root.resolve())
+        return ["-c", f"safe.directory={safe_directory}", *args]
+
     async def _run_git_command(self, args: list[str]) -> tuple[int, str, str]:
+        git_args = self._build_git_command_args(args)
         try:
             proc = await asyncio.create_subprocess_exec(
                 "git",
-                *args,
+                *git_args,
                 cwd=self.project_root,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
