@@ -4,9 +4,11 @@
 
 ## 重要更新日志
 
-[请查看文档](./docs/change_log.md)
+当前已初步支持通过脚本一键部署机器人。相关文档将在稍后更新！
 
-[更换上游仓库为校内gitlab](./docs/set_another_upsteam.md)
+[如何将上游仓库改校内gitlab](./docs/set_another_upsteam.md)
+
+[完整更新记录请查看文档](./docs/change_log.md)
 
 ## 项目介绍
 
