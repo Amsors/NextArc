@@ -13,6 +13,7 @@ import shlex
 import shutil
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -99,6 +100,97 @@ def _set_nested(data: dict[str, Any], keys: list[str], value: Any) -> None:
             current[key] = child
         current = child
     current[keys[-1]] = value
+
+
+def _get_nested(data: dict[str, Any], keys: list[str], default: Any = None) -> Any:
+    current: Any = data
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return default
+        current = current[key]
+    return current
+
+
+def _prompt_text(prompt: str, current: str = "", *, required: bool = False) -> str:
+    suffix = f" [{current}]" if current else ""
+    while True:
+        value = input(f"{prompt}{suffix}: ").strip()
+        if value:
+            return value
+        if current:
+            return current
+        if not required:
+            return ""
+        print("该项不能为空")
+
+
+def _prompt_float(prompt: str, current: float | None, *, default: float, minimum: float | None = None,
+                  maximum: float | None = None) -> float:
+    current_display = str(current if current is not None else default)
+    while True:
+        raw = input(f"{prompt} [{current_display}]: ").strip()
+        value_raw = raw or current_display
+        try:
+            value = float(value_raw)
+        except ValueError:
+            print("请输入数字")
+            continue
+        if minimum is not None and value < minimum:
+            print(f"数值不能小于 {minimum}")
+            continue
+        if maximum is not None and value > maximum:
+            print(f"数值不能大于 {maximum}")
+            continue
+        return value
+
+
+def _prompt_bool(prompt: str, current: bool = False) -> bool:
+    default = "Y/n" if current else "y/N"
+    while True:
+        raw = input(f"{prompt} [{default}]: ").strip().lower()
+        if not raw:
+            return current
+        if raw in {"y", "yes", "是", "启用", "true", "1"}:
+            return True
+        if raw in {"n", "no", "否", "禁用", "false", "0"}:
+            return False
+        print("请输入 y 或 n")
+
+
+def _prompt_multiline(prompt: str, current: str = "", *, required: bool = False) -> str:
+    if current:
+        print(f"{prompt}（直接回车保留当前内容；输入多行后用单独一行 . 结束）")
+        print("当前内容：")
+        print(current)
+    else:
+        print(f"{prompt}（输入多行后用单独一行 . 结束）")
+
+    first_line = input("> ")
+    if not first_line and current:
+        return current
+
+    lines: list[str] = []
+    if first_line != ".":
+        lines.append(first_line)
+    while first_line != ".":
+        line = input("> ")
+        if line == ".":
+            break
+        lines.append(line)
+
+    value = "\n".join(lines).strip()
+    if required and not value:
+        print("该项不能为空")
+        return _prompt_multiline(prompt, current, required=required)
+    return value
+
+
+def _mask_configured_secret(value: str) -> str:
+    if not value:
+        return "未配置"
+    if len(value) <= 8:
+        return "已配置"
+    return f"已配置（{value[:4]}...{value[-4:]}）"
 
 
 def _load_config_template() -> dict[str, Any]:
@@ -432,42 +524,203 @@ def cmd_feishu_register(_args: argparse.Namespace) -> int:
     return 0
 
 
+async def _test_ai_config(config: dict[str, Any], api_key: str) -> tuple[bool, str]:
+    from src.config.settings import load_prompt_file_strict
+    from src.core.ai_filter import AIFilter
+
+    system_prompt_file = _get_nested(config, ["ai", "system_prompt_file"], "config/prompts/system_prompt.md")
+    user_prompt_file = _get_nested(config, ["ai", "user_prompt_file"], "config/prompts/user_prompt.md")
+    system_prompt = load_prompt_file_strict(system_prompt_file)
+    user_prompt = load_prompt_file_strict(user_prompt_file)
+
+    ai_filter = AIFilter(
+        api_key=api_key,
+        base_url=_get_nested(config, ["ai", "base_url"], "") or None,
+        model=_get_nested(config, ["ai", "model"], ""),
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        temperature=_get_nested(config, ["ai", "temperature"], None),
+        timeout=int(_get_nested(config, ["ai", "timeout"], 30)),
+        extra_body=_get_nested(config, ["ai", "extra_body"], None),
+    )
+    return await ai_filter.test_connection()
+
+
 def cmd_ai_config(_args: argparse.Namespace) -> int:
     config = _load_yaml(DEFAULT_CONFIG_PATH)
     if not config:
         config = _prepare_base_config()
 
     print("NextArc AI 筛选配置")
-    enabled = input("是否启用 AI 筛选？[y/N]: ").strip().lower() == "y"
-    _set_nested(config, ["ai", "enabled"], enabled)
-    _set_nested(config, ["monitor", "use_ai_filter"], enabled)
-
     env_values = _read_env_file(DEFAULT_ENV_PATH)
-    if enabled:
-        api_key = getpass.getpass("请输入 AI API Key: ").strip()
-        base_url = input("请输入 API Base URL（可留空使用默认）: ").strip()
-        model = input("请输入模型名称: ").strip()
-        temperature_raw = input("请输入 temperature（默认 0.3）: ").strip() or "0.3"
-        user_info = input("请简要描述你的活动偏好: ").strip()
+    enabled = _prompt_bool("是否启用 AI 筛选？", bool(_get_nested(config, ["ai", "enabled"], False)))
+    if not enabled:
+        _set_nested(config, ["ai", "enabled"], False)
+        _set_nested(config, ["ai", "api_key"], "")
+        _set_nested(config, ["monitor", "use_ai_filter"], False)
+        env_values.pop("NEXTARC_AI_API_KEY", None)
+        _write_yaml(DEFAULT_CONFIG_PATH, config)
+        _write_env_file(DEFAULT_ENV_PATH, env_values)
+        _chown_config_for_nextarc([DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_PATH, DEFAULT_ENV_PATH])
+        print("AI 筛选已禁用。请重启 nextarc 服务使配置生效。")
+        return 0
 
-        try:
-            temperature = float(temperature_raw)
-        except ValueError:
-            print("temperature 必须是数字", file=sys.stderr)
-            return 1
+    current_api_key = env_values.get("NEXTARC_AI_API_KEY") or _get_nested(config, ["ai", "api_key"], "")
+    while True:
+        print()
+        base_url = _prompt_text("请输入 API Base URL（可留空使用 OpenAI 默认）", _get_nested(config, ["ai", "base_url"], ""))
+        print(f"当前 API Key: {_mask_configured_secret(current_api_key)}")
+        api_key = input("请输入 AI API Key（输入内容会显示；直接回车保留当前值）: ").strip() or current_api_key
+        model = _prompt_text("请输入模型名称", _get_nested(config, ["ai", "model"], ""), required=True)
+        temperature = _prompt_float(
+            "请输入 temperature",
+            _get_nested(config, ["ai", "temperature"], None),
+            default=0.3,
+            minimum=0.0,
+            maximum=2.0,
+        )
+        user_info = _prompt_multiline(
+            "请描述你的活动偏好",
+            _get_nested(config, ["ai", "user_info"], ""),
+            required=True,
+        )
 
-        env_values["NEXTARC_AI_API_KEY"] = api_key
+        if not api_key:
+            print("API Key 不能为空")
+            continue
+
+        _set_nested(config, ["ai", "enabled"], False)
+        _set_nested(config, ["monitor", "use_ai_filter"], False)
         _set_nested(config, ["ai", "base_url"], base_url)
         _set_nested(config, ["ai", "model"], model)
         _set_nested(config, ["ai", "temperature"], temperature)
         _set_nested(config, ["ai", "user_info"], user_info)
-    else:
-        env_values.pop("NEXTARC_AI_API_KEY", None)
+        current_api_key = api_key
+
+        print("正在测试 AI API 配置...")
+        try:
+            ok, detail = asyncio.run(_test_ai_config(config, api_key))
+        except Exception as exc:
+            ok, detail = False, str(exc)
+
+        if ok:
+            print(detail)
+            _set_nested(config, ["ai", "enabled"], True)
+            _set_nested(config, ["ai", "api_key"], "")
+            _set_nested(config, ["monitor", "use_ai_filter"], True)
+            env_values["NEXTARC_AI_API_KEY"] = api_key
+            break
+
+        print(f"AI API 配置测试失败: {detail}", file=sys.stderr)
+        action = input("按回车保留当前内容并重新修改；输入 q 放弃配置 AI 筛选: ").strip().lower()
+        if action == "q":
+            _set_nested(config, ["ai", "enabled"], False)
+            _set_nested(config, ["ai", "api_key"], "")
+            _set_nested(config, ["monitor", "use_ai_filter"], False)
+            env_values.pop("NEXTARC_AI_API_KEY", None)
+            print("已放弃配置 AI 筛选，AI 筛选保持关闭。")
+            break
 
     _write_yaml(DEFAULT_CONFIG_PATH, config)
     _write_env_file(DEFAULT_ENV_PATH, env_values)
     _chown_config_for_nextarc([DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_PATH, DEFAULT_ENV_PATH])
     print("AI 配置已更新。请重启 nextarc 服务使配置生效。")
+    return 0
+
+
+def _parse_time_ranges(raw: str) -> list[dict[str, str]]:
+    if not raw.strip():
+        return []
+
+    ranges: list[dict[str, str]] = []
+    for item in raw.replace("，", ",").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if "-" not in item:
+            raise ValueError(f"时间段缺少 - 分隔符: {item}")
+        start, end = [part.strip() for part in item.split("-", 1)]
+        try:
+            start_time = datetime.strptime(start, "%H:%M")
+            end_time = datetime.strptime(end, "%H:%M")
+        except ValueError as exc:
+            raise ValueError(f"时间格式错误: {item}，应为 HH:MM-HH:MM，如 14:00-16:00") from exc
+        if start_time >= end_time:
+            raise ValueError(f"时间段无效: {item}，开始时间必须早于结束时间")
+        ranges.append({"start": start, "end": end})
+    return ranges
+
+
+def cmd_preference_config(_args: argparse.Namespace) -> int:
+    from pydantic import ValidationError
+    from src.config.preferences import PushPreferences
+
+    preferences = _load_yaml(DEFAULT_PREFERENCES_PATH)
+    if not preferences:
+        preferences = _load_preferences_template()
+
+    print("NextArc 推送偏好配置")
+    time_filter = preferences.setdefault("time_filter", {})
+    enabled = _prompt_bool("是否启用空闲时间筛选？", bool(time_filter.get("enabled", False)))
+    time_filter["enabled"] = enabled
+
+    print("时间重叠判断模式：partial=有重叠即过滤，full=完全包含才过滤，threshold=按重叠比例过滤")
+    current_mode = str(time_filter.get("overlap_mode") or "partial")
+    while True:
+        overlap_mode = _prompt_text("请选择模式 partial/full/threshold", current_mode, required=True)
+        if overlap_mode in {"partial", "full", "threshold"}:
+            time_filter["overlap_mode"] = overlap_mode
+            break
+        print("模式只能是 partial、full 或 threshold")
+
+    threshold = _prompt_float(
+        "请输入 threshold 模式的重叠比例阈值",
+        time_filter.get("overlap_threshold"),
+        default=0.3,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    time_filter["overlap_threshold"] = threshold
+
+    weekly = time_filter.setdefault("weekly_preferences", {})
+    days = [
+        ("monday", "周一"),
+        ("tuesday", "周二"),
+        ("wednesday", "周三"),
+        ("thursday", "周四"),
+        ("friday", "周五"),
+        ("saturday", "周六"),
+        ("sunday", "周日"),
+    ]
+
+    print("按天填写没空时间段。格式示例：08:00-10:00, 14:00-16:30；直接回车保留，输入 - 清空。")
+    for key, label in days:
+        current_ranges = weekly.get(key) or []
+        current = ", ".join(f"{item.get('start')}-{item.get('end')}" for item in current_ranges if isinstance(item, dict))
+        while True:
+            raw = input(f"{label}没空时间段 [{current or '无'}]: ").strip()
+            if not raw:
+                break
+            if raw == "-":
+                weekly[key] = []
+                break
+            try:
+                weekly[key] = _parse_time_ranges(raw)
+                break
+            except ValueError as exc:
+                print(exc)
+
+    try:
+        validated = PushPreferences(**preferences)
+    except ValidationError as exc:
+        print("偏好配置校验失败：", file=sys.stderr)
+        print(exc, file=sys.stderr)
+        return 1
+
+    _write_yaml(DEFAULT_PREFERENCES_PATH, validated.model_dump())
+    _chown_config_for_nextarc([DEFAULT_CONFIG_DIR, DEFAULT_PREFERENCES_PATH])
+    print(f"偏好配置已更新: {DEFAULT_PREFERENCES_PATH}")
+    print("请重启 nextarc 服务使配置生效。")
     return 0
 
 
@@ -507,6 +760,7 @@ def cmd_run(_args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="nextarc")
     parser.add_argument("--ai-config", action="store_true", help="交互式配置 AI 筛选")
+    parser.add_argument("--preference-config", action="store_true", help="交互式配置推送偏好")
     parser.add_argument("--feishu-register", action="store_true", help="重新注册飞书应用")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -514,6 +768,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("bootstrap", help="初始化配置和飞书应用")
     subparsers.add_parser("feishu-register", help="重新注册飞书应用")
     subparsers.add_parser("ai-config", help="交互式配置 AI 筛选")
+    subparsers.add_parser("preference-config", help="交互式配置推送偏好")
     subparsers.add_parser("doctor", help="检查部署状态")
     return parser
 
@@ -524,6 +779,8 @@ def main_cli() -> int:
 
     if args.ai_config:
         return cmd_ai_config(args)
+    if args.preference_config:
+        return cmd_preference_config(args)
     if args.feishu_register:
         return cmd_feishu_register(args)
 
@@ -536,6 +793,8 @@ def main_cli() -> int:
             return cmd_feishu_register(args)
         case "ai-config":
             return cmd_ai_config(args)
+        case "preference-config":
+            return cmd_preference_config(args)
         case "doctor":
             return cmd_doctor(args)
         case _:
