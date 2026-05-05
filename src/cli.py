@@ -6,13 +6,17 @@ import argparse
 import asyncio
 import getpass
 import grp
+import json
 import os
 import pwd
 import shlex
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.request import Request, urlopen
 
 import yaml
 
@@ -26,6 +30,11 @@ DEFAULT_PREFERENCES_PATH = Path(
 )
 DEFAULT_ENV_PATH = Path(os.getenv("NEXTARC_ENV_FILE", str(DEFAULT_CONFIG_DIR / "nextarc.env")))
 DEFAULT_STATE_PATH = Path(os.getenv("NEXTARC_STATE", str(DEFAULT_STATE_DIR / "state.yaml")))
+FEISHU_REGISTRATION_DOMAIN = os.getenv("NEXTARC_FEISHU_REGISTRATION_DOMAIN", "https://accounts.feishu.cn")
+LARK_REGISTRATION_DOMAIN = os.getenv("NEXTARC_LARK_REGISTRATION_DOMAIN", "https://accounts.larksuite.com")
+REGISTRATION_ENDPOINT = "/oauth/v1/app/registration"
+REGISTRATION_SOURCE = "python-sdk/nextarc"
+DEFAULT_REGISTRATION_POLL_INTERVAL = 10.0
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -170,40 +179,182 @@ def _write_state(open_id: str = "", chat_id: str = "", user_id: str = "") -> Non
     _write_yaml(DEFAULT_STATE_PATH, state, mode=0o600)
 
 
+def _print_terminal_qr(url: str) -> bool:
+    """在终端渲染二维码，失败时返回 False 以便保留链接兜底。"""
+
+    try:
+        import qrcode
+    except ImportError:
+        return False
+
+    try:
+        qr = qrcode.QRCode(border=2)
+        qr.add_data(url)
+        qr.make(fit=True)
+        matrix = qr.get_matrix()
+    except Exception:
+        return False
+
+    print("请使用飞书扫描下方二维码完成应用创建：")
+    for row in matrix:
+        print("".join("\033[40m  \033[0m" if cell else "\033[47m  \033[0m" for cell in row))
+    return True
+
+
+def _get_registration_poll_interval(server_interval: float) -> float:
+    raw_interval = os.getenv("NEXTARC_FEISHU_REGISTRATION_POLL_INTERVAL", "")
+    if not raw_interval:
+        return max(server_interval, DEFAULT_REGISTRATION_POLL_INTERVAL)
+
+    try:
+        configured_interval = float(raw_interval)
+    except ValueError:
+        print(
+            f"警告：NEXTARC_FEISHU_REGISTRATION_POLL_INTERVAL={raw_interval!r} 无效，使用默认轮询间隔",
+            file=sys.stderr,
+        )
+        configured_interval = DEFAULT_REGISTRATION_POLL_INTERVAL
+
+    return max(server_interval, configured_interval, 1.0)
+
+
+def _post_registration(base_url: str, data: dict[str, str]) -> dict[str, Any]:
+    encoded = urlencode(data).encode("utf-8")
+    request = Request(
+        base_url + REGISTRATION_ENDPOINT,
+        data=encoded,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _build_registration_qr_url(uri: str) -> str:
+    parsed = urlparse(uri)
+    params = parse_qs(parsed.query)
+    params["from"] = "sdk"
+    params["tp"] = "sdk"
+    params["source"] = REGISTRATION_SOURCE
+    return urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+
+
 def _register_feishu() -> tuple[str, str, str]:
     try:
         import lark_oapi as lark
     except ImportError as exc:
         raise RuntimeError("未安装 lark-oapi，请先安装依赖") from exc
 
-    if not hasattr(lark, "register_app"):
-        raise RuntimeError("当前 lark-oapi 版本不支持 register_app，请升级到 1.5.5 或更高版本")
+    del lark
 
     def on_qr_code(info: dict[str, Any]) -> None:
+        url = info["url"]
         print()
-        print("请使用飞书扫码或在浏览器打开以下链接完成应用创建：")
-        print(info["url"])
+        rendered = _print_terminal_qr(url)
+        if rendered:
+            print()
+            print("如果二维码无法扫描，也可以在浏览器打开以下链接：")
+        else:
+            print("请在浏览器打开以下链接完成应用创建：")
+        print(url)
         print(f"链接有效期约 {info.get('expire_in', 600)} 秒")
         print()
 
     def on_status_change(info: dict[str, Any]) -> None:
         status = info.get("status")
         if status == "polling":
-            print("等待飞书授权确认...")
+            interval = info.get("interval")
+            if interval:
+                print(f"等待飞书授权确认... 当前轮询间隔 {interval:g} 秒")
+            else:
+                print("等待飞书授权确认...")
         elif status == "slow_down":
             print(f"飞书要求降低轮询频率，当前间隔 {info.get('interval')} 秒")
         elif status == "domain_switched":
             print("已切换到 Lark 国际版认证域")
 
-    result = lark.register_app(
+    result = _run_feishu_registration(
         on_qr_code=on_qr_code,
         on_status_change=on_status_change,
-        source="nextarc",
     )
     app_id = result["client_id"]
     app_secret = result["client_secret"]
     open_id = (result.get("user_info") or {}).get("open_id", "")
     return app_id, app_secret, open_id
+
+
+def _run_feishu_registration(on_qr_code, on_status_change) -> dict[str, Any]:
+    base_url = FEISHU_REGISTRATION_DOMAIN
+
+    init_res = _post_registration(base_url, {"action": "init"})
+    methods = init_res.get("supported_auth_methods") or []
+    if "client_secret" not in methods:
+        raise RuntimeError("飞书应用创建接口不支持 client_secret 授权方式")
+
+    begin_res = _post_registration(
+        base_url,
+        {
+            "action": "begin",
+            "archetype": "PersonalAgent",
+            "auth_method": "client_secret",
+            "request_user_info": "open_id",
+        },
+    )
+
+    device_code = begin_res["device_code"]
+    server_interval = float(begin_res.get("interval", 5))
+    interval = _get_registration_poll_interval(server_interval)
+    expire_in = int(begin_res.get("expires_in", 600))
+
+    qr_url = _build_registration_qr_url(begin_res["verification_uri_complete"])
+    on_qr_code({"url": qr_url, "expire_in": expire_in})
+    on_status_change({"status": "polling", "interval": interval})
+
+    deadline = time.monotonic() + expire_in
+    domain_switched = False
+
+    while time.monotonic() < deadline:
+        time.sleep(interval)
+
+        poll_res = _post_registration(base_url, {"action": "poll", "device_code": device_code})
+
+        if poll_res.get("client_id") and poll_res.get("client_secret"):
+            result = {
+                "client_id": poll_res["client_id"],
+                "client_secret": poll_res["client_secret"],
+            }
+            if poll_res.get("user_info"):
+                result["user_info"] = poll_res["user_info"]
+            return result
+
+        user_info = poll_res.get("user_info") or {}
+        if user_info.get("tenant_brand") == "lark" and not domain_switched:
+            base_url = LARK_REGISTRATION_DOMAIN
+            domain_switched = True
+            on_status_change({"status": "domain_switched"})
+            continue
+
+        error = poll_res.get("error", "")
+        error_desc = poll_res.get("error_description", "")
+
+        if error == "authorization_pending":
+            on_status_change({"status": "polling", "interval": interval})
+            continue
+
+        if error == "slow_down":
+            interval += 5
+            on_status_change({"status": "slow_down", "interval": interval})
+            continue
+
+        if error == "access_denied":
+            raise RuntimeError("飞书应用创建授权被拒绝")
+
+        if error == "expired_token":
+            raise RuntimeError("飞书应用创建二维码已过期")
+
+        raise RuntimeError(f"飞书应用创建失败: {error or 'unknown'} {error_desc}".strip())
+
+    raise RuntimeError("飞书应用创建超时，二维码已过期")
 
 
 def cmd_bootstrap(_args: argparse.Namespace) -> int:
@@ -328,9 +479,8 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
 
     try:
         import lark_oapi as lark
-        has_register = hasattr(lark, "register_app")
-        print(f"[{'OK' if has_register else 'FAIL'}] lark-oapi register_app: {has_register}")
-        failed = failed or not has_register
+        version = getattr(lark, "__version__", "unknown")
+        print(f"[OK] lark-oapi: 已安装 version={version}")
     except ImportError:
         print("[FAIL] lark-oapi: 未安装")
         failed = True

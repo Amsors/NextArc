@@ -15,6 +15,15 @@ NEXTARC_LOG_DIR="${NEXTARC_LOG_DIR:-/var/log/nextarc}"
 NEXTARC_ENV_FILE="${NEXTARC_ENV_FILE:-/etc/nextarc/nextarc.env}"
 NEXTARC_SERVICE_FILE="/etc/systemd/system/nextarc.service"
 
+log_step() {
+  echo
+  echo "==> $*"
+}
+
+log_info() {
+  echo "    $*"
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -38,9 +47,14 @@ require_root() {
 }
 
 uninstall_service() {
+  log_step "卸载 NextArc systemd 服务"
+  log_info "停止并禁用服务: nextarc"
   systemctl disable --now nextarc >/dev/null 2>&1 || true
+  log_info "删除服务文件: ${NEXTARC_SERVICE_FILE}"
   rm -f "${NEXTARC_SERVICE_FILE}"
+  log_info "重新加载 systemd 配置"
   systemctl daemon-reload
+  log_info "清理 systemd failed 状态"
   systemctl reset-failed nextarc >/dev/null 2>&1 || true
   echo "NextArc systemd 服务已卸载。配置、数据、日志和代码均已保留。"
 }
@@ -49,68 +63,115 @@ purge_all() {
   uninstall_service
   echo
   echo "危险操作：这将删除 NextArc 代码、配置、飞书凭据、USTC 凭据、数据和日志。"
+  echo "将删除的路径："
+  echo "  - ${NEXTARC_INSTALL_DIR}"
+  echo "  - ${NEXTARC_CONFIG_DIR}"
+  echo "  - ${NEXTARC_STATE_DIR}"
+  echo "  - ${NEXTARC_LOG_DIR}"
+  echo "将删除的系统用户：nextarc"
   read -r -p "如确认删除，请输入 DELETE NEXTARC: " confirmation
   if [[ "${confirmation}" != "DELETE NEXTARC" ]]; then
     echo "已取消彻底卸载。"
     exit 1
   fi
+  log_step "删除 NextArc 文件和目录"
+  log_info "删除代码和虚拟环境: ${NEXTARC_INSTALL_DIR}"
+  log_info "删除配置和密钥: ${NEXTARC_CONFIG_DIR}"
+  log_info "删除运行数据: ${NEXTARC_STATE_DIR}"
+  log_info "删除日志目录: ${NEXTARC_LOG_DIR}"
   rm -rf "${NEXTARC_INSTALL_DIR}" "${NEXTARC_CONFIG_DIR}" "${NEXTARC_STATE_DIR}" "${NEXTARC_LOG_DIR}"
+  log_step "删除系统用户"
+  log_info "删除用户: nextarc"
   userdel nextarc >/dev/null 2>&1 || true
   echo "NextArc 已彻底卸载。"
 }
 
 install_packages() {
+  log_step "安装系统依赖"
+  log_info "更新 apt 软件包索引"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
+  log_info "安装软件包: git curl ca-certificates python3 python3-venv python3-pip sqlite3"
   apt-get install -y git curl ca-certificates python3 python3-venv python3-pip sqlite3
 }
 
 ensure_user_and_dirs() {
+  log_step "创建运行用户和目录"
   if ! id nextarc >/dev/null 2>&1; then
+    log_info "创建系统用户: nextarc"
     useradd --system --home "${NEXTARC_STATE_DIR}" --shell /usr/sbin/nologin nextarc
+  else
+    log_info "系统用户已存在: nextarc"
   fi
 
+  log_info "创建安装目录: ${NEXTARC_INSTALL_DIR}"
+  log_info "创建配置目录: ${NEXTARC_CONFIG_DIR}"
+  log_info "创建状态目录: ${NEXTARC_STATE_DIR}"
+  log_info "创建日志目录: ${NEXTARC_LOG_DIR}"
   mkdir -p "${NEXTARC_INSTALL_DIR}" "${NEXTARC_CONFIG_DIR}" "${NEXTARC_STATE_DIR}" "${NEXTARC_LOG_DIR}"
+  log_info "设置状态和日志目录所有者为 nextarc:nextarc"
   chown -R nextarc:nextarc "${NEXTARC_STATE_DIR}" "${NEXTARC_LOG_DIR}"
+  log_info "设置配置、状态和日志目录权限为 750"
   chmod 750 "${NEXTARC_CONFIG_DIR}" "${NEXTARC_STATE_DIR}" "${NEXTARC_LOG_DIR}"
 }
 
 checkout_code() {
+  log_step "获取 NextArc 代码"
+  log_info "仓库: ${NEXTARC_REPO_URL}"
+  log_info "分支: ${NEXTARC_REPO_BRANCH}"
+  log_info "目标目录: ${NEXTARC_APP_DIR}"
   if [[ -d "${NEXTARC_APP_DIR}/.git" ]]; then
+    log_info "检测到已有 git 仓库，拉取最新代码"
     git -C "${NEXTARC_APP_DIR}" fetch origin "${NEXTARC_REPO_BRANCH}"
     git -C "${NEXTARC_APP_DIR}" checkout "${NEXTARC_REPO_BRANCH}"
     git -C "${NEXTARC_APP_DIR}" pull --ff-only origin "${NEXTARC_REPO_BRANCH}"
   else
+    log_info "未检测到已有仓库，清理目标目录并重新克隆"
     rm -rf "${NEXTARC_APP_DIR}"
     git clone --branch "${NEXTARC_REPO_BRANCH}" --single-branch "${NEXTARC_REPO_URL}" "${NEXTARC_APP_DIR}"
   fi
 }
 
 install_python_deps() {
+  log_step "创建 Python 虚拟环境并安装依赖"
   local pyustc_pip_url="${PYUSTC_REPO_URL}"
   if [[ "${pyustc_pip_url}" != *.git ]]; then
     pyustc_pip_url="${pyustc_pip_url}.git"
   fi
 
+  log_info "虚拟环境目录: ${NEXTARC_VENV_DIR}"
   python3 -m venv "${NEXTARC_VENV_DIR}"
+  log_info "升级 pip 和 wheel"
   "${NEXTARC_VENV_DIR}/bin/python" -m pip install --upgrade pip wheel
+  log_info "安装项目依赖: ${NEXTARC_APP_DIR}/requirements.txt"
   "${NEXTARC_VENV_DIR}/bin/pip" install -r "${NEXTARC_APP_DIR}/requirements.txt"
+  log_info "安装 pyustc: git+${pyustc_pip_url}@${PYUSTC_REPO_BRANCH}"
   "${NEXTARC_VENV_DIR}/bin/pip" install "git+${pyustc_pip_url}@${PYUSTC_REPO_BRANCH}"
 
+  log_info "写入 nextarc 命令包装脚本: ${NEXTARC_VENV_DIR}/bin/nextarc"
   cat >"${NEXTARC_VENV_DIR}/bin/nextarc" <<EOF
 #!/usr/bin/env bash
 cd "${NEXTARC_APP_DIR}"
 exec "${NEXTARC_VENV_DIR}/bin/python" -m src.cli "\$@"
 EOF
+  log_info "设置 nextarc 命令权限为 755"
   chmod 755 "${NEXTARC_VENV_DIR}/bin/nextarc"
 }
 
 run_bootstrap_if_needed() {
+  log_step "初始化 NextArc 配置"
   if [[ -f "${NEXTARC_ENV_FILE}" && -f "${NEXTARC_CONFIG_DIR}/config.yaml" ]]; then
-    echo "检测到已有配置，跳过初始化向导。"
+    log_info "检测到已有环境文件: ${NEXTARC_ENV_FILE}"
+    log_info "检测到已有配置文件: ${NEXTARC_CONFIG_DIR}/config.yaml"
+    log_info "跳过初始化向导"
     return
   fi
 
+  log_info "将启动交互式初始化向导"
+  log_info "配置文件: ${NEXTARC_CONFIG_DIR}/config.yaml"
+  log_info "偏好配置: ${NEXTARC_CONFIG_DIR}/preferences.yaml"
+  log_info "敏感环境变量: ${NEXTARC_ENV_FILE}"
+  log_info "运行态状态: ${NEXTARC_STATE_DIR}/state.yaml"
   NEXTARC_CONFIG_DIR="${NEXTARC_CONFIG_DIR}" \
   NEXTARC_STATE_DIR="${NEXTARC_STATE_DIR}" \
   NEXTARC_LOG_DIR="${NEXTARC_LOG_DIR}" \
@@ -122,14 +183,27 @@ run_bootstrap_if_needed() {
 }
 
 fix_permissions() {
+  log_step "修正文件权限"
+  log_info "设置安装目录所有者: root:root ${NEXTARC_INSTALL_DIR}"
   chown -R root:root "${NEXTARC_INSTALL_DIR}"
+  log_info "设置配置目录所有者: root:nextarc ${NEXTARC_CONFIG_DIR}"
   chown -R root:nextarc "${NEXTARC_CONFIG_DIR}"
+  log_info "设置状态和日志目录所有者: nextarc:nextarc"
   chown -R nextarc:nextarc "${NEXTARC_STATE_DIR}" "${NEXTARC_LOG_DIR}"
+  log_info "设置配置、状态和日志目录权限为 750"
   chmod 750 "${NEXTARC_CONFIG_DIR}" "${NEXTARC_STATE_DIR}" "${NEXTARC_LOG_DIR}"
-  [[ -f "${NEXTARC_ENV_FILE}" ]] && chmod 640 "${NEXTARC_ENV_FILE}"
+  if [[ -f "${NEXTARC_ENV_FILE}" ]]; then
+    log_info "设置环境变量文件权限为 640: ${NEXTARC_ENV_FILE}"
+    chmod 640 "${NEXTARC_ENV_FILE}"
+  fi
 }
 
 install_service() {
+  log_step "安装并启动 systemd 服务"
+  log_info "写入服务文件: ${NEXTARC_SERVICE_FILE}"
+  log_info "服务运行用户: nextarc"
+  log_info "工作目录: ${NEXTARC_APP_DIR}"
+  log_info "启动命令: ${NEXTARC_VENV_DIR}/bin/nextarc run"
   cat >"${NEXTARC_SERVICE_FILE}" <<EOF
 [Unit]
 Description=NextArc Feishu Bot
@@ -160,8 +234,11 @@ ReadWritePaths=${NEXTARC_STATE_DIR} ${NEXTARC_LOG_DIR} ${NEXTARC_CONFIG_DIR}
 [Install]
 WantedBy=multi-user.target
 EOF
+  log_info "设置服务文件权限为 0644"
   chmod 0644 "${NEXTARC_SERVICE_FILE}"
+  log_info "重新加载 systemd 配置"
   systemctl daemon-reload
+  log_info "启用并启动服务: nextarc"
   systemctl enable --now nextarc
 }
 
@@ -188,6 +265,15 @@ main() {
       exit 1
       ;;
   esac
+
+  log_step "开始安装 NextArc"
+  log_info "安装目录: ${NEXTARC_INSTALL_DIR}"
+  log_info "应用目录: ${NEXTARC_APP_DIR}"
+  log_info "虚拟环境: ${NEXTARC_VENV_DIR}"
+  log_info "配置目录: ${NEXTARC_CONFIG_DIR}"
+  log_info "状态目录: ${NEXTARC_STATE_DIR}"
+  log_info "日志目录: ${NEXTARC_LOG_DIR}"
+  log_info "systemd 服务文件: ${NEXTARC_SERVICE_FILE}"
 
   install_packages
   ensure_user_and_dirs
