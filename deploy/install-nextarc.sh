@@ -40,7 +40,7 @@ log_info() {
 usage() {
   cat <<'EOF'
 Usage:
-  install-nextarc.sh [--origin github|lug_gitlab]
+  install-nextarc.sh [--origin github|lug_gitlab] [--skip-feishu-register]
   install-nextarc.sh --migrate /path/to/old_nextarc
   install-nextarc.sh --uninstall
   install-nextarc.sh --purge
@@ -60,6 +60,7 @@ EOF
 parse_args() {
   ACTION="install"
   MIGRATE_SOURCE_DIR=""
+  SKIP_FEISHU_REGISTER="false"
 
   while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -73,6 +74,10 @@ parse_args() {
         ;;
       --purge)
         ACTION="purge"
+        shift
+        ;;
+      --skip-feishu-register|--skip-feishu)
+        SKIP_FEISHU_REGISTER="true"
         shift
         ;;
       --migrate)
@@ -344,6 +349,12 @@ run_bootstrap_if_needed() {
   log_info "偏好配置: ${NEXTARC_CONFIG_DIR}/preferences.yaml"
   log_info "敏感环境变量: ${NEXTARC_ENV_FILE}"
   log_info "运行态状态: ${NEXTARC_STATE_DIR}/state.yaml"
+  local bootstrap_args=()
+  if [[ "${SKIP_FEISHU_REGISTER}" == "true" ]]; then
+    log_info "将跳过飞书应用创建，之后可通过 --migrate 或 nextarc feishu-register 补充凭据"
+    bootstrap_args+=(--skip-feishu-register)
+  fi
+
   NEXTARC_CONFIG_DIR="${NEXTARC_CONFIG_DIR}" \
   NEXTARC_STATE_DIR="${NEXTARC_STATE_DIR}" \
   NEXTARC_LOG_DIR="${NEXTARC_LOG_DIR}" \
@@ -351,7 +362,7 @@ run_bootstrap_if_needed() {
   NEXTARC_CONFIG="${NEXTARC_CONFIG_DIR}/config.yaml" \
   NEXTARC_PREFERENCES="${NEXTARC_CONFIG_DIR}/preferences.yaml" \
   NEXTARC_STATE="${NEXTARC_STATE_DIR}/state.yaml" \
-    "${NEXTARC_VENV_DIR}/bin/nextarc" bootstrap
+    "${NEXTARC_VENV_DIR}/bin/nextarc" bootstrap "${bootstrap_args[@]}"
 }
 
 fix_permissions() {
@@ -474,6 +485,66 @@ with config_path.open("w", encoding="utf-8") as f:
 PY
 }
 
+copy_migrated_feishu_credentials() {
+  log_info "迁移飞书凭据到 daemon 环境文件: ${NEXTARC_ENV_FILE}"
+  NEXTARC_ENV_FILE="${NEXTARC_ENV_FILE}" \
+  "${NEXTARC_VENV_DIR}/bin/python" - "${NEXTARC_CONFIG_DIR}/config.yaml" <<'PY'
+from pathlib import Path
+import os
+import shlex
+import sys
+
+import yaml
+
+config_path = Path(sys.argv[1])
+env_path = Path(os.environ["NEXTARC_ENV_FILE"])
+
+with config_path.open("r", encoding="utf-8") as f:
+    config = yaml.safe_load(f) or {}
+
+feishu = config.get("feishu") or {}
+mapping = {
+    "app_id": "NEXTARC_FEISHU_APP_ID",
+    "app_secret": "NEXTARC_FEISHU_APP_SECRET",
+    "open_id": "NEXTARC_FEISHU_OPEN_ID",
+    "chat_id": "NEXTARC_FEISHU_CHAT_ID",
+    "user_id": "NEXTARC_FEISHU_USER_ID",
+}
+
+values: dict[str, str] = {}
+if env_path.exists():
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        try:
+            parsed = shlex.split(line, comments=False, posix=True)
+        except ValueError:
+            parsed = []
+        if parsed and "=" in parsed[0]:
+            key, value = parsed[0].split("=", 1)
+        else:
+            key, value = line.split("=", 1)
+            value = value.strip().strip("'").strip('"')
+        values[key.strip()] = value
+
+for config_key, env_key in mapping.items():
+    value = feishu.get(config_key)
+    if value:
+        values[env_key] = str(value)
+
+env_path.parent.mkdir(parents=True, exist_ok=True)
+lines = [
+    "# NextArc systemd environment file",
+    "# This file contains secrets. Keep permissions restricted.",
+]
+for key in sorted(values):
+    lines.append(f"{key}={shlex.quote(values[key])}")
+env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+env_path.chmod(0o640)
+PY
+}
+
 migrate_legacy_data() {
   require_installed_service
   validate_migration_source
@@ -509,6 +580,7 @@ migrate_legacy_data() {
   install -o nextarc -g nextarc -m 0640 "${MIGRATE_DB_FILES[@]}" "${target_data_dir}/"
 
   rewrite_migrated_config_paths
+  copy_migrated_feishu_credentials
   fix_permissions
 
   log_step "重启 NextArc 服务"

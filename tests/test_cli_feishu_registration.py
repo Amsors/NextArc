@@ -3,7 +3,10 @@
 import io
 import json
 import sys
+import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -59,6 +62,37 @@ class CliErrorHandlingTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(stderr.getvalue().strip(), "错误：飞书应用创建失败")
+
+
+class BootstrapTest(unittest.TestCase):
+    def test_bootstrap_can_skip_feishu_registration(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            config_dir = root / "config"
+            state_dir = root / "state"
+            log_dir = root / "log"
+
+            patches = [
+                patch.object(cli, "DEFAULT_CONFIG_DIR", config_dir),
+                patch.object(cli, "DEFAULT_STATE_DIR", state_dir),
+                patch.object(cli, "DEFAULT_LOG_DIR", log_dir),
+                patch.object(cli, "DEFAULT_CONFIG_PATH", config_dir / "config.yaml"),
+                patch.object(cli, "DEFAULT_PREFERENCES_PATH", config_dir / "preferences.yaml"),
+                patch.object(cli, "DEFAULT_ENV_PATH", config_dir / "nextarc.env"),
+                patch.object(cli, "DEFAULT_STATE_PATH", state_dir / "state.yaml"),
+                patch("builtins.input", return_value="PB00000000"),
+                patch.object(cli.getpass, "getpass", return_value="password"),
+                patch.object(cli, "_register_feishu", side_effect=AssertionError("should not register")),
+            ]
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7], patches[8], patches[9]:
+                exit_code = cli.cmd_bootstrap(SimpleNamespace(skip_feishu_register=True))
+
+            self.assertEqual(exit_code, 0)
+            env_values = cli._read_env_file(config_dir / "nextarc.env")
+            self.assertEqual(env_values["USTC_USERNAME"], "PB00000000")
+            self.assertEqual(env_values["USTC_PASSWORD"], "password")
+            self.assertEqual(env_values["NEXTARC_FEISHU_APP_ID"], "")
+            self.assertEqual(env_values["NEXTARC_FEISHU_APP_SECRET"], "")
 
 
 if __name__ == "__main__":

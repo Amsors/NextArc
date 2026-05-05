@@ -470,7 +470,7 @@ def _run_feishu_registration(on_qr_code, on_status_change) -> dict[str, Any]:
     raise RuntimeError("飞书应用创建超时，二维码已过期")
 
 
-def cmd_bootstrap(_args: argparse.Namespace) -> int:
+def cmd_bootstrap(args: argparse.Namespace) -> int:
     DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     DEFAULT_STATE_DIR.mkdir(parents=True, exist_ok=True)
     DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -482,9 +482,13 @@ def cmd_bootstrap(_args: argparse.Namespace) -> int:
         print("USTC 学号和密码不能为空", file=sys.stderr)
         return 1
 
-    app_id, app_secret, open_id = _register_feishu()
-    if not open_id:
-        print("警告：飞书未返回 open_id，首次启动可能需要先给机器人发送消息")
+    app_id = app_secret = open_id = ""
+    if args.skip_feishu_register:
+        print("已跳过飞书应用创建。之后可运行 nextarc feishu-register，或通过安装脚本 --migrate 迁移旧凭据。")
+    else:
+        app_id, app_secret, open_id = _register_feishu()
+        if not open_id:
+            print("警告：飞书未返回 open_id，首次启动可能需要先给机器人发送消息")
 
     config = _prepare_base_config()
     preferences = _load_preferences_template()
@@ -777,7 +781,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("run", help="启动 NextArc 服务")
-    subparsers.add_parser("bootstrap", help="初始化配置和飞书应用")
+    bootstrap_parser = subparsers.add_parser("bootstrap", help="初始化配置和飞书应用")
+    bootstrap_parser.add_argument(
+        "--skip-feishu-register",
+        action="store_true",
+        help="跳过飞书应用创建，稍后通过 feishu-register 或安装脚本 --migrate 补充凭据",
+    )
     subparsers.add_parser("feishu-register", help="重新注册飞书应用")
     subparsers.add_parser("ai-config", help="交互式配置 AI 筛选")
     subparsers.add_parser("preference-config", help="交互式配置推送偏好")
