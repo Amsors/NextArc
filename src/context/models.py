@@ -114,14 +114,12 @@ class DisplayedActivitiesPayload:
 
 @dataclass
 class ConfirmationPayload:
-    operation: Literal["cancel", "join", "upgrade", "restart"]
+    operation: Literal["cancel", "join"]
     activity_id: str | None = None
     activity_name: str | None = None
     data: dict | None = None
 
     def get_confirm_prompt(self) -> str:
-        if self.operation in {"upgrade", "restart"}:
-            return "请回复「确认」或「取消」"
         action = "取消报名" if self.operation == "cancel" else "报名"
         activity_name = self.activity_name or "未知活动"
         return (

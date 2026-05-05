@@ -70,6 +70,10 @@ class CalendarSyncConfig(BaseModel):
 class FeishuConfig(BaseModel):
     app_id: str = ""
     app_secret: str = ""
+    open_id: str = Field(
+        default="",
+        description="飞书一键创建应用返回的用户 open_id，用于首次启动时向用户发送私聊消息"
+    )
     chat_id: str = Field(default="",
                          description="预配置的私聊会话ID，格式如 oc_xxx。若配置，则机器人启动即可发送消息，无需等待用户先发消息")
     user_id: str = Field(
@@ -316,6 +320,23 @@ class Settings(BaseSettings):
     def ensure_directories(self) -> None:
         self.database.data_dir.mkdir(parents=True, exist_ok=True)
 
+    def apply_env_overrides(self) -> None:
+        """用部署环境变量覆盖敏感或安装相关配置。"""
+
+        env_overrides = {
+            "NEXTARC_FEISHU_APP_ID": ("feishu", "app_id"),
+            "NEXTARC_FEISHU_APP_SECRET": ("feishu", "app_secret"),
+            "NEXTARC_FEISHU_OPEN_ID": ("feishu", "open_id"),
+            "NEXTARC_FEISHU_CHAT_ID": ("feishu", "chat_id"),
+            "NEXTARC_FEISHU_USER_ID": ("feishu", "user_id"),
+            "NEXTARC_AI_API_KEY": ("ai", "api_key"),
+        }
+
+        for env_name, (section_name, field_name) in env_overrides.items():
+            value = os.getenv(env_name)
+            if value:
+                setattr(getattr(self, section_name), field_name, value)
+
 
 _settings: Optional[Settings] = None
 
@@ -324,9 +345,14 @@ def load_settings(config_path: Optional[Path] = None) -> Settings:
     global _settings
     if _settings is None:
         if config_path is None:
-            project_root = Path(__file__).parent.parent.parent
-            config_path = project_root / "config" / "config.yaml"
+            env_config_path = os.getenv("NEXTARC_CONFIG")
+            if env_config_path:
+                config_path = Path(env_config_path)
+            else:
+                project_root = Path(__file__).parent.parent.parent
+                config_path = project_root / "config" / "config.yaml"
         _settings = Settings.from_yaml(config_path)
+        _settings.apply_env_overrides()
         _settings.ensure_directories()
     return _settings
 

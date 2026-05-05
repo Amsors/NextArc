@@ -1,6 +1,7 @@
 """推送偏好配置管理"""
 
 from datetime import datetime, time
+import os
 from pathlib import Path
 from typing import Optional, Self
 
@@ -152,7 +153,11 @@ def load_preferences(config_path: Optional[Path] = None) -> PushPreferences:
     global _preferences
     if _preferences is None:
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent / "config" / "preferences.yaml"
+            env_config_path = os.getenv("NEXTARC_PREFERENCES")
+            if env_config_path:
+                config_path = Path(env_config_path)
+            else:
+                config_path = Path(__file__).parent.parent.parent / "config" / "preferences.yaml"
         _preferences = PushPreferences.from_yaml(config_path)
     return _preferences
 

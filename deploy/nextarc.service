@@ -1,0 +1,28 @@
+[Unit]
+Description=NextArc Feishu Bot
+Documentation=https://github.com/Amsors/NextArc
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nextarc
+Group=nextarc
+WorkingDirectory=/opt/nextarc/app
+EnvironmentFile=/etc/nextarc/nextarc.env
+Environment=NEXTARC_CONFIG=/etc/nextarc/config.yaml
+Environment=NEXTARC_PREFERENCES=/etc/nextarc/preferences.yaml
+Environment=NEXTARC_STATE=/var/lib/nextarc/state.yaml
+Environment=NEXTARC_STATE_DIR=/var/lib/nextarc
+ExecStart=/opt/nextarc/venv/bin/nextarc run
+Restart=always
+RestartSec=10
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/nextarc /var/log/nextarc /etc/nextarc
+
+[Install]
+WantedBy=multi-user.target

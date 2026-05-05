@@ -159,7 +159,7 @@ class ContextManager:
 
     async def set_confirmation(
         self,
-        operation: Literal["cancel", "join", "upgrade", "restart"],
+        operation: Literal["cancel", "join"],
         activity_id: str | None = None,
         activity_name: str | None = None,
         data: dict | None = None,

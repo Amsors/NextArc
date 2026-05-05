@@ -26,11 +26,13 @@ class UpgradeHandler(CommandHandler):
         return "/upgrade - 检查并安装程序更新"
 
     async def handle(self, args: list[str], session) -> Response:
+        logger.info("执行 /upgrade 指令 - 当前已禁用")
+        return Response.text("机器人内自升级功能已暂时禁用，请使用安装脚本或服务器运维流程更新。")
+
         if not self.check_dependencies():
             return Response.text("服务未初始化")
 
         logger.info("执行 /upgrade 指令 - 检查更新")
-
         version_checker = self._scanner.version_checker
         if not version_checker:
             return Response.text("版本检查器未启用，请在配置中开启版本检查功能")

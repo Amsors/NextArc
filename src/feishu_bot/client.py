@@ -40,7 +40,9 @@ class FeishuBot:
             app_secret: str,
             message_handler: Optional[Callable[[str, UserSession], Coroutine]] = None,
             chat_id: Optional[str] = None,
+            open_id: Optional[str] = None,
             user_id: Optional[str] = None,
+            state_store: Optional[object] = None,
             card_handler: Optional["CardActionHandler"] = None,
             context_manager: Optional["ContextManager"] = None,
     ):
@@ -48,6 +50,7 @@ class FeishuBot:
         self.app_secret = app_secret
         self.message_handler = message_handler
         self.card_handler = card_handler
+        self._state_store = state_store
         self.user_session = UserSession(context_manager=context_manager)
         if user_id:
             self.user_session.user_id = user_id
@@ -55,12 +58,24 @@ class FeishuBot:
         self._thread: Optional[threading.Thread] = None
         self._connected = False
         self._chat_id: Optional[str] = chat_id if chat_id else None
+        self._open_id: Optional[str] = open_id if open_id else None
         self._chat_id_configured: bool = bool(chat_id)
+        self._open_id_configured: bool = bool(open_id)
         self._user_id_configured: bool = bool(user_id)
         self._stop_event = threading.Event()
 
         self._main_loop: Optional[asyncio.AbstractEventLoop] = None
         self._executor = ThreadPoolExecutor(max_workers=2)
+
+    def _persist_state(self, key: str, value: str | None) -> None:
+        if not self._state_store or not value:
+            return
+        try:
+            changed = self._state_store.set_if_changed(key, value)
+            if changed:
+                logger.info(f"已持久化运行态: {key}")
+        except Exception as e:
+            logger.warning(f"持久化运行态失败: {key} error={e}")
 
     def set_main_loop(self, loop: asyncio.AbstractEventLoop):
         self._main_loop = loop
@@ -178,6 +193,7 @@ class FeishuBot:
             if event.event and event.event.chat_id:
                 chat_id = event.event.chat_id
                 self._chat_id = chat_id
+                self._persist_state("feishu_chat_id", chat_id)
 
                 if not self._chat_id_configured:
                     logger.info(f"用户进入私聊，当前 chat_id: {chat_id} （可配置到 config.yaml 的 feishu.chat_id 中）")
@@ -192,6 +208,7 @@ class FeishuBot:
                     user_id = getattr(sender_id, "user_id", None)
                     if user_id:
                         self.user_session.user_id = user_id
+                        self._persist_state("feishu_user_id", user_id)
                         if not self._user_id_configured:
                             logger.info(
                                 f"用户进入私聊，当前 user_id: {user_id} "
@@ -208,6 +225,7 @@ class FeishuBot:
             if event.event and event.event.message:
                 chat_id = event.event.message.chat_id
                 self._chat_id = chat_id
+                self._persist_state("feishu_chat_id", chat_id)
 
                 if not self._chat_id_configured:
                     logger.info(f"收到消息，当前 chat_id: {chat_id} （可配置到 config.yaml 的 feishu.chat_id 中）")
@@ -221,6 +239,7 @@ class FeishuBot:
                             user_id = getattr(sender_id, "user_id", None)
                             if user_id:
                                 self.user_session.user_id = user_id
+                                self._persist_state("feishu_user_id", user_id)
                                 logger.info(
                                     f"收到消息，当前 user_id: {user_id} "
                                     f"（可配置到 config.yaml 的 feishu.user_id 中）"
@@ -270,8 +289,9 @@ class FeishuBot:
                 logger.error(f"WebSocket 运行错误: {e}")
 
     async def send_text(self, content: str) -> bool:
-        if not self._chat_id:
-            logger.error("无法发送消息：未获取到 chat_id")
+        receive_id, receive_id_type = self._get_receive_target()
+        if not receive_id:
+            logger.error("无法发送消息：未获取到 chat_id 或 open_id")
             return False
 
         try:
@@ -284,13 +304,13 @@ class FeishuBot:
                 .build()
 
             body = CreateMessageRequestBody.builder() \
-                .receive_id(self._chat_id) \
+                .receive_id(receive_id) \
                 .content(json.dumps({"text": content})) \
                 .msg_type("text") \
                 .build()
 
             request = CreateMessageRequest.builder() \
-                .receive_id_type("chat_id") \
+                .receive_id_type(receive_id_type) \
                 .request_body(body) \
                 .build()
 
@@ -310,8 +330,9 @@ class FeishuBot:
             return False
 
     async def send_card(self, card_content: dict) -> bool:
-        if not self._chat_id:
-            logger.error("无法发送卡片：未获取到 chat_id")
+        receive_id, receive_id_type = self._get_receive_target()
+        if not receive_id:
+            logger.error("无法发送卡片：未获取到 chat_id 或 open_id")
             return False
 
         try:
@@ -324,13 +345,13 @@ class FeishuBot:
                 .build()
 
             body = CreateMessageRequestBody.builder() \
-                .receive_id(self._chat_id) \
+                .receive_id(receive_id) \
                 .content(json.dumps(card_content, ensure_ascii=False)) \
                 .msg_type("interactive") \
                 .build()
 
             request = CreateMessageRequest.builder() \
-                .receive_id_type("chat_id") \
+                .receive_id_type(receive_id_type) \
                 .request_body(body) \
                 .build()
 
@@ -371,11 +392,12 @@ class FeishuBot:
             raise
 
     async def send_startup_message(self, message: str) -> bool:
-        if not self._chat_id:
-            logger.warning("无法发送启动问候：未获取到 chat_id，等待用户先发送消息")
+        receive_id, receive_id_type = self._get_receive_target()
+        if not receive_id:
+            logger.warning("无法发送启动问候：未获取到 chat_id 或 open_id，等待用户先发送消息")
             return False
 
-        logger.info("发送启动问候消息到已配置的 chat_id...")
+        logger.info(f"发送启动问候消息到已配置的 {receive_id_type}...")
         return await self.send_text(message)
 
     async def stop(self) -> None:
@@ -394,3 +416,10 @@ class FeishuBot:
 
     def get_chat_id(self) -> Optional[str]:
         return self._chat_id
+
+    def _get_receive_target(self) -> tuple[Optional[str], str]:
+        if self._chat_id:
+            return self._chat_id, "chat_id"
+        if self._open_id:
+            return self._open_id, "open_id"
+        return None, "chat_id"

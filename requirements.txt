@@ -1,7 +1,7 @@
 # NextArc - 第二课堂活动监控机器人依赖
 
 # 飞书开放平台官方 SDK
-lark-oapi>=1.0.0
+lark-oapi>=1.5.5
 
 # 异步 SQLite 操作
 aiosqlite>=0.19.0

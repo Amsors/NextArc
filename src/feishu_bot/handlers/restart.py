@@ -23,19 +23,8 @@ class RestartHandler(CommandHandler):
         return "/restart - 重启应用"
 
     async def handle(self, args: list[str], session) -> Response:
-        logger.info("执行 /restart 指令 - 等待用户确认")
-
-        await session.context_manager.set_confirmation(
-            operation="restart",
-        )
-
-        return Response.text(
-            "即将重启 NextArc。\n"
-            "\n"
-            "重启会临时断开飞书机器人连接，启动完成后会重新上线。\n"
-            "\n"
-            "是否立即重启？(回复「确认」或「取消」)"
-        )
+        logger.info("执行 /restart 指令 - 当前已禁用")
+        return Response.text("机器人内自重启功能已暂时禁用，请通过 systemd 管理服务。")
 
     async def execute_restart(self, session) -> Response:
         confirmation = await session.context_manager.get_confirmation()

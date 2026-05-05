@@ -65,12 +65,5 @@ class HelpHandler(CommandHandler):
             "  无参数 - 查看全部标记列表\n"
             "  感兴趣 - 只看感兴趣的活动\n"
             "  不感兴趣 - 只看不感兴趣的活动\n"
-            "\n\n"
-            "/upgrade 检查并安装程序更新\n"
-            "  自动从 git 拉取配置分支、切换分支并重启应用\n"
-            "  如有更新会显示变更内容并要求确认\n"
-            "\n\n"
-            "/restart 重启机器人\n"
-            "  会要求确认，确认后自动重启当前应用进程\n"
         )
         return Response.text(help_text)

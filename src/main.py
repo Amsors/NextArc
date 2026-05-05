@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 import signal
 import sys
@@ -14,6 +15,7 @@ CHANGE_LOG_FILE = "docs/change_log.md"
 from src.app import AppContext, build_card_display_config, build_notification_runtime_config
 from src.config import load_settings
 from src.config.preferences import load_preferences
+from src.config.runtime_state import RuntimeState
 from src.context import ContextManager
 from src.core import (
     ActivityQueryService,
@@ -72,15 +74,25 @@ class NextArcApp:
         self.card_handler: CardActionHandler = None
         self.card_builder: ActivityCardBuilder = None
         self.version_checker = None
+        self.runtime_state: RuntimeState | None = None
         self._should_notify_file_auth_deprecation = False
         self._shutdown_event = asyncio.Event()
 
     async def initialize(self) -> bool:
         try:
             self.settings = load_settings()
+            self.runtime_state = RuntimeState()
+            if not self.settings.feishu.open_id:
+                self.settings.feishu.open_id = self.runtime_state.get("feishu_open_id")
+            if not self.settings.feishu.chat_id:
+                self.settings.feishu.chat_id = self.runtime_state.get("feishu_chat_id")
+            if not self.settings.feishu.user_id:
+                self.settings.feishu.user_id = self.runtime_state.get("feishu_user_id")
             self._should_notify_file_auth_deprecation = self.settings.is_using_file_credentials()
 
-            preferences_path = project_root / "config" / "preferences.yaml"
+            preferences_path = Path(
+                os.getenv("NEXTARC_PREFERENCES", str(project_root / "config" / "preferences.yaml"))
+            )
             self.preferences = load_preferences(preferences_path)
 
             setup_logging(
@@ -163,33 +175,7 @@ class NextArcApp:
                 logger.info("AI 筛选: 已禁用")
 
             self.version_checker = None
-            logger.info(f"版本检查配置: enabled={self.settings.version_check.enabled}")
-            if self.settings.version_check.enabled:
-                from src.core.version_checker import VersionChecker
-                logger.info("正在初始化版本检查器...")
-                logger.info(f"   配置: day_of_week={self.settings.version_check.day_of_week}, "
-                            f"hour={self.settings.version_check.hour}, "
-                            f"minute={self.settings.version_check.minute}")
-                logger.info(f"   远程: {self.settings.version_check.remote_name}/"
-                            f"{self.settings.version_check.branch_name}, "
-                            f"auto_fetch={self.settings.version_check.auto_fetch}")
-
-                self.version_checker = VersionChecker(
-                    config=self.settings.version_check,
-                    project_root=project_root,
-                )
-                if not self.version_checker.is_git_repo():
-                    logger.warning("版本检查已启用，但当前目录不是 git 仓库")
-                    self.version_checker = None
-                else:
-                    logger.info("版本检查器: 检测到 git 仓库")
-                    current_ver = await self.version_checker.get_current_version()
-                    remote_url = await self.version_checker.get_remote_url()
-                    logger.info(f"版本检查器初始化完成")
-                    logger.info(f"   远程仓库: {remote_url or 'unknown'}")
-                    logger.info(f"   当前版本: {current_ver[:7] if current_ver else 'unknown'}")
-            else:
-                logger.info("版本检查: 已禁用")
+            logger.info("版本检查/应用内自升级: 暂时禁用")
 
             self.time_filter = None
             use_time_filter = False
@@ -307,7 +293,9 @@ class NextArcApp:
                     app_secret=self.settings.feishu.app_secret,
                     message_handler=self._handle_message,
                     chat_id=chat_id,
+                    open_id=self.settings.feishu.open_id if self.settings.feishu.open_id else None,
                     user_id=self.settings.feishu.user_id if self.settings.feishu.user_id else None,
+                    state_store=self.runtime_state,
                     card_handler=self.card_handler,
                     context_manager=self.context_manager,
                 )
@@ -349,10 +337,12 @@ class NextArcApp:
         exe = sys.executable
         logger.info(f"Python 解释器: {exe}")
 
-        if "conda" not in exe.lower() and "envs" not in exe:
-            logger.warning("未检测到 conda 环境，建议激活 'pyustc' 环境运行")
-        else:
+        if sys.prefix != getattr(sys, "base_prefix", sys.prefix):
+            logger.info("检测到 Python 虚拟环境")
+        elif "conda" in exe.lower() or "envs" in exe:
             logger.info("检测到 conda 环境")
+        else:
+            logger.warning("未检测到虚拟环境，建议在隔离环境中运行")
 
     async def _handle_message(self, text: str, session) -> str | None:
         response = await self.router.handle_message(text, session)
