@@ -134,6 +134,106 @@ configure_repo_urls() {
   esac
 }
 
+strip_trailing_slash() {
+  local path="$1"
+  while [[ "${path}" != "/" && "${path}" == */ ]]; do
+    path="${path%/}"
+  done
+  printf '%s\n' "${path}"
+}
+
+validate_path_value() {
+  local name="$1"
+  local value
+  value="$(strip_trailing_slash "$2")"
+
+  if [[ -z "${value}" ]]; then
+    echo "${name} 不能为空" >&2
+    exit 1
+  fi
+  if [[ "${value}" != /* ]]; then
+    echo "${name} 必须是绝对路径: ${value}" >&2
+    exit 1
+  fi
+  case "/${value#/}/" in
+    */../*|*/./*)
+      echo "${name} 不能包含 . 或 .. 路径组件: ${value}" >&2
+      exit 1
+      ;;
+  esac
+  if [[ -L "${value}" ]]; then
+    echo "${name} 不能是符号链接: ${value}" >&2
+    exit 1
+  fi
+
+  case "${value}" in
+    *$'\n'*|*$'\r'*|*[[:space:]]*)
+      echo "${name} 不能包含空白字符: ${value}" >&2
+      exit 1
+      ;;
+  esac
+
+  case "${value}" in
+    /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/usr/bin|/usr/local|/usr/local/bin|/usr/local/lib|/var|/var/lib|/var/log)
+      echo "${name} 指向危险路径: ${value}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+validate_child_path() {
+  local child_name="$1"
+  local child
+  local parent_name="$3"
+  local parent
+  child="$(strip_trailing_slash "$2")"
+  parent="$(strip_trailing_slash "$4")"
+
+  if [[ "${child}" == "${parent}" || "${child}" != "${parent}/"* ]]; then
+    echo "${child_name} 必须位于 ${parent_name} 下: ${child}" >&2
+    exit 1
+  fi
+}
+
+validate_git_ref() {
+  local name="$1"
+  local value="$2"
+  if (
+    [[ -z "${value}" ]] ||
+    [[ "${value}" == -* ]] ||
+    [[ "${value}" == *..* ]] ||
+    [[ "${value}" == *.lock ]] ||
+    [[ ! "${value}" =~ ^[A-Za-z0-9._/-]+$ ]]
+  ); then
+    echo "${name} 不是安全的 git ref: ${value}" >&2
+    exit 1
+  fi
+}
+
+validate_install_paths() {
+  validate_path_value "NEXTARC_INSTALL_DIR" "${NEXTARC_INSTALL_DIR}"
+  validate_path_value "NEXTARC_APP_DIR" "${NEXTARC_APP_DIR}"
+  validate_path_value "NEXTARC_PYUSTC_DIR" "${NEXTARC_PYUSTC_DIR}"
+  validate_path_value "NEXTARC_VENV_DIR" "${NEXTARC_VENV_DIR}"
+  validate_path_value "NEXTARC_CONFIG_DIR" "${NEXTARC_CONFIG_DIR}"
+  validate_path_value "NEXTARC_STATE_DIR" "${NEXTARC_STATE_DIR}"
+  validate_path_value "NEXTARC_LOG_DIR" "${NEXTARC_LOG_DIR}"
+  validate_path_value "NEXTARC_ENV_FILE" "${NEXTARC_ENV_FILE}"
+  validate_path_value "NEXTARC_LIB_DIR" "${NEXTARC_LIB_DIR}"
+  validate_path_value "NEXTARC_UPGRADE_SCRIPT" "${NEXTARC_UPGRADE_SCRIPT}"
+
+  validate_child_path "NEXTARC_APP_DIR" "${NEXTARC_APP_DIR}" "NEXTARC_INSTALL_DIR" "${NEXTARC_INSTALL_DIR}"
+  validate_child_path "NEXTARC_PYUSTC_DIR" "${NEXTARC_PYUSTC_DIR}" "NEXTARC_INSTALL_DIR" "${NEXTARC_INSTALL_DIR}"
+  validate_child_path "NEXTARC_VENV_DIR" "${NEXTARC_VENV_DIR}" "NEXTARC_INSTALL_DIR" "${NEXTARC_INSTALL_DIR}"
+  validate_child_path "NEXTARC_ENV_FILE" "${NEXTARC_ENV_FILE}" "NEXTARC_CONFIG_DIR" "${NEXTARC_CONFIG_DIR}"
+  validate_child_path "NEXTARC_UPGRADE_SCRIPT" "${NEXTARC_UPGRADE_SCRIPT}" "NEXTARC_LIB_DIR" "${NEXTARC_LIB_DIR}"
+}
+
+validate_repo_refs() {
+  validate_git_ref "NEXTARC_REPO_BRANCH" "${NEXTARC_REPO_BRANCH}"
+  validate_git_ref "PYUSTC_REPO_BRANCH" "${PYUSTC_REPO_BRANCH}"
+}
+
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
     echo "请使用 root 权限运行，例如：sudo bash install-nextarc.sh" >&2
@@ -303,6 +403,7 @@ Wants=network-online.target
 Type=oneshot
 User=root
 Group=root
+UMask=0077
 Environment=NEXTARC_APP_DIR=${NEXTARC_APP_DIR}
 Environment=NEXTARC_INSTALL_DIR=${NEXTARC_INSTALL_DIR}
 Environment=NEXTARC_PYUSTC_DIR=${NEXTARC_PYUSTC_DIR}
@@ -310,8 +411,20 @@ Environment=NEXTARC_VENV_DIR=${NEXTARC_VENV_DIR}
 Environment=NEXTARC_CONFIG_DIR=${NEXTARC_CONFIG_DIR}
 Environment=NEXTARC_STATE_DIR=${NEXTARC_STATE_DIR}
 Environment=NEXTARC_LOG_DIR=${NEXTARC_LOG_DIR}
+Environment=NEXTARC_ENV_FILE=${NEXTARC_ENV_FILE}
 ExecStart=${NEXTARC_UPGRADE_SCRIPT}
 TimeoutStartSec=900
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=${NEXTARC_INSTALL_DIR} ${NEXTARC_CONFIG_DIR} ${NEXTARC_STATE_DIR} ${NEXTARC_LOG_DIR}
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
 EOF
   chmod 0644 "${NEXTARC_UPGRADE_SERVICE_FILE}"
 
@@ -359,6 +472,7 @@ run_bootstrap_if_needed() {
   NEXTARC_STATE_DIR="${NEXTARC_STATE_DIR}" \
   NEXTARC_LOG_DIR="${NEXTARC_LOG_DIR}" \
   NEXTARC_ENV_FILE="${NEXTARC_ENV_FILE}" \
+  NEXTARC_REPO_BRANCH="${NEXTARC_REPO_BRANCH}" \
   NEXTARC_CONFIG="${NEXTARC_CONFIG_DIR}/config.yaml" \
   NEXTARC_PREFERENCES="${NEXTARC_CONFIG_DIR}/preferences.yaml" \
   NEXTARC_STATE="${NEXTARC_STATE_DIR}/state.yaml" \
@@ -485,8 +599,9 @@ with config_path.open("w", encoding="utf-8") as f:
 PY
 }
 
-copy_migrated_feishu_credentials() {
-  log_info "迁移飞书凭据到 daemon 环境文件: ${NEXTARC_ENV_FILE}"
+migrate_sensitive_credentials_to_env() {
+  log_info "迁移敏感凭据到 daemon 环境文件: ${NEXTARC_ENV_FILE}"
+  log_info "强制将 USTC 认证改为环境变量模式，并清除配置文件中的明文账号密码"
   NEXTARC_ENV_FILE="${NEXTARC_ENV_FILE}" \
   "${NEXTARC_VENV_DIR}/bin/python" - "${NEXTARC_CONFIG_DIR}/config.yaml" <<'PY'
 from pathlib import Path
@@ -501,6 +616,10 @@ env_path = Path(os.environ["NEXTARC_ENV_FILE"])
 
 with config_path.open("r", encoding="utf-8") as f:
     config = yaml.safe_load(f) or {}
+
+ustc = config.setdefault("ustc", {})
+env_username = str(ustc.get("env_username") or "USTC_USERNAME")
+env_password = str(ustc.get("env_password") or "USTC_PASSWORD")
 
 feishu = config.get("feishu") or {}
 mapping = {
@@ -528,6 +647,25 @@ if env_path.exists():
             value = value.strip().strip("'").strip('"')
         values[key.strip()] = value
 
+username = ustc.get("username")
+password = ustc.get("password")
+if username:
+    values[env_username] = str(username)
+if password:
+    values[env_password] = str(password)
+
+if not values.get(env_username) or not values.get(env_password):
+    raise SystemExit(
+        "旧配置未包含可迁移的 USTC 明文账号密码，且 daemon 环境文件中也没有完整的 "
+        f"{env_username}/{env_password}。请先完成初始化或手动补充环境变量。"
+    )
+
+ustc["auth_mode"] = "env"
+ustc["username"] = ""
+ustc["password"] = ""
+ustc["env_username"] = env_username
+ustc["env_password"] = env_password
+
 for config_key, env_key in mapping.items():
     value = feishu.get(config_key)
     if value:
@@ -542,6 +680,9 @@ for key in sorted(values):
     lines.append(f"{key}={shlex.quote(values[key])}")
 env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 env_path.chmod(0o640)
+
+with config_path.open("w", encoding="utf-8") as f:
+    yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False)
 PY
 }
 
@@ -580,7 +721,7 @@ migrate_legacy_data() {
   install -o nextarc -g nextarc -m 0640 "${MIGRATE_DB_FILES[@]}" "${target_data_dir}/"
 
   rewrite_migrated_config_paths
-  copy_migrated_feishu_credentials
+  migrate_sensitive_credentials_to_env
   fix_permissions
 
   log_step "重启 NextArc 服务"
@@ -622,10 +763,20 @@ Restart=always
 RestartSec=10
 KillSignal=SIGTERM
 TimeoutStopSec=30
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
-ReadWritePaths=${NEXTARC_STATE_DIR} ${NEXTARC_LOG_DIR} ${NEXTARC_CONFIG_DIR}
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=${NEXTARC_STATE_DIR} ${NEXTARC_LOG_DIR}
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
 
 [Install]
 WantedBy=multi-user.target
@@ -651,6 +802,7 @@ main() {
   esac
 
   require_root
+  validate_install_paths
 
   case "${ACTION}" in
     uninstall)
@@ -668,6 +820,7 @@ main() {
   esac
 
   configure_repo_urls
+  validate_repo_refs
 
   log_step "开始安装 NextArc"
   log_info "仓库来源: ${NEXTARC_REPO_ORIGIN}"

@@ -8,6 +8,7 @@ Wants=network-online.target
 Type=oneshot
 User=root
 Group=root
+UMask=0077
 Environment=NEXTARC_APP_DIR=/opt/nextarc/app
 Environment=NEXTARC_INSTALL_DIR=/opt/nextarc
 Environment=NEXTARC_PYUSTC_DIR=/opt/nextarc/pyustc
@@ -15,5 +16,17 @@ Environment=NEXTARC_VENV_DIR=/opt/nextarc/venv
 Environment=NEXTARC_CONFIG_DIR=/etc/nextarc
 Environment=NEXTARC_STATE_DIR=/var/lib/nextarc
 Environment=NEXTARC_LOG_DIR=/var/log/nextarc
+Environment=NEXTARC_ENV_FILE=/etc/nextarc/nextarc.env
 ExecStart=/usr/local/lib/nextarc/upgrade-nextarc.sh
 TimeoutStartSec=900
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/nextarc /etc/nextarc /var/lib/nextarc /var/log/nextarc
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native

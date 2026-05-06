@@ -32,6 +32,7 @@ DEFAULT_PREFERENCES_PATH = Path(
 )
 DEFAULT_ENV_PATH = Path(os.getenv("NEXTARC_ENV_FILE", str(DEFAULT_CONFIG_DIR / "nextarc.env")))
 DEFAULT_STATE_PATH = Path(os.getenv("NEXTARC_STATE", str(DEFAULT_STATE_DIR / "state.yaml")))
+DEFAULT_REPO_BRANCH = os.getenv("NEXTARC_REPO_BRANCH", "").strip()
 FEISHU_REGISTRATION_DOMAIN = os.getenv("NEXTARC_FEISHU_REGISTRATION_DOMAIN", "https://accounts.feishu.cn")
 LARK_REGISTRATION_DOMAIN = os.getenv("NEXTARC_LARK_REGISTRATION_DOMAIN", "https://accounts.larksuite.com")
 REGISTRATION_ENDPOINT = "/oauth/v1/app/registration"
@@ -251,7 +252,8 @@ def _prepare_base_config() -> dict[str, Any]:
     _set_nested(config, ["logging", "file", "enabled"], False)
     _set_nested(config, ["logging", "file", "path"], str(DEFAULT_LOG_DIR / "nextarc.log"))
     _set_nested(config, ["version_check", "enabled"], True)
-    _set_nested(config, ["version_check", "branch_name"], os.getenv("NEXTARC_REPO_BRANCH", "feat/one_click_deploy"))
+    if DEFAULT_REPO_BRANCH:
+        _set_nested(config, ["version_check", "branch_name"], DEFAULT_REPO_BRANCH)
     _set_nested(config, ["ai", "enabled"], False)
     _set_nested(config, ["monitor", "use_ai_filter"], False)
     _set_nested(config, ["feishu", "app_id"], "")

@@ -6,7 +6,6 @@ import asyncio
 import os
 import re
 import shutil
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -78,11 +77,14 @@ class RuntimeMaintenanceService:
 
         self.state_dir.mkdir(parents=True, exist_ok=True)
         lines = [
-            f"NEXTARC_UPGRADE_REMOTE={shlex.quote(remote_name)}",
-            f"NEXTARC_UPGRADE_BRANCH={shlex.quote(branch_name)}",
-            f"NEXTARC_OLD_VERSION={shlex.quote(old_version or '')}",
+            f"NEXTARC_UPGRADE_REMOTE={remote_name}",
+            f"NEXTARC_UPGRADE_BRANCH={branch_name}",
+            f"NEXTARC_OLD_VERSION={old_version or ''}",
         ]
-        self.upgrade_request_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp_path = self.upgrade_request_path.with_name(f".{self.upgrade_request_path.name}.tmp")
+        tmp_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        tmp_path.chmod(0o600)
+        tmp_path.replace(self.upgrade_request_path)
         self.upgrade_request_path.chmod(0o600)
         logger.info("已写入升级请求: %s", self.upgrade_request_path)
 

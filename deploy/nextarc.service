@@ -19,10 +19,20 @@ Restart=always
 RestartSec=10
 KillSignal=SIGTERM
 TimeoutStopSec=30
+UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
-ReadWritePaths=/var/lib/nextarc /var/log/nextarc /etc/nextarc
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nextarc /var/log/nextarc
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
 
 [Install]
 WantedBy=multi-user.target
